@@ -1,0 +1,3 @@
+; NOVA grammar scaffold
+program = { statement } ;
+statement = identifier ;

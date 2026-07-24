@@ -1,0 +1,6 @@
+[package]
+name = "nova-package-manager"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "NOVA package manager architecture scaffold"

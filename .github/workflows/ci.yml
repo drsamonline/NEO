@@ -1,0 +1,16 @@
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust-workspace:
+    name: Build Rust workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --workspace --all-targets
+      - run: cargo test --workspace

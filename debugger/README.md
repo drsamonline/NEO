@@ -1,0 +1,3 @@
+# Debugger
+
+Debugger architecture scaffold.

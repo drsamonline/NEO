@@ -1,0 +1,6 @@
+[package]
+name = "nova-compiler"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "NOVA compiler architecture scaffold"

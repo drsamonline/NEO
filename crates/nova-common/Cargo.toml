@@ -1,0 +1,6 @@
+[package]
+name = "nova-common"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Shared NOVA architectural contracts"

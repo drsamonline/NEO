@@ -1,0 +1,3 @@
+# Interfaces
+
+Behavior contracts.

@@ -1,0 +1,23 @@
+# Rust build outputs
+/target/
+**/target/
+
+# Rust tooling
+*.rs.bk
+
+# Node / VS Code extension outputs
+node_modules/
+dist/
+out/
+*.vsix
+
+# Editor and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local NOVA state
+.nova/

@@ -1,0 +1,6 @@
+[package]
+name = "nova-debugger"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "NOVA debugger architecture scaffold"

@@ -1,0 +1,6 @@
+[package]
+name = "nova-runtime"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "NOVA runtime architecture scaffold"
