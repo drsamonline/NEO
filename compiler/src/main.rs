@@ -1,4 +1,4 @@
-use nova_compiler::{Lexer, Parser, SemanticAnalyzer};
+use nova_compiler::{Lexer, Parser, SemanticAnalyzer, Lowerer};
 use std::env;
 use std::fs;
 
@@ -67,6 +67,12 @@ fn main() {
             std::process::exit(1);
         }
     };
+    
+    // Phase 4: Lowering to SIR
+    let mut lowerer = Lowerer::new();
+    let sir_program = lowerer.lower_program(&program);
+    println!("✓ Lowering complete ({} functions, {} globals)", 
+             sir_program.functions.len(), sir_program.globals.len());
     
     println!("✓ Compilation successful!");
 }

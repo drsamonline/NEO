@@ -122,8 +122,32 @@ impl Parser {
         } else if self.check(TokenKind::Let) {
             self.parse_let_stmt().map(|stmt| Item::Function(self.stmt_to_function(stmt)))
         } else {
-            self.error_at_current("Expected function, struct, enum, use, mod, const, or impl");
-            Err(())
+            // Allow expression statements at top level (e.g., function calls, print statements)
+            let expr = self.parse_expr()?;
+            if self.match_token(TokenKind::Semicolon) {
+                Ok(Item::Function(self.expr_to_function(expr)))
+            } else {
+                self.expect(TokenKind::Semicolon, "Expected ';' after expression")?;
+                Ok(Item::Function(self.expr_to_function(expr)))
+            }
+        }
+    }
+    
+    // Helper to convert an expression to a dummy function for now
+    fn expr_to_function(&self, expr: Expr) -> Function {
+        let span = expr.span().clone();
+        Function {
+            name: "__main".to_string(),
+            generics: Vec::new(),
+            params: Vec::new(),
+            return_type: None,
+            body: Some(Block {
+                statements: vec![Statement::Expr(expr)],
+                final_expr: None,
+                span: span.clone(),
+            }),
+            is_pub: false,
+            span,
         }
     }
     

@@ -69,10 +69,13 @@ impl NameResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nova_common::Type;
+    use nova_common::{Type, Position};
 
     fn make_span(start: usize, end: usize) -> Span {
-        Span { start, end }
+        Span { 
+            start: Position::new(0, start, start), 
+            end: Position::new(0, end, end) 
+        }
     }
 
     #[test]

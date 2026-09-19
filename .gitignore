@@ -7,11 +7,11 @@
 *.so
 *.a
 *.out
+target/
 
 # Dependencies
-target/
-**/target/
 Cargo.lock
+**/target/
 
 # Logs and temp files
 *.log
@@ -27,12 +27,7 @@ coverage/
 htmlcov/
 .coverage
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Python specific
+# Python specific (if applicable)
 __pycache__/
 *.pyc
 *.pyo
@@ -44,16 +39,20 @@ venv/
 pip-log.txt
 pip-delete-this-directory.txt
 .tox/
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-*.tmp
-*.bak
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
+.coverage*
+.nox/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+
+# Rust specific
+**/*.rs.bk
+```
+
+Wait, I need to reconsider. The changes are only Rust source files (.rs), not build artifacts or dependencies. Let me check again:
+
+The modified files are just Rust source code files (`compiler/src/lowerer/mod.rs`, `compiler/src/main.rs`), which are source files, not build artifacts or generated files.
+
+```
+
 ```
