@@ -1,23 +1,59 @@
-# Rust build outputs
-/target/
+```
+# Compiled and build artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
+# Dependencies
+target/
 **/target/
+Cargo.lock
 
-# Rust tooling
-*.rs.bk
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
-# Node / VS Code extension outputs
-node_modules/
-dist/
-out/
-*.vsix
-
-# Editor and operating-system files
+# Editors
 .vscode/
 .idea/
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.tmp
+*.bak
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
-
-# Local NOVA state
-.nova/
+```
