@@ -15,10 +15,42 @@ pub struct SemanticAnalyzer {
 
 impl SemanticAnalyzer {
     pub fn new() -> Self {
-        Self {
+        let mut analyzer = Self {
             diagnostics: Diagnostics::new(),
             symbol_table: nova_common::SymbolTable::new(),
-        }
+        };
+        
+        // Register built-in functions
+        analyzer.register_builtins();
+        
+        analyzer
+    }
+    
+    /// Register built-in functions and types
+    fn register_builtins(&mut self) {
+        // Register print function
+        let print_symbol = Symbol::new(
+            "print".to_string(),
+            SymbolKind::Function,
+            Span::default(),
+        );
+        let _ = self.symbol_table.insert(print_symbol);
+        
+        // Register println function
+        let println_symbol = Symbol::new(
+            "println".to_string(),
+            SymbolKind::Function,
+            Span::default(),
+        );
+        let _ = self.symbol_table.insert(println_symbol);
+        
+        // Register panic function
+        let panic_symbol = Symbol::new(
+            "panic".to_string(),
+            SymbolKind::Function,
+            Span::default(),
+        );
+        let _ = self.symbol_table.insert(panic_symbol);
     }
 
     /// Analyze a complete program
