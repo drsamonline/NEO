@@ -1,5 +1,58 @@
 ```
+# Compiled and build artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
 target/
+
+# Dependencies
+Cargo.lock
+**/target/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python specific (if applicable)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage*
+.nox/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+
+# Rust specific
 **/*.rs.bk
- Cargo.lock
+```
+
+Wait, I need to reconsider. The changes are only Rust source files (.rs), not build artifacts or dependencies. Let me check again:
+
+The modified files are just Rust source code files (`compiler/src/lowerer/mod.rs`, `compiler/src/main.rs`), which are source files, not build artifacts or generated files.
+
+```
+
 ```
