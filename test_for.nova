@@ -4,6 +4,6 @@ fn range(start: int, end: int) -> int {
 
 fn main() {
     for i in range(1, 5) {
-        println("Number");
+        println(i);
     }
 }

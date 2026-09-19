@@ -247,8 +247,13 @@ impl SemanticAnalyzer {
             nova_common::Expr::Loop(body) => {
                 self.check_block(body);
             }
-            nova_common::Expr::For(_pattern, iterable, body) => {
+            nova_common::Expr::For(pattern, iterable, body) => {
                 self.check_expr(iterable);
+                // Add loop variable to scope
+                if let nova_common::Pattern::Identifier(ident_name) = pattern {
+                    let symbol = Symbol::new(ident_name.clone(), SymbolKind::Variable, nova_common::Span::default());
+                    let _ = self.symbol_table.insert(symbol);
+                }
                 self.check_block(body);
             }
             nova_common::Expr::Block(block) => {
