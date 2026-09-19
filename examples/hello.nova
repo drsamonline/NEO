@@ -1,1 +1,1 @@
-print "Hello, NOVA"
+print("Hello, NOVA");

@@ -1,4 +1,4 @@
-```
+```rust
 # Compiled and build artifacts
 *.o
 *.obj
@@ -10,7 +10,6 @@
 
 # Dependencies
 target/
-**/target/
 Cargo.lock
 
 # Logs and temp files
@@ -22,38 +21,8 @@ Cargo.lock
 .vscode/
 .idea/
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
 # Environment
 .env
 .env.local
 *.env.*
-
-# Python specific
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-*.tmp
-*.bak
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
 ```
