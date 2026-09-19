@@ -1,7 +1,6 @@
 //! Semantic Analyzer Module - Simplified for v1
 
 use nova_common::{Program, Item, Function, UseDecl, ImplBlock, Diagnostics, Symbol, SymbolKind, Span};
-use std::collections::HashMap;
 
 pub mod types;
 pub mod checker;
@@ -104,13 +103,13 @@ impl SemanticAnalyzer {
                 let symbol = Symbol::new(module_decl.name.clone(), SymbolKind::Module, module_decl.span);
                 let _ = self.symbol_table.insert(symbol);
             }
-            Item::Impl(impl_block) => {
+            Item::Impl(_impl_block) => {
                 // Handle impl blocks in second pass
             }
-            Item::TypeAlias(type_alias) => {
+            Item::TypeAlias(_type_alias) => {
                 // Handle type aliases
             }
-            Item::Trait(trait_def) => {
+            Item::Trait(_trait_def) => {
                 // Handle traits
             }
         }
@@ -190,14 +189,14 @@ impl SemanticAnalyzer {
     /// Check an expression
     fn check_expr(&mut self, expr: &nova_common::Expr) {
         match expr {
-            nova_common::Expr::Literal(lit) => {
+            nova_common::Expr::Literal(_lit) => {
                 // Literals are always valid
             }
-            nova_common::Expr::Binary(left, op, right) => {
+            nova_common::Expr::Binary(left, _op, right) => {
                 self.check_expr(left);
                 self.check_expr(right);
             }
-            nova_common::Expr::Unary(op, expr_inner) => {
+            nova_common::Expr::Unary(_op, expr_inner) => {
                 self.check_expr(expr_inner);
             }
             nova_common::Expr::Identifier(name) => {
@@ -214,7 +213,7 @@ impl SemanticAnalyzer {
                     self.check_expr(arg);
                 }
             }
-            nova_common::Expr::Field(object, field) => {
+            nova_common::Expr::Field(object, _field) => {
                 self.check_expr(object);
             }
             nova_common::Expr::Index(array, index) => {
@@ -248,7 +247,7 @@ impl SemanticAnalyzer {
             nova_common::Expr::Loop(body) => {
                 self.check_block(body);
             }
-            nova_common::Expr::For(pattern, iterable, body) => {
+            nova_common::Expr::For(_pattern, iterable, body) => {
                 self.check_expr(iterable);
                 self.check_block(body);
             }
@@ -266,22 +265,22 @@ impl SemanticAnalyzer {
                 self.check_expr(target);
                 self.check_expr(value);
             }
-            nova_common::Expr::Cast(expr_inner, type_expr) => {
+            nova_common::Expr::Cast(expr_inner, _type_expr) => {
                 self.check_expr(expr_inner);
             }
-            nova_common::Expr::Path(path_parts) => {
+            nova_common::Expr::Path(_path_parts) => {
                 // Check path resolution
             }
         }
     }
 
     /// Resolve use declaration
-    fn resolve_use_decl(&mut self, use_decl: &UseDecl) {
+    fn resolve_use_decl(&mut self, _use_decl: &UseDecl) {
         // Simplified import resolution
     }
 
     /// Check impl block
-    fn check_impl_block(&mut self, impl_block: &ImplBlock) {
+    fn check_impl_block(&mut self, _impl_block: &ImplBlock) {
         // TODO: Implement impl block checking
     }
 }

@@ -1,0 +1,10 @@
+[package]
+name = "nova-backend-c"
+version = "0.1.0"
+edition = "2021"
+description = "C backend for NOVA compiler"
+license = "MIT"
+
+[dependencies]
+nova-compiler = { path = "../../compiler" }
+nova-common = { path = "../../crates/nova-common" }
