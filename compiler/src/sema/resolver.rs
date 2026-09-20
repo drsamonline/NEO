@@ -1,7 +1,6 @@
 //! Name resolver module - simplified version using nova_common types
 
 use nova_common::{Span, Diagnostics, SymbolTable, Symbol, SymbolKind};
-use std::collections::HashMap;
 
 /// Name resolver for resolving identifiers to their declarations
 pub struct NameResolver {

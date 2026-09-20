@@ -6,6 +6,7 @@ members = [
     "language-server",
     "debugger",
     "crates/nova-common",
+    "backends/c",
     "backends/javascript",
     "backends/rust",
     "backends/wasm",

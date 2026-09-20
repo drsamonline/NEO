@@ -1,4 +1,5 @@
 ```
+# Rust build artifacts
 # Compiled and build artifacts
 *.o
 *.obj
@@ -10,7 +11,7 @@
 *.exe
 target/
 
-# Dependencies
+# Cargo lock files
 Cargo.lock
 **/vendor/
 **/deps/
@@ -20,16 +21,37 @@ Cargo.lock
 **/*.rs.bk
 **/*.rlib
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
+# Debug and release binaries
+**/*.d
+**/*.rmeta
+**/*.rlib
 
-# Editors
+# Incremental compilation data
+**/incremental/
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# Log files
+*.log
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
 
 # Environment
 .env

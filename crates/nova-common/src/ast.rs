@@ -1,7 +1,6 @@
 //! AST node definitions
 
 use crate::span::Span;
-use crate::types::Type;
 
 /// Trait for all AST nodes
 pub trait AstNode {

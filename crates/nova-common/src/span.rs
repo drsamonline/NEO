@@ -1,7 +1,5 @@
 //! Source code span and position tracking
 
-use std::fmt;
-
 /// A position in source code (line, column)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {

@@ -118,7 +118,8 @@ impl Parser {
         } else if self.check(TokenKind::Const) {
             self.parse_const().map(Item::Const)
         } else if self.check(TokenKind::Impl) {
-            self.parse_impl().map(Item::Impl)
+            let _impl_block = self.parse_impl();
+            Ok(Item::Impl(_impl_block?))
         } else if self.check(TokenKind::Let) {
             self.parse_let_stmt().map(|stmt| Item::Function(self.stmt_to_function(stmt)))
         } else {
@@ -384,7 +385,7 @@ impl Parser {
     }
     
     fn parse_if_stmt(&mut self) -> Result<Statement, ()> {
-        let if_token = self.advance();
+        let _if_token = self.advance();
         
         let condition = self.parse_expr()?;
         

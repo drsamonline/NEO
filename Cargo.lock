@@ -3,6 +3,7 @@
 version = 4
 
 [[package]]
+name = "nova-backend-c"
 name = "nova-backend-js"
 version = "0.1.0"
 dependencies = [

@@ -3,7 +3,7 @@
 //! SIR is a lowered representation of the AST that's closer to machine code
 //! and easier to translate to backend languages like C.
 
-use nova_common::{Span, TypeExpr};
+use nova_common::Span;
 
 /// SIR Program - the root of the SIR tree
 pub struct SirProgram {

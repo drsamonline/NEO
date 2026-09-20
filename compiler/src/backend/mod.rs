@@ -153,6 +153,23 @@ impl CBackend {
                 let _ = writeln!(self.output, "{}}}", indent_str);
             }
             SirStatement::For { pattern, iterable, body } => {
+                // Generate C for loop from range expression
+                // Expected pattern: range(start, end) -> for (int pattern = start; pattern < end; pattern++)
+                let range_args = self.extract_range_args(iterable);
+                let start_var = format!("{}_start", pattern);
+                let end_var = format!("{}_end", pattern);
+                
+                // Declare and initialize start/end variables
+                let _ = writeln!(self.output, "{}int {} = {};", indent_str, start_var, range_args.0);
+                let _ = writeln!(self.output, "{}int {} = {};", indent_str, end_var, range_args.1);
+                
+                // Generate for loop
+                let _ = writeln!(self.output, "{}for (int {} = {}; {} < {}; {}++) {{", 
+                    indent_str, pattern, start_var, pattern, end_var, pattern);
+                for s in body {
+                    self.write_statement(s, indent + 1);
+                }
+                let _ = writeln!(self.output, "{}}}", indent_str);
                 // Generate C-style for loop for ranges (e.g., 0..5)
                 // Check if iterable is a range expression
                 let range_start = "0";
@@ -194,6 +211,23 @@ impl CBackend {
             SirStatement::Continue => {
                 let _ = writeln!(self.output, "{}continue;", indent_str);
             }
+        }
+    }
+
+    fn extract_range_args(&self, iterable: &SirExpr) -> (String, String) {
+        // Extract start and end from range call: range(start, end)
+        match iterable {
+            SirExpr::Call { callee, args } if callee == "range" => {
+                if args.len() >= 2 {
+                    (self.expr_to_c(&args[0]), self.expr_to_c(&args[1]))
+                } else if args.len() == 1 {
+                    // range(end) -> start from 0
+                    ("0".to_string(), self.expr_to_c(&args[0]))
+                } else {
+                    ("0".to_string(), "0".to_string())
+                }
+            }
+            _ => ("0".to_string(), "0".to_string()),
         }
     }
 

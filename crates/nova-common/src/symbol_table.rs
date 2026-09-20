@@ -60,6 +60,7 @@ impl Symbol {
 /// Scope level in the symbol table
 #[derive(Debug)]
 struct Scope {
+    #[allow(dead_code)]
     id: usize,
     parent: Option<usize>,
     symbols: HashMap<String, Symbol>,
