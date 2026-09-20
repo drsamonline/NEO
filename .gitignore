@@ -4,10 +4,11 @@
 __pycache__/
 *.o
 *.obj
+*.class
 *.exe
 *.dll
 *.so
-*.class
+*.a
 *.out
 
 # Dependencies
@@ -22,47 +23,15 @@ venv/
 dist/
 build/
 target/
-.mypy_cache/
-.pytest_cache/
-.coverage
-coverage/
-htmlcov/
+*.log
+*.tmp
+*.swp
 
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
 
 # System files
 .DS_Store
 Thumbs.db
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 ```

@@ -114,8 +114,9 @@ impl CBackend {
                 if let SirExpr::Call { callee, args } = expr {
                     if callee == "print" && args.len() == 1 {
                         let arg = &args[0];
-                        // Simple heuristic: if it's an integer, use %d
-                        let _ = writeln!(self.output, "{}printf(\"%d\\n\", {});", indent_str, self.expr_to_c(arg));
+                        // Determine format specifier based on expression type
+                        let fmt_specifier = self.infer_format_specifier(arg);
+                        let _ = writeln!(self.output, "{}printf(\"{}\\n\", {});", indent_str, fmt_specifier, self.expr_to_c(arg));
                         return;
                     }
                 }
@@ -248,6 +249,50 @@ impl CBackend {
             SirExpr::Block(_, _) => {
                 "// block expr".to_string()
             }
+        }
+    }
+
+    fn infer_format_specifier(&self, expr: &SirExpr) -> &'static str {
+        match expr {
+            SirExpr::Literal(lit) => match lit {
+                SirLiteral::Int(_) => "%d",
+                SirLiteral::Float(_) => "%f",
+                SirLiteral::Bool(_) => "%d",
+                SirLiteral::String(_) => "%s",
+                SirLiteral::Char(_) => "%c",
+                SirLiteral::Unit => "",
+            },
+            SirExpr::Var(_) => "%d", // Default to int for variables
+            SirExpr::BinOp { op, left, right } => {
+                match op {
+                    SirBinOp::Add | SirBinOp::Sub | SirBinOp::Mul | SirBinOp::Div | SirBinOp::Mod => {
+                        // Arithmetic ops: check if either operand is float
+                        if matches!(left.as_ref(), SirExpr::Literal(SirLiteral::Float(_))) ||
+                           matches!(right.as_ref(), SirExpr::Literal(SirLiteral::Float(_))) {
+                            "%f"
+                        } else {
+                            "%d"
+                        }
+                    }
+                    SirBinOp::Eq | SirBinOp::Ne | SirBinOp::Lt | SirBinOp::Le | SirBinOp::Gt | SirBinOp::Ge => "%d",
+                    SirBinOp::And | SirBinOp::Or => "%d",
+                    SirBinOp::Range => "%d",
+                }
+            }
+            SirExpr::UnaryOp { op: _, operand } => self.infer_format_specifier(operand),
+            SirExpr::Call { callee, args: _ } => {
+                // Built-in functions return types
+                match callee.as_str() {
+                    "len" | "size" => "%d",
+                    _ => "%d", // Default
+                }
+            }
+            SirExpr::Assign { value, .. } => self.infer_format_specifier(value),
+            SirExpr::If { then_expr, else_expr, .. } => {
+                // Use then branch type, or default
+                self.infer_format_specifier(then_expr)
+            }
+            _ => "%d", // Default to int
         }
     }
 }
