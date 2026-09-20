@@ -1,0 +1,12 @@
+fn main() {
+    let x = 10;
+    let mut result = 0;
+    
+    if x > 5 {
+        result = 1;
+    } else {
+        result = 2;
+    }
+    
+    println(result);
+}

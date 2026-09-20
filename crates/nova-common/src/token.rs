@@ -30,7 +30,7 @@ pub enum TokenKind {
     
     // Delimiters
     LParen, RParen, LBrace, RBrace, LBracket, RBracket,
-    Comma, Semicolon, Colon, DoubleColon, Dot,
+    Comma, Semicolon, Colon, DoubleColon, Dot, DotDot,
     Arrow, FatArrow,
     
     // Special
@@ -129,6 +129,7 @@ impl Token {
             TokenKind::Colon => ":".to_string(),
             TokenKind::DoubleColon => "::".to_string(),
             TokenKind::Dot => ".".to_string(),
+            TokenKind::DotDot => "..".to_string(),
             TokenKind::Arrow => "->".to_string(),
             TokenKind::FatArrow => "=>".to_string(),
             TokenKind::Eof => "".to_string(),

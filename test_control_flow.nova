@@ -1,13 +1,33 @@
-fn factorial(n: Int) -> Int {
-    if n <= 1 {
-        return 1;
-    } else {
-        return n * factorial(n - 1);
-    }
-}
-
 fn main() {
-    let num = 5;
-    let result = factorial(num);
-    print(result);
+    // Test if-else
+    let x = 10;
+    let mut result = 0;
+    
+    if x > 5 {
+        result = 1;
+    } else {
+        result = 2;
+    }
+    
+    // Test while loop
+    let mut i = 0;
+    while i < 3 {
+        result = result + i;
+        i = i + 1;
+    }
+    
+    // Test for loop
+    for j in 0..5 {
+        result = result + j;
+    }
+    
+    // Test match
+    let value = 2;
+    match value {
+        1 => result = 10,
+        2 => result = 20,
+        _ => result = 30,
+    }
+    
+    println(result);
 }

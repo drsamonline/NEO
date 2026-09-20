@@ -257,7 +257,15 @@ impl Lexer {
                 ',' => { self.advance(); TokenKind::Comma }
                 ';' => { self.advance(); TokenKind::Semicolon }
                 ':' => { self.advance(); if self.current_char() == Some(':') { self.advance(); TokenKind::DoubleColon } else { TokenKind::Colon } }
-                '.' => { self.advance(); TokenKind::Dot }
+                '.' => { 
+                    self.advance(); 
+                    if self.current_char() == Some('.') { 
+                        self.advance(); 
+                        TokenKind::DotDot 
+                    } else { 
+                        TokenKind::Dot 
+                    } 
+                }
                 _ => { self.advance(); TokenKind::Unknown(ch) }
             };
             tokens.push(self.make_token(kind, start_pos, self.position()));
