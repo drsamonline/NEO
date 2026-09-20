@@ -278,9 +278,10 @@ impl Lowerer {
                     Expr::Literal(Literal::Integer(0)) => SirExpr::Literal(SirLiteral::Int(0)),
                     _ => self.lower_expr(start),
                 };
-                SirExpr::Call {
-                    callee: "range".to_string(),
-                    args: vec![start_expr, self.lower_expr(end)],
+                SirExpr::BinOp {
+                    left: Box::new(start_expr),
+                    op: SirBinOp::Range,
+                    right: Box::new(self.lower_expr(end)),
                 }
             }
             Expr::Match(scrutinee, arms) => {
