@@ -2,7 +2,7 @@
 //! 
 //! This module converts SIR (Semantic Intermediate Representation) to Rust code.
 
-use nova_compiler::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
+use nova_compiler::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp, SirParam};
 
 pub struct RustBackend {
     output: String,
@@ -39,11 +39,6 @@ impl RustBackend {
             self.writeln("");
         }
         
-        // Generate main function call if needed
-        if program.functions.iter().any(|f| f.name == "main") {
-            // main is already generated
-        }
-        
         self.output.clone()
     }
 
@@ -59,13 +54,17 @@ impl RustBackend {
 
     fn generate_function(&mut self, func: &SirFunction) {
         let params: Vec<String> = func.params.iter()
-            .map(|p| format!("{}: i32", p)) // Simplified: all params as i32
+            .map(|p| format!("{}: {}", p.name, self.type_to_rust(&p.typ)))
             .collect();
         
-        let return_type = if func.return_type == "void" || func.return_type.is_empty() {
-            String::new()
+        let return_type = if let Some(ref rt) = func.return_type {
+            if rt == "void" || rt.is_empty() {
+                String::new()
+            } else {
+                format!(" -> {}", self.type_to_rust(rt))
+            }
         } else {
-            format!(" -> {}", self.type_to_rust(&func.return_type))
+            String::new()
         };
         
         self.writeln(&format!("fn {}({}){} {{", func.name, params.join(", "), return_type));
@@ -84,33 +83,33 @@ impl RustBackend {
     fn generate_statement(&mut self, stmt: &SirStatement) {
         match stmt {
             SirStatement::Let { name, typ, value } => {
-                let rust_type = self.type_to_rust(typ);
-                if let Some(val) = value {
-                    let val_str = self.expr_to_rust(val);
-                    self.writeln(&format!("let {}: {} = {};", name, rust_type, val_str));
+                let rust_type = if let Some(t) = typ {
+                    self.type_to_rust(t)
                 } else {
-                    self.writeln(&format!("let {}: {} = {};", name, rust_type, self.default_value_for_type(typ)));
-                }
-            }
-            SirStatement::Assign { target, value } => {
+                    "i32"
+                };
                 let val_str = self.expr_to_rust(value);
-                self.writeln(&format!("{} = {};", target, val_str));
+                self.writeln(&format!("let {}: {} = {};", name, rust_type, val_str));
             }
             SirStatement::Expr(expr) => {
                 let expr_str = self.expr_to_rust(expr);
                 self.writeln(&format!("{};", expr_str));
             }
-            SirStatement::If { condition, then_body, else_body } => {
+            SirStatement::Return(expr) => {
+                let val_str = self.expr_to_rust(expr);
+                self.writeln(&format!("return {};", val_str));
+            }
+            SirStatement::If { condition, then_block, else_block } => {
                 let cond_str = self.expr_to_rust(condition);
                 self.writeln(&format!("if {} {{", cond_str));
                 
                 self.indent_level += 1;
-                for stmt in then_body {
+                for stmt in then_block {
                     self.generate_statement(stmt);
                 }
                 self.indent_level -= 1;
                 
-                if let Some(else_stmts) = else_body {
+                if let Some(else_stmts) = else_block {
                     self.writeln("} else {");
                     self.indent_level += 1;
                     for stmt in else_stmts {
@@ -153,12 +152,9 @@ impl RustBackend {
                 
                 self.writeln("}");
             }
-            SirStatement::Return(value) => {
-                if let Some(val) = value {
-                    let val_str = self.expr_to_rust(val);
-                    self.writeln(&format!("return {};", val_str));
-                } else {
-                    self.writeln("return;");
+            SirStatement::Block(stmts) => {
+                for stmt in stmts {
+                    self.generate_statement(stmt);
                 }
             }
             SirStatement::Break => {
@@ -236,7 +232,7 @@ impl RustBackend {
                             if let Some(val) = value {
                                 block_code.push_str(&format!("let {}: {} = {}; ", name, rust_type, self.expr_to_rust(val)));
                             } else {
-                                block_code.push_str(&format!("let {}: {} = {}; ", name, rust_type, self.default_value_for_type(typ)));
+                                block_code.push_str(&format!("let {}: {} = {}; ", name, rust_type, self.default_value_for_type(&typ)));
                             }
                         }
                         SirStatement::Assign { target, value } => {
