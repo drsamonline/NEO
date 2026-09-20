@@ -293,7 +293,32 @@ impl SemanticAnalyzer {
 
     /// Check impl block
     fn check_impl_block(&mut self, impl_block: &ImplBlock) {
-        // TODO: Implement impl block checking
+        // Validate that the type being implemented exists
+        if self.symbol_table.lookup(&impl_block.type_name).is_none() {
+            self.diagnostics.push(nova_common::Diagnostic::error(
+                format!("Cannot implement methods on undefined type '{}'", impl_block.type_name),
+            ).with_span(impl_block.span));
+            return;
+        }
+        
+        // Check each method in the impl block
+        for method in &impl_block.methods {
+            // Add 'self' parameter to scope for instance methods
+            if !method.params.is_empty() && method.params[0].name == "self" {
+                // Create a symbol for self with the type being implemented
+                let self_symbol = Symbol::new(
+                    "self".to_string(),
+                    SymbolKind::Variable,
+                    method.params[0].span,
+                );
+                let _ = self.symbol_table.insert(self_symbol);
+            }
+            
+            // Check the method body
+            self.check_function(method);
+            
+            // Remove self from scope after checking the method (exit function scope handles this)
+        }
     }
     
     /// Add pattern bindings to current scope

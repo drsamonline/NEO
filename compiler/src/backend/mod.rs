@@ -178,7 +178,7 @@ impl CBackend {
                     let _ = writeln!(self.output, "{}}}", indent_str);
                 } else {
                     // For arrays or other iterables (placeholder)
-                    let _ = writeln!(self.output, "{}// TODO: for loop over array/collection: {}", indent_str, pattern);
+                    let _ = writeln!(self.output, "{}// Error: Array/collection iteration not yet implemented", indent_str);
                 }
             }
             SirStatement::Block(stmts) => {
