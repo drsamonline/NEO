@@ -15,6 +15,11 @@ Cargo.lock
 **/vendor/
 **/deps/
 
+# Rust-specific
+**/target/
+**/*.rs.bk
+**/*.rlib
+
 # Logs and temp files
 *.log
 *.tmp
@@ -26,13 +31,8 @@ Cargo.lock
 *.swp
 *.swo
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Rust-specific
-**/target/
-Cargo.lock
-**/Cargo.lock
+# Environment
+.env
+.env.local
+*.env.*
 ```

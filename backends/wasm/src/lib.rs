@@ -52,7 +52,7 @@ impl WasmBackend {
         let init_value = if let Some(init_expr) = &global.init_value {
             self.literal_to_wasm_const(init_expr)
         } else {
-            self.default_const_for_type(&global.typ)
+            self.default_const_for_type(&global.typ).to_string()
         };
         
         self.writeln(&format!("(global ${} (mut {}) {})", global.name, wasm_type, init_value));
@@ -62,15 +62,15 @@ impl WasmBackend {
         self.local_count = 0;
         
         // Determine result type
-        let result_type = if func.return_type == "void" || func.return_type.is_empty() {
+        let result_type = if func.return_type.is_none() || func.return_type.as_ref().map_or(false, |rt| rt == "void" || rt.is_empty()) {
             String::new()
         } else {
-            format!(" (result {})", self.type_to_wasm(&func.return_type))
+            format!(" (result {})", self.type_to_wasm(func.return_type.as_ref().unwrap()))
         };
         
         // Build parameter list
         let params: Vec<String> = func.params.iter()
-            .map(|p| format!("(param ${} i32)", p))
+            .map(|p| format!("(param ${} i32)", p.name))
             .collect();
         
         self.writeln(&format!("(func ${}{}{}", func.name, if params.is_empty() { String::new() } else { format!(" {}", params.join(" ")) }, result_type));
@@ -93,43 +93,37 @@ impl WasmBackend {
 
     fn generate_statement(&mut self, stmt: &SirStatement) {
         match stmt {
-            SirStatement::Let { name, typ, value } => {
+            SirStatement::Let { name, typ: _, value } => {
                 // In Wasm, locals are declared at function start, we'll use a simplified approach
-                if let Some(val) = value {
-                    self.generate_expr(val);
-                    self.writeln(&format!("(local.set ${})", name));
-                } else {
-                    self.writeln(&format!("({} (local.get ${}))", self.default_for_type(typ), name));
-                }
-            }
-            SirStatement::Assign { target, value } => {
                 self.generate_expr(value);
-                self.writeln(&format!("(local.set ${})", target));
+                self.writeln(&format!("(local.set ${})", name));
             }
             SirStatement::Expr(expr) => {
                 self.generate_expr(expr);
                 self.writeln("drop");
             }
-            SirStatement::If { condition, then_body, else_body } => {
+            SirStatement::If { condition, then_block, else_block } => {
                 self.generate_expr(condition);
+                self.writeln("(if");
+                self.indent_level += 1;
                 self.writeln("(then");
                 self.indent_level += 1;
-                for stmt in then_body {
+                for stmt in then_block {
                     self.generate_statement(stmt);
                 }
                 self.indent_level -= 1;
                 
-                if let Some(else_stmts) = else_body {
+                if let Some(else_stmts) = else_block {
                     self.writeln(")(else");
                     self.indent_level += 1;
                     for stmt in else_stmts {
                         self.generate_statement(stmt);
                     }
                     self.indent_level -= 1;
-                    self.writeln(")");
-                } else {
-                    self.writeln(")");
                 }
+                self.writeln(")");
+                self.indent_level -= 1;
+                self.writeln(")");
             }
             SirStatement::While { condition, body } => {
                 // While loop using block and br
@@ -209,6 +203,11 @@ impl WasmBackend {
                     self.writeln("return");
                 }
             }
+            SirStatement::Block(stmts) => {
+                for stmt in stmts {
+                    self.generate_statement(stmt);
+                }
+            }
             SirStatement::Break => {
                 self.writeln("br 1");
             }
@@ -230,10 +229,10 @@ impl WasmBackend {
                     SirLiteral::Unit => {}, // No operation needed
                 }
             }
-            SirExpr::Identifier(name) => {
+            SirExpr::Var(name) => {
                 self.writeln(&format!("(local.get ${})", name));
             }
-            SirExpr::Binary { left, op, right } => {
+            SirExpr::BinOp { left, op, right } => {
                 self.generate_expr(left);
                 self.generate_expr(right);
                 
@@ -255,7 +254,7 @@ impl WasmBackend {
                 };
                 self.writeln(op_str);
             }
-            SirExpr::Unary { op, operand } => {
+            SirExpr::UnaryOp { op, operand } => {
                 self.generate_expr(operand);
                 
                 let op_str = match op {
@@ -264,14 +263,16 @@ impl WasmBackend {
                 };
                 self.writeln(op_str);
             }
-            SirExpr::Call { func, args } => {
+            SirExpr::Call { callee, args } => {
                 for arg in args {
                     self.generate_expr(arg);
                 }
-                self.writeln(&format!("(call ${})", func));
+                self.writeln(&format!("(call ${})", callee));
             }
             SirExpr::If { condition, then_expr, else_expr } => {
                 self.generate_expr(condition);
+                self.writeln("(if");
+                self.indent_level += 1;
                 self.writeln("(then");
                 self.indent_level += 1;
                 self.generate_expr(then_expr);
@@ -282,13 +283,24 @@ impl WasmBackend {
                     self.indent_level += 1;
                     self.generate_expr(else_e);
                     self.indent_level -= 1;
-                    self.writeln(")");
-                } else {
-                    self.writeln(")");
+                }
+                self.writeln(")");
+                self.indent_level -= 1;
+                self.writeln(")");
+            }
+            SirExpr::Block(stmts, final_expr) => {
+                // Generate block statements
+                for stmt in stmts {
+                    self.generate_statement(stmt);
+                }
+                // Generate final expression if present
+                if let Some(final_e) = final_expr {
+                    self.generate_expr(final_e);
                 }
             }
-            SirExpr::Break | SirExpr::Continue => {
-                // These are handled in statements, not expressions
+            SirExpr::Assign { target, value } => {
+                self.generate_expr(value);
+                self.writeln(&format!("(local.set ${})", target));
             }
         }
     }

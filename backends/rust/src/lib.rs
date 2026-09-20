@@ -96,7 +96,7 @@ impl RustBackend {
                 self.writeln(&format!("{};", expr_str));
             }
             SirStatement::Return(expr) => {
-                let val_str = self.expr_to_rust(expr);
+                let val_str = expr.as_ref().map(|e| self.expr_to_rust(e)).unwrap_or_default();
                 self.writeln(&format!("return {};", val_str));
             }
             SirStatement::If { condition, then_block, else_block } => {
@@ -153,9 +153,13 @@ impl RustBackend {
                 self.writeln("}");
             }
             SirStatement::Block(stmts) => {
+                self.writeln("{");
+                self.indent_level += 1;
                 for stmt in stmts {
                     self.generate_statement(stmt);
                 }
+                self.indent_level -= 1;
+                self.writeln("}");
             }
             SirStatement::Break => {
                 self.writeln("break;");
@@ -178,8 +182,8 @@ impl RustBackend {
                     SirLiteral::Unit => "()".to_string(),
                 }
             }
-            SirExpr::Identifier(name) => name.clone(),
-            SirExpr::Binary { left, op, right } => {
+            SirExpr::Var(name) => name.clone(),
+            SirExpr::BinOp { left, op, right } => {
                 let left_str = self.expr_to_rust(left);
                 let right_str = self.expr_to_rust(right);
                 let op_str = match op {
@@ -200,7 +204,7 @@ impl RustBackend {
                 };
                 format!("({} {} {})", left_str, op_str, right_str)
             }
-            SirExpr::Unary { op, operand } => {
+            SirExpr::UnaryOp { op, operand } => {
                 let operand_str = self.expr_to_rust(operand);
                 let op_str = match op {
                     SirUnOp::Neg => "-",
@@ -208,9 +212,9 @@ impl RustBackend {
                 };
                 format!("({}{})", op_str, operand_str)
             }
-            SirExpr::Call { func, args } => {
+            SirExpr::Call { callee, args } => {
                 let args_str: Vec<String> = args.iter().map(|a| self.expr_to_rust(a)).collect();
-                format!("{}({})", func, args_str.join(", "))
+                format!("{}({})", callee, args_str.join(", "))
             }
             SirExpr::If { condition, then_expr, else_expr } => {
                 let cond_str = self.expr_to_rust(condition);
@@ -228,15 +232,8 @@ impl RustBackend {
                 for stmt in stmts {
                     match stmt {
                         SirStatement::Let { name, typ, value } => {
-                            let rust_type = self.type_to_rust(typ);
-                            if let Some(val) = value {
-                                block_code.push_str(&format!("let {}: {} = {}; ", name, rust_type, self.expr_to_rust(val)));
-                            } else {
-                                block_code.push_str(&format!("let {}: {} = {}; ", name, rust_type, self.default_value_for_type(&typ)));
-                            }
-                        }
-                        SirStatement::Assign { target, value } => {
-                            block_code.push_str(&format!("{} = {}; ", target, self.expr_to_rust(value)));
+                            let rust_type = typ.as_ref().map(|t| self.type_to_rust(t)).unwrap_or("i32");
+                            block_code.push_str(&format!("let {}: {} = {}; ", name, rust_type, self.expr_to_rust(value)));
                         }
                         SirStatement::Expr(e) => {
                             block_code.push_str(&format!("{}; ", self.expr_to_rust(e)));
@@ -251,8 +248,9 @@ impl RustBackend {
                 }
                 block_code
             }
-            SirExpr::Break => "break".to_string(),
-            SirExpr::Continue => "continue".to_string(),
+            SirExpr::Assign { target, value } => {
+                format!("{} = {}", target, self.expr_to_rust(value))
+            }
         }
     }
 
