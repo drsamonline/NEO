@@ -1,9 +1,25 @@
 ```
 # Rust build artifacts
+# Compiled and build artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
 target/
 
 # Cargo lock files
 Cargo.lock
+**/vendor/
+**/deps/
+
+# Rust-specific
+**/target/
+**/*.rs.bk
+**/*.rlib
 
 # Debug and release binaries
 **/*.d
@@ -36,4 +52,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+
+# Environment
+.env
+.env.local
+*.env.*
 ```

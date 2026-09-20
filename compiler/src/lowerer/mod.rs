@@ -1,7 +1,7 @@
 //! AST to SIR Lowering
 
 use crate::sir::*;
-use nova_common::{Program, Function, Statement, Expr, Literal, BinOp as AstBinOp, UnOp as AstUnOp, Pattern};
+use nova_common::{Program, Function, Statement, Expr, Literal, BinOp as AstBinOp, UnOp as AstUnOp, Pattern, MatchArm, Block};
 
 pub struct Lowerer {
     pub functions: Vec<SirFunction>,
@@ -45,16 +45,7 @@ impl Lowerer {
 
     fn lower_function(&mut self, func: &Function) -> SirFunction {
         let body_stmts = match &func.body {
-            Some(block) => {
-                let mut stmts = Vec::new();
-                for stmt in &block.statements {
-                    stmts.extend(self.lower_statement(stmt));
-                }
-                if let Some(final_expr) = &block.final_expr {
-                    stmts.push(SirStatement::Expr(self.lower_expr(final_expr)));
-                }
-                stmts
-            }
+            Some(block) => self.lower_block(block),
             None => Vec::new(),
         };
 
@@ -101,6 +92,51 @@ impl Lowerer {
                     _ => {}
                 }
                 vec![SirStatement::Expr(self.lower_expr(expr))]
+                // Check if the expression is a control flow construct that should be a statement
+                match expr {
+                    Expr::If(cond, then_block, else_block) => {
+                        let then_stmts = self.lower_block(then_block);
+                        let else_stmts = else_block.as_ref().map(|b| self.lower_block(b));
+                        vec![SirStatement::If {
+                            condition: self.lower_expr(cond),
+                            then_block: then_stmts,
+                            else_block: else_stmts,
+                        }]
+                    }
+                    Expr::While(cond, body) => {
+                        vec![SirStatement::While {
+                            condition: self.lower_expr(cond),
+                            body: self.lower_block(body),
+                        }]
+                    }
+                    Expr::Loop(body) => {
+                        // Lower loop as while(true)
+                        vec![SirStatement::While {
+                            condition: SirExpr::Literal(SirLiteral::Bool(true)),
+                            body: self.lower_block(body),
+                        }]
+                    }
+                    Expr::For(pattern, iterable, body) => {
+                        let pattern_str = match pattern {
+                            Pattern::Identifier(n) => n.clone(),
+                            _ => "_".to_string(),
+                        };
+                        vec![SirStatement::For {
+                            pattern: pattern_str,
+                            iterable: self.lower_expr(iterable),
+                            body: self.lower_block(body),
+                        }]
+                    }
+                    Expr::Block(block) => {
+                        vec![SirStatement::Block(self.lower_block(block))]
+                    }
+                    Expr::Return(value) => {
+                        vec![SirStatement::Return(value.as_ref().map(|v| self.lower_expr(v)))]
+                    }
+                    _ => {
+                        vec![SirStatement::Expr(self.lower_expr(expr))]
+                    }
+                }
             }
             Statement::Item(_item) => {
                 // Skip item statements for now (e.g., nested function definitions)
@@ -168,6 +204,23 @@ impl Lowerer {
             iterable: iterable_expr,
             body: body_stmts,
         }
+    fn lower_block(&mut self, block: &nova_common::Block) -> Vec<SirStatement> {
+        let mut stmts = Vec::new();
+        for stmt in &block.statements {
+            stmts.extend(self.lower_statement(stmt));
+        }
+        if let Some(final_expr) = &block.final_expr {
+            // Handle control flow in final expression
+            match &**final_expr {
+                Expr::Return(value) => {
+                    stmts.push(SirStatement::Return(value.as_ref().map(|v| self.lower_expr(v))));
+                }
+                _ => {
+                    stmts.push(SirStatement::Expr(self.lower_expr(final_expr)));
+                }
+            }
+        }
+        stmts
     }
 
     fn lower_expr(&mut self, expr: &Expr) -> SirExpr {
@@ -281,9 +334,61 @@ impl Lowerer {
                 let _value_expr = value.as_ref().map(|v| self.lower_expr(v));
                 
                 SirExpr::Literal(SirLiteral::Unit)
+                // Lower if expression (returns a value)
+                let then_expr = self.lower_block_as_expr(then_block);
+                let else_expr = else_block.as_ref().map(|b| Box::new(self.lower_block_as_expr(b)));
+                SirExpr::If {
+                    condition: Box::new(self.lower_expr(cond)),
+                    then_expr: Box::new(then_expr),
+                    else_expr,
+                }
             }
-            Expr::Break => SirExpr::Literal(SirLiteral::Unit),
-            Expr::Continue => SirExpr::Literal(SirLiteral::Unit),
+            Expr::While(cond, body) => {
+                // While as expression returns Unit
+                SirExpr::Block(
+                    vec![SirStatement::While {
+                        condition: self.lower_expr(cond),
+                        body: self.lower_block(body),
+                    }],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
+            }
+            Expr::For(pattern, iterable, body) => {
+                // For as expression returns Unit
+                let pattern_str = match pattern {
+                    Pattern::Identifier(n) => n.clone(),
+                    _ => "_".to_string(),
+                };
+                SirExpr::Block(
+                    vec![SirStatement::For {
+                        pattern: pattern_str,
+                        iterable: self.lower_expr(iterable),
+                        body: self.lower_block(body),
+                    }],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
+            }
+            Expr::Return(value) => {
+                // Return as expression - wraps in block with Unit return
+                SirExpr::Block(
+                    vec![SirStatement::Return(value.as_ref().map(|v| self.lower_expr(v)))],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
+            }
+            Expr::Break => {
+                // Break as expression - wraps in block
+                SirExpr::Block(
+                    vec![SirStatement::Break],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
+            }
+            Expr::Continue => {
+                // Continue as expression - wraps in block
+                SirExpr::Block(
+                    vec![SirStatement::Continue],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
+            }
             Expr::Block(block) => {
                 let stmts: Vec<SirStatement> = block.statements.iter()
                     .flat_map(|s| self.lower_statement(s))
@@ -292,6 +397,17 @@ impl Lowerer {
                     .map(|e| Box::new(self.lower_expr(e)));
                 
                 SirExpr::Block(stmts, final_val)
+                self.lower_block_as_expr(block)
+            }
+            Expr::Loop(body) => {
+                // Loop as expression returns Unit
+                SirExpr::Block(
+                    vec![SirStatement::While {
+                        condition: SirExpr::Literal(SirLiteral::Bool(true)),
+                        body: self.lower_block(body),
+                    }],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
             }
             Expr::Cast(inner, _type_expr) => {
                 // For now, just pass through the inner expression
@@ -305,22 +421,103 @@ impl Lowerer {
                     SirExpr::Literal(SirLiteral::Unit)
                 }
             }
-            Expr::Field(_, _) => {
-                SirExpr::Literal(SirLiteral::Unit) // Placeholder for field access
+            Expr::Field(obj, field) => {
+                SirExpr::Call {
+                    callee: "field_access".to_string(),
+                    args: vec![self.lower_expr(obj), SirExpr::Literal(SirLiteral::String(field.clone()))],
+                }
             }
-            Expr::Index(_, _) => {
-                SirExpr::Literal(SirLiteral::Unit) // Placeholder for index access
+            Expr::Index(obj, index) => {
+                SirExpr::Call {
+                    callee: "index_access".to_string(),
+                    args: vec![self.lower_expr(obj), self.lower_expr(index)],
+                }
             }
-            Expr::Range(_, _) => {
-                SirExpr::Literal(SirLiteral::Unit) // Placeholder for range
+            Expr::Range(start, end) => {
+                let start_expr = match &**start {
+                    Expr::Literal(Literal::Integer(0)) => SirExpr::Literal(SirLiteral::Int(0)),
+                    _ => self.lower_expr(start),
+                };
+                SirExpr::BinOp {
+                    left: Box::new(start_expr),
+                    op: SirBinOp::Range,
+                    right: Box::new(self.lower_expr(end)),
+                }
             }
-            Expr::Match(_, _) => {
-                SirExpr::Literal(SirLiteral::Unit) // Placeholder for match
-            }
-            Expr::Loop(_) => {
-                SirExpr::Literal(SirLiteral::Unit) // Placeholder for loop
+            Expr::Match(scrutinee, arms) => {
+                // Lower match as a series of if-else expressions
+                self.lower_match_as_if(scrutinee, arms)
             }
         }
+    }
+
+    fn lower_block_as_expr(&mut self, block: &nova_common::Block) -> SirExpr {
+        let mut stmts = Vec::new();
+        for stmt in &block.statements {
+            stmts.extend(self.lower_statement(stmt));
+        }
+        let final_expr = block.final_expr.as_ref().map(|e| Box::new(self.lower_expr(e)));
+        SirExpr::Block(stmts, final_expr)
+    }
+
+    fn lower_match_as_if(&mut self, scrutinee: &Expr, arms: &[MatchArm]) -> SirExpr {
+        if arms.is_empty() {
+            return SirExpr::Literal(SirLiteral::Unit);
+        }
+
+        let scrutinee_expr = self.lower_expr(scrutinee);
+        
+        // Build if-else chain from match arms
+        let mut current_if: Option<SirExpr> = None;
+        
+        for (i, arm) in arms.iter().enumerate().rev() {
+            let result_expr = self.lower_expr(&arm.body);
+            
+            // For now, only handle simple identifier patterns and wildcard
+            let is_wildcard = matches!(arm.pattern, Pattern::Wildcard);
+            let pattern_name = match &arm.pattern {
+                Pattern::Identifier(n) => Some(n.clone()),
+                _ => None,
+            };
+            
+            if is_wildcard || i == arms.len() - 1 {
+                // Last arm or wildcard - becomes the else branch
+                if let Some(prev_if) = current_if.take() {
+                    if let SirExpr::If { condition, then_expr, .. } = prev_if {
+                        current_if = Some(SirExpr::If {
+                            condition,
+                            then_expr,
+                            else_expr: Some(Box::new(result_expr)),
+                        });
+                    }
+                } else {
+                    current_if = Some(result_expr);
+                }
+            } else if let Some(pattern_name) = pattern_name {
+                // Simple equality check
+                let condition = SirExpr::BinOp {
+                    left: Box::new(scrutinee_expr.clone()),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Var(pattern_name)),
+                };
+                
+                if let Some(prev_if) = current_if.take() {
+                    current_if = Some(SirExpr::If {
+                        condition: Box::new(condition),
+                        then_expr: Box::new(result_expr),
+                        else_expr: Some(Box::new(prev_if)),
+                    });
+                } else {
+                    current_if = Some(SirExpr::If {
+                        condition: Box::new(condition),
+                        then_expr: Box::new(result_expr),
+                        else_expr: None,
+                    });
+                }
+            }
+        }
+        
+        current_if.unwrap_or_else(|| SirExpr::Literal(SirLiteral::Unit))
     }
 
     fn lower_bin_op(&self, op: &AstBinOp) -> SirBinOp {

@@ -710,7 +710,7 @@ impl Parser {
     }
     
     fn parse_term(&mut self) -> Result<Expr, ()> {
-        let mut expr = self.parse_factor()?;
+        let mut expr = self.parse_range()?;
         
         while self.match_token(TokenKind::Plus) || self.match_token(TokenKind::Minus) {
             let op = if self.tokens[self.current - 1].kind == TokenKind::Plus {
@@ -718,8 +718,19 @@ impl Parser {
             } else {
                 BinOp::Sub
             };
-            let right = self.parse_factor()?;
+            let right = self.parse_range()?;
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+        
+        Ok(expr)
+    }
+    
+    fn parse_range(&mut self) -> Result<Expr, ()> {
+        let mut expr = self.parse_factor()?;
+        
+        if self.match_token(TokenKind::DotDot) {
+            let end = self.parse_factor()?;
+            return Ok(Expr::Range(Box::new(expr), Box::new(end)));
         }
         
         Ok(expr)

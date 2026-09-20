@@ -4,6 +4,23 @@ version = 4
 
 [[package]]
 name = "nova-backend-c"
+name = "nova-backend-js"
+version = "0.1.0"
+dependencies = [
+ "nova-common",
+ "nova-compiler",
+]
+
+[[package]]
+name = "nova-backend-rust"
+version = "0.1.0"
+dependencies = [
+ "nova-common",
+ "nova-compiler",
+]
+
+[[package]]
+name = "nova-backend-wasm"
 version = "0.1.0"
 dependencies = [
  "nova-common",
