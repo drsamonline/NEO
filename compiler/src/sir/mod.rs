@@ -65,6 +65,10 @@ pub enum SirStatement {
     },
     /// Block statement
     Block(Vec<SirStatement>),
+    /// Break statement
+    Break,
+    /// Continue statement
+    Continue,
 }
 
 #[derive(Debug, Clone)]

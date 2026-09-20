@@ -235,12 +235,18 @@ impl Lowerer {
                 )
             }
             Expr::Break => {
-                // Break placeholder - use empty block
-                SirExpr::Block(vec![], Some(Box::new(SirExpr::Literal(SirLiteral::Unit))))
+                // Break as expression - wraps in block
+                SirExpr::Block(
+                    vec![SirStatement::Break],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
             }
             Expr::Continue => {
-                // Continue placeholder - use empty block
-                SirExpr::Block(vec![], Some(Box::new(SirExpr::Literal(SirLiteral::Unit))))
+                // Continue as expression - wraps in block
+                SirExpr::Block(
+                    vec![SirStatement::Continue],
+                    Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
+                )
             }
             Expr::Block(block) => {
                 self.lower_block_as_expr(block)

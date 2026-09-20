@@ -1,63 +1,48 @@
 ```
-# Rust build artifacts
+# Rust/Cargo
 target/
-**/*.rs.bk
-
-# Cargo lock files
 Cargo.lock
+**/Cargo.lock
+*.rs.bk
+*.pyc
+__pycache__/
+*.so
+*.dylib
+*.dll
 
-# Debug and release binaries
-**/debug/
-**/release/
+# Dependencies
+node_modules/
+**/node_modules/
 
-# Temporary test files
-*.c
-test_*
-
-# IDE files
-.vscode/
-.idea/
-
-# OS files
-.DS_Store
-Thumbs.db
+# Build artifacts
+dist/
+build/
+*.exe
+*.out
 
 # Logs
 *.log
 
-# Environment files
+# Environment
 .env
 .env.local
 .env.*
 
-# Coverage reports
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
 coverage/
 htmlcov/
 .coverage
 
-# Python cache (if any Python files exist)
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Node modules (if any JS/TS exists)
-node_modules/
-
-# Virtual environments
-venv/
-.venv/
-
-# MyPy cache
-.mypy_cache/
-
-# Pytest cache
-.pytest_cache/
-
-# Gradle
-.gradle/
-build/
-
-# Maven
-target/
+# Testing
+*.tmp
 ```

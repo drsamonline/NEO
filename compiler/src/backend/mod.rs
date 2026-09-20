@@ -188,6 +188,12 @@ impl CBackend {
                 }
                 let _ = writeln!(self.output, "{}}}", indent_str);
             }
+            SirStatement::Break => {
+                let _ = writeln!(self.output, "{}break;", indent_str);
+            }
+            SirStatement::Continue => {
+                let _ = writeln!(self.output, "{}continue;", indent_str);
+            }
         }
     }
 
