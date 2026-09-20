@@ -131,6 +131,7 @@ pub enum SirBinOp {
     Ge,
     And,
     Or,
+    Range,
 }
 
 /// SIR Unary Operators

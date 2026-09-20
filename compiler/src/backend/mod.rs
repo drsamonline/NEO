@@ -151,9 +151,34 @@ impl CBackend {
                 }
                 let _ = writeln!(self.output, "{}}}", indent_str);
             }
-            SirStatement::For { pattern, iterable: _, body: _ } => {
-                // Simple for loop over range or array
-                let _ = writeln!(self.output, "{}// TODO: for loop over {}", indent_str, pattern);
+            SirStatement::For { pattern, iterable, body } => {
+                // Generate C-style for loop for ranges (e.g., 0..5)
+                // Check if iterable is a range expression
+                let range_start = "0";
+                let range_end = match iterable {
+                    SirExpr::BinOp { left: _, op: SirBinOp::Range, right } => {
+                        self.expr_to_c(right)
+                    }
+                    _ => {
+                        // For non-range iterables, just use the expression
+                        self.expr_to_c(iterable)
+                    }
+                };
+                
+                // Check if it's actually a range
+                let is_range = matches!(iterable, SirExpr::BinOp { op: SirBinOp::Range, .. });
+                
+                if is_range {
+                    let _ = writeln!(self.output, "{}for (int {} = {}; {} < {}; {}++) {{", 
+                        indent_str, pattern, range_start, pattern, range_end, pattern);
+                    for s in body {
+                        self.write_statement(s, indent + 1);
+                    }
+                    let _ = writeln!(self.output, "{}}}", indent_str);
+                } else {
+                    // For arrays or other iterables (placeholder)
+                    let _ = writeln!(self.output, "{}// TODO: for loop over array/collection: {}", indent_str, pattern);
+                }
             }
             SirStatement::Block(stmts) => {
                 let _ = writeln!(self.output, "{{");
@@ -191,6 +216,7 @@ impl CBackend {
                     SirBinOp::Ge => ">=",
                     SirBinOp::And => "&&",
                     SirBinOp::Or => "||",
+                    SirBinOp::Range => "..",  // Range operator (shouldn't appear in final C code)
                 };
                 format!("({} {} {})", self.expr_to_c(left), op_str, self.expr_to_c(right))
             }
