@@ -34,6 +34,7 @@ pub struct SirGlobal {
 }
 
 /// SIR Statement
+#[derive(Debug, Clone)]
 pub enum SirStatement {
     /// Variable declaration: let x = expr
     Let {
@@ -66,7 +67,7 @@ pub enum SirStatement {
     Block(Vec<SirStatement>),
 }
 
-/// SIR Expression
+#[derive(Debug, Clone)]
 pub enum SirExpr {
     /// Literal value
     Literal(SirLiteral),
@@ -104,6 +105,7 @@ pub enum SirExpr {
 }
 
 /// SIR Literal
+#[derive(Debug, Clone)]
 pub enum SirLiteral {
     Int(i64),
     Float(f64),
@@ -114,6 +116,7 @@ pub enum SirLiteral {
 }
 
 /// SIR Binary Operators
+#[derive(Debug, Clone, Copy)]
 pub enum SirBinOp {
     Add,
     Sub,
@@ -131,6 +134,7 @@ pub enum SirBinOp {
 }
 
 /// SIR Unary Operators
+#[derive(Debug, Clone, Copy)]
 pub enum SirUnOp {
     Neg,
     Not,
