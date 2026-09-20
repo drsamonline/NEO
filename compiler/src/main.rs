@@ -1,4 +1,4 @@
-use nova_compiler::{Lexer, Parser, SemanticAnalyzer, Lowerer};
+use nova_compiler::{Lexer, Parser, SemanticAnalyzer, Lowerer, CBackend};
 use std::env;
 use std::fs;
 
@@ -74,5 +74,12 @@ fn main() {
     println!("✓ Lowering complete ({} functions, {} globals)", 
              sir_program.functions.len(), sir_program.globals.len());
     
-    println!("✓ Compilation successful!");
+    // Phase 5: Generate C code
+    let mut backend = CBackend::new();
+    let c_code = backend.generate(&sir_program);
+    println!("✓ C code generation complete");
+    
+    // Output the generated C code
+    println!("\n=== Generated C Code ===\n");
+    println!("{}", c_code);
 }

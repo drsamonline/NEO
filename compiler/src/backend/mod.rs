@@ -33,7 +33,12 @@ impl CBackend {
         
         // Generate global variables
         for global in &program.globals {
-            self.write_global(global);
+            let typ_str = Self::type_to_c_str(&global.typ);
+            let _ = write!(self.output, "{} {}", typ_str, global.name);
+            if let Some(init) = &global.init_value {
+                let _ = write!(self.output, " = {}", self.expr_to_c(init));
+            }
+            let _ = writeln!(self.output, ";");
         }
         if !program.globals.is_empty() {
             let _ = writeln!(self.output);
@@ -48,36 +53,28 @@ impl CBackend {
     }
 
     fn write_function_decl(&mut self, func: &SirFunction) {
-        let return_type = func.return_type.as_deref().unwrap_or("void");
+        let return_type = Self::type_to_c_str(func.return_type.as_deref().unwrap_or("void"));
         let _ = write!(self.output, "{} {}(", return_type, func.name);
         
         for (i, param) in func.params.iter().enumerate() {
             if i > 0 {
                 let _ = write!(self.output, ", ");
             }
-            let _ = write!(self.output, "{} {}", param.typ, param.name);
+            let _ = write!(self.output, "{} {}", Self::type_to_c_str(&param.typ), param.name);
         }
         
         let _ = writeln!(self.output, ");");
     }
 
-    fn write_global(&mut self, global: &SirGlobal) {
-        let _ = write!(self.output, "{} {}", global.typ, global.name);
-        if let Some(init) = &global.init_value {
-            let _ = write!(self.output, " = {}", self.expr_to_c(init));
-        }
-        let _ = writeln!(self.output, ";");
-    }
-
     fn write_function(&mut self, func: &SirFunction) {
-        let return_type = func.return_type.as_deref().unwrap_or("void");
+        let return_type = Self::type_to_c_str(func.return_type.as_deref().unwrap_or("void"));
         let _ = write!(self.output, "{} {}(", return_type, func.name);
         
         for (i, param) in func.params.iter().enumerate() {
             if i > 0 {
                 let _ = write!(self.output, ", ");
             }
-            let _ = write!(self.output, "{} {}", param.typ, param.name);
+            let _ = write!(self.output, "{} {}", Self::type_to_c_str(&param.typ), param.name);
         }
         
         let _ = writeln!(self.output, ") {{");
@@ -91,16 +88,37 @@ impl CBackend {
         let _ = writeln!(self.output);
     }
 
+    fn type_to_c_str(typ: &str) -> &'static str {
+        match typ {
+            "Int" => "int",
+            "Float" => "double",
+            "Bool" => "int",
+            "String" => "char*",
+            "Char" => "char",
+            "void" => "void",
+            _ => "int", // default to int for unknown types
+        }
+    }
+
     fn write_statement(&mut self, stmt: &SirStatement, indent: usize) {
         let indent_str = "    ".repeat(indent);
         
         match stmt {
             SirStatement::Let { name, typ, value } => {
-                let typ_str = typ.as_deref().unwrap_or("int");
+                let typ_str = typ.as_ref().map(|t| Self::type_to_c_str(t)).unwrap_or("int");
                 let _ = write!(self.output, "{}{} {} = ", indent_str, typ_str, name);
                 let _ = writeln!(self.output, "{};", self.expr_to_c(value));
             }
             SirStatement::Expr(expr) => {
+                // Check if it's a print call and convert to printf
+                if let SirExpr::Call { callee, args } = expr {
+                    if callee == "print" && args.len() == 1 {
+                        let arg = &args[0];
+                        // Simple heuristic: if it's an integer, use %d
+                        let _ = writeln!(self.output, "{}printf(\"%d\\n\", {});", indent_str, self.expr_to_c(arg));
+                        return;
+                    }
+                }
                 let _ = writeln!(self.output, "{}{};", indent_str, self.expr_to_c(expr));
             }
             SirStatement::Return(expr) => {
