@@ -6,6 +6,9 @@ members = [
     "language-server",
     "debugger",
     "crates/nova-common",
+    "backends/javascript",
+    "backends/rust",
+    "backends/wasm",
 ]
 resolver = "2"
 

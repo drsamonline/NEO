@@ -1,0 +1,9 @@
+[package]
+name = "nova-backend-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WebAssembly backend for the Nova compiler"
+
+[dependencies]
+nova-common = { path = "../../crates/nova-common" }
+nova-compiler = { path = "../../compiler" }

@@ -1,0 +1,9 @@
+[package]
+name = "nova-backend-js"
+version = "0.1.0"
+edition = "2021"
+description = "JavaScript backend for the Nova compiler"
+
+[dependencies]
+nova-common = { path = "../../crates/nova-common" }
+nova-compiler = { path = "../../compiler" }
