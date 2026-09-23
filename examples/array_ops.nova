@@ -1,0 +1,71 @@
+// NOVA Example: Array Operations
+// Demonstrates arrays, loops, and standard library usage
+
+fn sum_array(arr: [int], size: int) -> int {
+    let sum: int = 0;
+    let i: int = 0;
+    while i < size {
+        sum = sum + arr[i];
+        i = i + 1;
+    }
+    return sum;
+}
+
+fn find_max(arr: [int], size: int) -> int {
+    if size <= 0 {
+        return 0;
+    }
+    
+    let max: int = arr[0];
+    let i: int = 1;
+    while i < size {
+        if arr[i] > max {
+            max = arr[i];
+        }
+        i = i + 1;
+    }
+    return max;
+}
+
+fn reverse_array(arr: [int], size: int) {
+    let left: int = 0;
+    let right: int = size - 1;
+    while left < right {
+        let temp: int = arr[left];
+        arr[left] = arr[right];
+        arr[right] = temp;
+        left = left + 1;
+        right = right - 1;
+    }
+}
+
+fn main() -> int {
+    let numbers: [int; 5] = [5, 2, 8, 1, 9];
+    let size: int = 5;
+    
+    print("Original array:");
+    let i: int = 0;
+    while i < size {
+        print(numbers[i]);
+        i = i + 1;
+    }
+    
+    let sum: int = sum_array(numbers, size);
+    print("Sum:");
+    print(sum);
+    
+    let max: int = find_max(numbers, size);
+    print("Max:");
+    print(max);
+    
+    reverse_array(numbers, size);
+    
+    print("Reversed array:");
+    i = 0;
+    while i < size {
+        print(numbers[i]);
+        i = i + 1;
+    }
+    
+    return 0;
+}

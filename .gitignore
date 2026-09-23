@@ -1,1 +1,5 @@
-Nothing should be ignored in this case. The changes only include Rust source files (.rs) which are source code and should be tracked in version control. No build artifacts, dependencies, or temporary files are present in the change list.
+# Rust build artifacts
+target/
+
+# Cargo lock file (optional, usually committed for applications, ignored for libraries)
+# Cargo.lock

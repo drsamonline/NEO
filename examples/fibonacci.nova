@@ -1,0 +1,27 @@
+// NOVA Example: Fibonacci Sequence
+// Demonstrates recursion, conditionals, and loops
+
+fn fibonacci(n: int) -> int {
+    if n <= 1 {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+fn print_fibonacci(count: int) {
+    let i: int = 0;
+    while i < count {
+        let fib: int = fibonacci(i);
+        print(fib);
+        i = i + 1;
+    }
+}
+
+fn main() -> int {
+    let count: int = 10;
+    print("First");
+    print(count);
+    print("Fibonacci numbers:");
+    print_fibonacci(count);
+    return 0;
+}
