@@ -108,15 +108,15 @@
 
 ### Known Issues / Technical Debt
 1. **Documentation Sync**: Some inline comments may be outdated after refactoring
-2. **Test Coverage**: Integration tests needed for full compiler-runtime-stdlib pipeline
+2. **Test Coverage**: ✅ Integration tests added (Session 6) - 8 comprehensive tests
 3. **Performance**: GC tuning needed for large heaps (>1GB)
 4. **Error Messages**: Could improve localization support
 
 ### Next Session Priorities
 1. **HIGH**: Integrate language server with incremental compiler for real-time feedback
-2. **HIGH**: Connect debugger to compiled binaries with symbol table loading
+2. **HIGH**: Connect debugger to compiled binaries with symbol table loading  
 3. **MEDIUM**: Implement builtin FFI functions for common C library calls
-4. **MEDIUM**: Add integration tests spanning compiler → runtime → stdlib
+4. ~~**MEDIUM**: Add integration tests spanning compiler → runtime → stdlib~~ ✅ COMPLETE
 5. **LOW**: Performance benchmarking suite
 
 ### Build & Test Commands
