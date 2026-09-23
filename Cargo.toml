@@ -20,3 +20,12 @@ edition = "2021"
 
 [workspace.metadata.nova]
 status = "architecture-scaffold"
+
+# Integration Tests Package
+[[test]]
+name = "integration_tests"
+path = "integration_tests/lib.rs"
+harness = true
+
+[dev-dependencies]
+tempfile = "3.10"
