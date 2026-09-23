@@ -4,7 +4,7 @@
 #include <string.h>
 
 int factorial(int n);
-void main();
+int main();
 
 int factorial(int n) {
     if ((n <= 1)) {
@@ -14,7 +14,7 @@ int factorial(int n) {
     }
 }
 
-void main() {
+int main() {
     printf("%s\n", "Factorial of 5:");
     printf("%d\n", factorial(5));
     printf("%s\n", "Counting:");
@@ -35,6 +35,7 @@ void main() {
     printf("%f\n", 3.14159);
     printf("%d\n", 1);
     printf("%d\n", 0);
+    return 0;
 }
 
 
