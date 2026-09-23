@@ -3,6 +3,8 @@
 //! Implements the Language Server Protocol (LSP) for NOVA, providing
 //! IDE features like autocomplete, go-to-definition, hover info, and diagnostics.
 
+mod compiler_integration;
+
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -11,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use thiserror::Error;
+use crate::compiler_integration::{IncrementalCompiler, CompileResult, SymbolEntry, SymbolKind};
 
 #[derive(Error, Debug)]
 pub enum LspError {
@@ -38,6 +41,7 @@ struct Backend {
     client: Client,
     documents: Arc<RwLock<HashMap<Url, Document>>>,
     compile_errors: Arc<RwLock<HashMap<Url, Vec<Diagnostic>>>>,
+    compiler: Arc<RwLock<IncrementalCompiler>>,
 }
 
 impl Backend {
@@ -46,77 +50,22 @@ impl Backend {
             client,
             documents: Arc::new(RwLock::new(HashMap::new())),
             compile_errors: Arc::new(RwLock::new(HashMap::new())),
+            compiler: Arc::new(RwLock::new(IncrementalCompiler::new())),
         }
     }
     
-    /// Analyze a document and return diagnostics
+    /// Analyze a document and return diagnostics using the real compiler
     async fn analyze_document(&self, uri: &Url, content: &str) -> Vec<Diagnostic> {
-        let mut diagnostics = Vec::new();
+        let mut compiler = self.compiler.write().await;
+        let result = compiler.compile(uri.as_str(), content);
         
-        // In production, this would call the actual NOVA compiler
-        // For now, we'll do basic syntax checking
+        // Update compile errors cache
+        let mut errors = self.compile_errors.write().await;
+        errors.insert(uri.clone(), result.diagnostics.clone());
         
-        // Check for common syntax errors
-        let lines: Vec<&str> = content.lines().collect();
-        
-        for (line_num, line) in lines.iter().enumerate() {
-            // Check for unclosed strings
-            let quote_count = line.matches('"').count();
-            if quote_count % 2 != 0 {
-                diagnostics.push(Diagnostic {
-                    range: Range {
-                        start: Position {
-                            line: line_num as u32,
-                            character: line.len() as u32,
-                        },
-                        end: Position {
-                            line: line_num as u32,
-                            character: line.len() as u32,
-                        },
-                    },
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    code: None,
-                    code_description: None,
-                    source: Some("nova".to_string()),
-                    message: "Unclosed string literal".to_string(),
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                });
-            }
-            
-            // Check for unmatched braces (simple check)
-            let open_braces = line.matches('{').count();
-            let close_braces = line.matches('}').count();
-            
-            // This is a simplified check - real implementation would track across lines
-            if open_braces > close_braces + 2 {
-                diagnostics.push(Diagnostic {
-                    range: Range {
-                        start: Position {
-                            line: line_num as u32,
-                            character: 0,
-                        },
-                        end: Position {
-                            line: line_num as u32,
-                            character: line.len() as u32,
-                        },
-                    },
-                    severity: Some(DiagnosticSeverity::WARNING),
-                    code: None,
-                    code_description: None,
-                    source: Some("nova".to_string()),
-                    message: "Possible unmatched braces".to_string(),
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                });
-            }
-        }
-        
-        diagnostics
+        result.diagnostics
     }
-    
+
     /// Find symbol at position
     async fn find_symbol_at(&self, uri: &Url, position: Position) -> Option<String> {
         let documents = self.documents.read().await;

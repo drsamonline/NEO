@@ -6,10 +6,12 @@
 mod target;
 mod commands;
 mod session;
+mod dwarf;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use thiserror::Error;
+pub use dwarf::{DwarfParser, DwarfInfo, SymbolTable};
 
 #[derive(Error, Debug)]
 pub enum DebuggerError {
