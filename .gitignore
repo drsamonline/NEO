@@ -1,60 +1,45 @@
 ```
-# Rust build artifacts
-# Compiled and build artifacts
-*.o
-*.obj
-*.a
-*.lib
-*.so
-*.dll
-*.dylib
-*.exe
+# Rust/Cargo
 target/
-
-# Cargo lock files
 Cargo.lock
-**/vendor/
-**/deps/
-
-# Rust-specific
-**/target/
 **/*.rs.bk
-**/*.rlib
 
-# Debug and release binaries
-**/*.d
-**/*.rmeta
-**/*.rlib
+# Dependencies
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.gradle/
 
-# Incremental compilation data
-**/incremental/
+# Build artifacts
+**/build/
+**/dist/
+**/release/
+**/debug/
 
-# IDE files
+# IDE
 .vscode/
 .idea/
-*.swp
-*.swo
+**/*.swp
+**/*.swo
 
-# Log files
-*.log
-
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
+# Logs
+**/*.log
 
 # Environment
 .env
 .env.local
-*.env.*
+**/.env.*
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Temp files
+**/*.tmp
+.DS_Store
+Thumbs.db
 ```
