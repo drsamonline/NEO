@@ -46,7 +46,7 @@ pub trait Allocatable {
     }
     
     /// Allocate an array of this type
-    fn allocate_array(size: usize) -> Vec<Self> where Self: Sized + Default {
+    fn allocate_array(size: usize) -> Vec<Self> where Self: Sized + Default + Clone {
         vec![Self::default(); size]
     }
 }

@@ -153,20 +153,28 @@ impl NovaError {
         Self::new(ErrorKind::OutOfMemory, "out of memory")
     }
     
-    pub fn io_error(msg: &str) -> Self {
-        Self::new(ErrorKind::IoError, msg)
+    pub fn io_error(msg: impl AsRef<str>) -> Self {
+        Self::new(ErrorKind::IoError, msg.as_ref())
     }
     
-    pub fn argument_error(msg: &str) -> Self {
-        Self::new(ErrorKind::ArgumentError, msg)
+    pub fn argument_error(msg: impl AsRef<str>) -> Self {
+        Self::new(ErrorKind::ArgumentError, msg.as_ref())
     }
     
-    pub fn not_found(msg: &str) -> Self {
-        Self::new(ErrorKind::NotFound, msg)
+    pub fn not_found(msg: impl AsRef<str>) -> Self {
+        Self::new(ErrorKind::NotFound, msg.as_ref())
     }
     
-    pub fn custom(msg: &str) -> Self {
-        Self::new(ErrorKind::Custom, msg)
+    pub fn custom(msg: impl AsRef<str>) -> Self {
+        Self::new(ErrorKind::Custom, msg.as_ref())
+    }
+    
+    pub fn sync_error(msg: impl AsRef<str>) -> Self {
+        Self::new(ErrorKind::Custom, msg.as_ref())
+    }
+    
+    pub fn async_error(msg: impl AsRef<str>) -> Self {
+        Self::new(ErrorKind::Custom, msg.as_ref())
     }
 }
 

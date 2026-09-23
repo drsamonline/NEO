@@ -1,29 +1,44 @@
 ```
-# Dependencies
+# Rust/Cargo
 target/
 Cargo.lock
+**/*.rs.bk
+
+# Dependencies
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.gradle/
 
 # Build artifacts
-debug/
-release/
+**/build/
+**/dist/
+**/target/
 
-# IDE
-.vscode/
-.idea/
+# IDE/Editor files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*.tmp
 
 # Logs
-*.log
+**/*.log
 
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
-# Temporary files
-*.tmp
-*.swp
-
-# OS
+# OS generated files
 .DS_Store
 Thumbs.db
+
+# Coverage reports
+**/coverage/
+**/htmlcov/
+.coverage
 ```
