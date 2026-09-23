@@ -1,0 +1,22 @@
+[package]
+name = "nova-pkg"
+version = "0.3.0"
+edition = "2021"
+description = "NOVA Package Manager - Dependency resolution and project management"
+authors = ["NOVA Team"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+url = "2.5"
+sha2 = "0.10"
+base64 = "0.21"
+clap = { version = "4.4", features = ["derive"] }
+thiserror = "1.0"
+semver = "1.0"
+
+[[bin]]
+name = "nova-pkg"
+path = "src/main.rs"

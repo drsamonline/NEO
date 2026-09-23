@@ -1,28 +1,29 @@
 ```
-# Compiled and build artifacts
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.a
-*.out
-
 # Dependencies
 target/
-**/target/
+Cargo.lock
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
+# Build artifacts
+debug/
+release/
 
-# Editors
+# IDE
 .vscode/
 .idea/
+
+# Logs
+*.log
 
 # Environment
 .env
 .env.local
 *.env.*
+
+# Temporary files
+*.tmp
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
 ```
