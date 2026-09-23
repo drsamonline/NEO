@@ -8,9 +8,12 @@
 //! - Runtime error handling
 //! - FFI support foundations
 //! - Garbage collection infrastructure
+//! - I/O operations (files, streams, directories)
+//! - Threading primitives (mutexes, RW locks, condition variables)
+//! - Async runtime (futures, channels)
 //! 
 //! # Status: Phase 2 - Active Development
-//! Core runtime modules implemented with GC foundation added.
+//! Core runtime modules implemented with GC foundation, I/O, threading, and async support.
 
 // ============================================================================
 // Module Declarations
@@ -21,6 +24,9 @@ pub mod types;
 pub mod error;
 pub mod ffi;
 pub mod gc;
+pub mod io;
+pub mod threading;
+pub mod async_rt;
 
 // ============================================================================
 // Re-exports
@@ -31,6 +37,9 @@ pub use types::*;
 pub use error::*;
 pub use ffi::*;
 pub use gc::*;
+pub use io::*;
+pub use threading::*;
+pub use async_rt::*;
 
 // ============================================================================
 // Runtime Version
