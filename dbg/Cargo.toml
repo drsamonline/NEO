@@ -1,0 +1,18 @@
+[package]
+name = "nova-dbg"
+version = "0.3.0"
+edition = "2021"
+description = "NOVA Debugger - Interactive debugging for NOVA programs"
+authors = ["NOVA Team"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+thiserror = "1.0"
+gdbstub = "0.6"
+rustyline = "13.0"
+
+[[bin]]
+name = "nova-dbg"
+path = "src/main.rs"

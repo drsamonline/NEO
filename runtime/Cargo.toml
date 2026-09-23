@@ -3,4 +3,16 @@ name = "nova-runtime"
 version.workspace = true
 edition.workspace = true
 publish = false
-description = "NOVA runtime architecture scaffold"
+description = "NOVA runtime system - memory management, types, error handling, and FFI"
+license = "MIT"
+authors = ["NOVA Team"]
+
+[dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+
+[features]
+default = []
+gc = []  # Enable garbage collection (future)
+debug = []  # Debug mode with extra checks
