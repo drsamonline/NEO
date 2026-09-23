@@ -1,0 +1,471 @@
+# NOVA Standard Library - I/O Module
+
+// Input/Output operations
+// Provides file handling, console I/O, and stream operations
+
+use core.*;
+
+/// File handle structure
+struct File {
+    path: String,
+    mode: String,
+    handle: int,  // Opaque handle to runtime file descriptor
+}
+
+/// File open modes
+const MODE_READ: String = "r";
+const MODE_WRITE: String = "w";
+const MODE_APPEND: String = "a";
+const MODE_READWRITE: String = "r+";
+
+/// Open a file
+fn fopen(path: String, mode: String) -> Option<File> {
+    let handle = __builtin_fopen(path, mode);
+    if handle >= 0 {
+        Some(File { path, mode, handle })
+    } else {
+        None
+    }
+}
+
+/// Close a file
+fn fclose(file: &mut File) -> bool {
+    let result = __builtin_fclose(file.handle);
+    file.handle = -1;
+    result == 0
+}
+
+/// Read entire file contents as string
+fn read_file(path: String) -> Option<String> {
+    match fopen(path, MODE_READ) {
+        Some(mut file) => {
+            let content = fread_all(&mut file);
+            fclose(&mut file);
+            Some(content)
+        },
+        None => None
+    }
+}
+
+/// Write string to file (overwrites)
+fn write_file(path: String, content: String) -> bool {
+    match fopen(path, MODE_WRITE) {
+        Some(mut file) => {
+            let result = fwrite(&mut file, content);
+            fclose(&mut file);
+            result
+        },
+        None => false
+    }
+}
+
+/// Append string to file
+fn append_file(path: String, content: String) -> bool {
+    match fopen(path, MODE_APPEND) {
+        Some(mut file) => {
+            let result = fwrite(&mut file, content);
+            fclose(&mut file);
+            result
+        },
+        None => false
+    }
+}
+
+/// Read all contents from file
+fn fread_all(file: &mut File) -> String {
+    let mut result: String = "";
+    let buffer_size = 4096;
+    let mut buffer: [char] = [];
+    
+    while !feof(file) {
+        let chunk = fread_line(file);
+        if strlen(chunk) > 0 {
+            result = strcat(result, chunk);
+        }
+    }
+    
+    result
+}
+
+/// Read a line from file
+fn fread_line(file: &mut File) -> String {
+    __builtin_fread_line(file.handle)
+}
+
+/// Write string to file
+fn fwrite(file: &mut File, data: String) -> bool {
+    __builtin_fwrite(file.handle, data) == strlen(data)
+}
+
+/// Check if at end of file
+fn feof(file: &mut File) -> bool {
+    __builtin_feof(file.handle)
+}
+
+/// Seek to position in file
+fn fseek(file: &mut File, position: int) -> bool {
+    __builtin_fseek(file.handle, position) == 0
+}
+
+/// Get current position in file
+fn ftell(file: &mut File) -> int {
+    __builtin_ftell(file.handle)
+}
+
+/// Flush file buffer
+fn fflush(file: &mut File) -> bool {
+    __builtin_fflush(file.handle) == 0
+}
+
+/// Read binary data from file
+fn fread_bytes(file: &mut File, count: int) -> [int] {
+    __builtin_fread_bytes(file.handle, count)
+}
+
+/// Write binary data to file
+fn fwrite_bytes(file: &mut File, data: [int]) -> bool {
+    __builtin_fwrite_bytes(file.handle, data) == array_len(data)
+}
+
+/// Check if file exists
+fn file_exists(path: String) -> bool {
+    __builtin_file_exists(path)
+}
+
+/// Get file size in bytes
+fn file_size(path: String) -> int {
+    __builtin_file_size(path)
+}
+
+/// Delete a file
+fn delete_file(path: String) -> bool {
+    __builtin_delete_file(path)
+}
+
+/// Rename/move a file
+fn rename_file(old_path: String, new_path: String) -> bool {
+    __builtin_rename_file(old_path, new_path)
+}
+
+/// Copy a file
+fn copy_file(src: String, dst: String) -> bool {
+    __builtin_copy_file(src, dst)
+}
+
+/// Create directory
+fn mkdir(path: String) -> bool {
+    __builtin_mkdir(path)
+}
+
+/// Remove directory
+fn rmdir(path: String) -> bool {
+    __builtin_rmdir(path)
+}
+
+/// List directory contents
+fn list_dir(path: String) -> [String] {
+    __builtin_list_dir(path)
+}
+
+/// Get current working directory
+fn getcwd() -> String {
+    __builtin_getcwd()
+}
+
+/// Change working directory
+fn chdir(path: String) -> bool {
+    __builtin_chdir(path)
+}
+
+/// Check if path is a directory
+fn is_directory(path: String) -> bool {
+    __builtin_is_directory(path)
+}
+
+/// Check if path is a file
+fn is_file(path: String) -> bool {
+    __builtin_is_file(path)
+}
+
+/// Get parent directory of path
+fn parent_dir(path: String) -> String {
+    __builtin_parent_dir(path)
+}
+
+/// Get file/directory name from path
+fn basename(path: String) -> String {
+    __builtin_basename(path)
+}
+
+/// Get file extension
+fn extension(path: String) -> String {
+    __builtin_extension(path)
+}
+
+/// Join path components
+fn join_path(base: String, path: String) -> String {
+    __builtin_join_path(base, path)
+}
+
+/// Resolve absolute path
+fn resolve_path(path: String) -> String {
+    __builtin_resolve_path(path)
+}
+
+/// Get file metadata
+struct FileMetadata {
+    name: String,
+    size: int,
+    is_dir: bool,
+    created: int,
+    modified: int,
+    accessed: int,
+}
+
+fn stat(path: String) -> Option<FileMetadata> {
+    __builtin_stat(path)
+}
+
+/// Stream types
+enum StreamType {
+    InputStream,
+    OutputStream,
+    BidirectionalStream,
+}
+
+/// Generic stream interface
+struct Stream {
+    kind: StreamType,
+    handle: int,
+}
+
+/// Read from stream
+fn stream_read(stream: &mut Stream, count: int) -> [int] {
+    __builtin_stream_read(stream.handle, count)
+}
+
+/// Write to stream
+fn stream_write(stream: &mut Stream, data: [int]) -> int {
+    __builtin_stream_write(stream.handle, data)
+}
+
+/// Flush stream
+fn stream_flush(stream: &mut Stream) -> bool {
+    __builtin_stream_flush(stream.handle)
+}
+
+/// Close stream
+fn stream_close(stream: &mut Stream) {
+    __builtin_stream_close(stream.handle)
+}
+
+/// Console input - read a line from stdin
+fn readline() -> String {
+    __builtin_readline()
+}
+
+/// Console input - read a character
+fn readchar() -> char {
+    __builtin_readchar()
+}
+
+/// Console output - write without newline
+fn write(s: String) {
+    __builtin_write(s)
+}
+
+/// Console output - write with newline
+fn writeln(s: String) {
+    write(s);
+    write("\n");
+}
+
+/// Clear console screen
+fn clear_screen() {
+    __builtin_clear_screen()
+}
+
+/// Set cursor position
+fn set_cursor(x: int, y: int) {
+    __builtin_set_cursor(x, y)
+}
+
+/// Get terminal width
+fn terminal_width() -> int {
+    __builtin_terminal_width()
+}
+
+/// Get terminal height
+fn terminal_height() -> int {
+    __builtin_terminal_height()
+}
+
+/// ANSI color codes
+const COLOR_RESET: String = "\x1b[0m";
+const COLOR_BOLD: String = "\x1b[1m";
+const COLOR_DIM: String = "\x1b[2m";
+const COLOR_UNDERLINE: String = "\x1b[4m";
+const COLOR_REVERSE: String = "\x1b[7m";
+
+const COLOR_BLACK: String = "\x1b[30m";
+const COLOR_RED: String = "\x1b[31m";
+const COLOR_GREEN: String = "\x1b[32m";
+const COLOR_YELLOW: String = "\x1b[33m";
+const COLOR_BLUE: String = "\x1b[34m";
+const COLOR_MAGENTA: String = "\x1b[35m";
+const COLOR_CYAN: String = "\x1b[36m";
+const COLOR_WHITE: String = "\x1b[37m";
+
+const BG_BLACK: String = "\x1b[40m";
+const BG_RED: String = "\x1b[41m";
+const BG_GREEN: String = "\x1b[42m";
+const BG_YELLOW: String = "\x1b[43m";
+const BG_BLUE: String = "\x1b[44m";
+const BG_MAGENTA: String = "\x1b[45m";
+const BG_CYAN: String = "\x1b[46m";
+const BG_WHITE: String = "\x1b[47m";
+
+/// Print colored text
+fn print_color(text: String, color: String) {
+    write(color);
+    write(text);
+    write(COLOR_RESET);
+}
+
+/// Print colored text with background
+fn print_colored(text: String, fg: String, bg: String) {
+    write(bg);
+    write(fg);
+    write(text);
+    write(COLOR_RESET);
+}
+
+/// Progress bar
+fn progress_bar(current: int, total: int, width: int) {
+    let percentage = (current * 100) / total;
+    let filled = (current * width) / total;
+    
+    write("[");
+    let mut i = 0;
+    while i < width {
+        if i < filled {
+            write("=");
+        } else {
+            write(" ");
+        }
+        i = i + 1;
+    }
+    write("] ");
+    print(percentage);
+    write("%\r");
+}
+
+/// Spinner animation
+static SPINNER_FRAMES: [char] = ['|', '/', '-', '\\'];
+
+fn spinner(frame: int) {
+    let idx = frame % array_len(SPINNER_FRAMES);
+    write("\r");
+    print(SPINNER_FRAMES[idx]);
+}
+
+/// Logging levels
+enum LogLevel {
+    DEBUG,
+    INFO,
+    WARNING,
+    ERROR,
+    FATAL,
+}
+
+/// Log message with level
+fn log(level: LogLevel, message: String) {
+    let timestamp = now();
+    let level_str = match level {
+        LogLevel.DEBUG => "[DEBUG]",
+        LogLevel.INFO => "[INFO]",
+        LogLevel.WARNING => "[WARN]",
+        LogLevel.ERROR => "[ERROR]",
+        LogLevel.FATAL => "[FATAL]",
+    };
+    
+    write(COLOR_CYAN);
+    print(timestamp);
+    write(COLOR_RESET);
+    write(" ");
+    
+    match level {
+        LogLevel.DEBUG => write(COLOR_DIM),
+        LogLevel.INFO => write(COLOR_GREEN),
+        LogLevel.WARNING => write(COLOR_YELLOW),
+        LogLevel.ERROR => write(COLOR_RED),
+        LogLevel.FATAL => write(COLOR_BOLD + COLOR_RED),
+    };
+    
+    write(level_str);
+    write(COLOR_RESET);
+    write(": ");
+    writeln(message);
+}
+
+/// Debug logging
+fn debug(message: String) {
+    log(LogLevel.DEBUG, message)
+}
+
+/// Info logging
+fn info(message: String) {
+    log(LogLevel.INFO, message)
+}
+
+/// Warning logging
+fn warn(message: String) {
+    log(LogLevel.WARNING, message)
+}
+
+/// Error logging
+fn error(message: String) {
+    log(LogLevel.ERROR, message)
+}
+
+/// Fatal logging (exits program)
+fn fatal(message: String) -> ! {
+    log(LogLevel.FATAL, message);
+    exit(1)
+}
+
+/// Format string with arguments
+fn format(template: String, args: [String]) -> String {
+    __builtin_format(template, args)
+}
+
+/// Parse integer from string
+fn parse_int(s: String) -> Option<int> {
+    __builtin_parse_int(s)
+}
+
+/// Parse float from string
+fn parse_float(s: String) -> Option<float> {
+    __builtin_parse_float(s)
+}
+
+/// Parse boolean from string
+fn parse_bool(s: String) -> Option<bool> {
+    if s == "true" || s == "1" || s == "yes" {
+        Some(true)
+    } else if s == "false" || s == "0" || s == "no" {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Serialize value to JSON-like string
+fn serialize<T>(value: T) -> String {
+    __builtin_serialize(value)
+}
+
+/// Deserialize string to value
+fn deserialize<T>(s: String) -> Option<T> {
+    __builtin_deserialize(s)
+}

@@ -1,0 +1,554 @@
+# NOVA Standard Library - Math Module
+
+// Mathematical functions and constants
+// Extends core math with advanced operations
+
+use core.*;
+
+/// More precise PI
+const PI: float = 3.14159265358979323846;
+
+/// Euler's number
+const E: float = 2.71828182845904523536;
+
+/// Golden ratio
+const PHI: float = 1.61803398874989484820;
+
+/// Square root of 2
+const SQRT2: float = 1.41421356237309504880;
+
+/// Square root of 0.5
+const SQRT1_2: float = 0.70710678118654752440;
+
+/// Convert degrees to radians
+fn radians(degrees: float) -> float {
+    degrees * PI / 180.0
+}
+
+/// Convert radians to degrees
+fn degrees(radians: float) -> float {
+    radians * 180.0 / PI
+}
+
+/// Sine function (radians)
+fn sin(x: float) -> float {
+    __builtin_sin(x)
+}
+
+/// Cosine function (radians)
+fn cos(x: float) -> float {
+    __builtin_cos(x)
+}
+
+/// Tangent function (radians)
+fn tan(x: float) -> float {
+    __builtin_tan(x)
+}
+
+/// Arc sine (returns radians)
+fn asin(x: float) -> float {
+    __builtin_asin(x)
+}
+
+/// Arc cosine (returns radians)
+fn acos(x: float) -> float {
+    __builtin_acos(x)
+}
+
+/// Arc tangent (returns radians)
+fn atan(x: float) -> float {
+    __builtin_atan(x)
+}
+
+/// Arc tangent of y/x (returns radians)
+fn atan2(y: float, x: float) -> float {
+    __builtin_atan2(y, x)
+}
+
+/// Hyperbolic sine
+fn sinh(x: float) -> float {
+    __builtin_sinh(x)
+}
+
+/// Hyperbolic cosine
+fn cosh(x: float) -> float {
+    __builtin_cosh(x)
+}
+
+/// Hyperbolic tangent
+fn tanh(x: float) -> float {
+    __builtin_tanh(x)
+}
+
+/// Natural logarithm (base e)
+fn log(x: float) -> float {
+    __builtin_log(x)
+}
+
+/// Base-10 logarithm
+fn log10(x: float) -> float {
+    __builtin_log10(x)
+}
+
+/// Base-2 logarithm
+fn log2(x: float) -> float {
+    __builtin_log2(x)
+}
+
+/// Exponential function (e^x)
+fn exp(x: float) -> float {
+    __builtin_exp(x)
+}
+
+/// Power function (float base and exponent)
+fn powf(base: float, exp: float) -> float {
+    __builtin_powf(base, exp)
+}
+
+/// Square root
+fn sqrt(x: float) -> float {
+    if x < 0.0 {
+        panic("Cannot compute square root of negative number")
+    }
+    __builtin_sqrt(x)
+}
+
+/// Cube root
+fn cbrt(x: float) -> float {
+    __builtin_cbrt(x)
+}
+
+/// Hypotenuse (sqrt(x^2 + y^2))
+fn hypot(x: float, y: float) -> float {
+    sqrt(x * x + y * y)
+}
+
+/// Distance between two points
+fn distance(x1: float, y1: float, x2: float, y2: float) -> float {
+    hypot(x2 - x1, y2 - y1)
+}
+
+/// 3D distance
+fn distance3d(x1: float, y1: float, z1: float, x2: float, y2: float, z2: float) -> float {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dz = z2 - z1;
+    sqrt(dx * dx + dy * dy + dz * dz)
+}
+
+/// Round to nearest integer
+fn round(x: float) -> int {
+    __builtin_round(x)
+}
+
+/// Floor (round down)
+fn floor(x: float) -> int {
+    __builtin_floor(x)
+}
+
+/// Ceiling (round up)
+fn ceil(x: float) -> int {
+    __builtin_ceil(x)
+}
+
+/// Truncate (remove decimal part)
+fn trunc(x: float) -> int {
+    if x >= 0.0 {
+        floor(x)
+    } else {
+        ceil(x)
+    }
+}
+
+/// Fractional part
+fn fract(x: float) -> float {
+    x - trunc(x)
+}
+
+/// Clamp float value
+fn clampf(x: float, min_val: float, max_val: float) -> float {
+    if x < min_val { min_val }
+    else if x > max_val { max_val }
+    else { x }
+}
+
+/// Linear interpolation
+fn lerp(a: float, b: float, t: float) -> float {
+    a + (b - a) * t
+}
+
+/// Inverse linear interpolation
+fn inverse_lerp(a: float, b: float, t: float) -> float {
+    (t - a) / (b - a)
+}
+
+/// Remap value from one range to another
+fn remap(value: float, in_min: float, in_max: float, out_min: float, out_max: float) -> float {
+    lerp(out_min, out_max, inverse_lerp(in_min, in_max, value))
+}
+
+/// Smoothstep interpolation
+fn smoothstep(edge0: float, edge1: float, x: float) -> float {
+    let t = clampf((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Smootherstep interpolation
+fn smootherstep(edge0: float, edge1: float, x: float) -> float {
+    let t = clampf((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+/// Sign of float (-1, 0, or 1)
+fn signf(x: float) -> float {
+    if x < 0.0 { -1.0 }
+    else if x > 0.0 { 1.0 }
+    else { 0.0 }
+}
+
+/// Copy sign from one value to another
+fn copysign(x: float, y: float) -> float {
+    if (x >= 0.0 && y >= 0.0) || (x < 0.0 && y < 0.0) {
+        x
+    } else {
+        -x
+    }
+}
+
+/// Check if approximately equal (within epsilon)
+fn approx_equal(a: float, b: float, epsilon: float) -> bool {
+    fabs(a - b) < epsilon
+}
+
+/// Default epsilon for float comparison
+const EPSILON: float = 0.00001;
+
+/// Check if approximately equal (using default epsilon)
+fn nearly_equal(a: float, b: float) -> bool {
+    approx_equal(a, b, EPSILON)
+}
+
+/// Check if value is finite (not NaN or Inf)
+fn is_finite(x: float) -> bool {
+    __builtin_is_finite(x)
+}
+
+/// Check if value is NaN
+fn is_nan(x: float) -> bool {
+    __builtin_is_nan(x)
+}
+
+/// Check if value is infinite
+fn is_infinite(x: float) -> bool {
+    __builtin_is_infinite(x)
+}
+
+/// Get NaN value
+fn nan() -> float {
+    __builtin_nan()
+}
+
+/// Get positive infinity
+fn infinity() -> float {
+    __builtin_infinity()
+}
+
+/// Factorial (float version using gamma function approximation)
+fn factorialf(n: float) -> float {
+    if n < 0.0 {
+        panic("Factorial not defined for negative numbers")
+    }
+    if n == 0.0 || n == 1.0 {
+        1.0
+    } else {
+        // Use Lanczos approximation for gamma function
+        // gamma(n+1) = n!
+        __builtin_gamma(n + 1.0)
+    }
+}
+
+/// Binomial coefficient
+fn binomial(n: int, k: int) -> int {
+    if k < 0 || k > n {
+        0
+    } else if k == 0 || k == n {
+        1
+    } else {
+        // Optimize by using smaller k
+        let mut kk = k;
+        if kk > n - k {
+            kk = n - k;
+        }
+        
+        let mut result = 1;
+        let mut i = 0;
+        while i < kk {
+            result = result * (n - i) / (i + 1);
+            i = i + 1;
+        }
+        result
+    }
+}
+
+/// Permutations P(n, k)
+fn permutations(n: int, k: int) -> int {
+    if k < 0 || k > n {
+        0
+    } else {
+        let mut result = 1;
+        let mut i = 0;
+        while i < k {
+            result = result * (n - i);
+            i = i + 1;
+        }
+        result
+    }
+}
+
+/// Combinations C(n, k) - same as binomial
+fn combinations(n: int, k: int) -> int {
+    binomial(n, k)
+}
+
+/// Greatest common divisor (float version)
+fn gcdf(a: float, b: float) -> float {
+    let mut x = fabs(a);
+    let mut y = fabs(b);
+    
+    while y != 0.0 {
+        let temp = y;
+        y = x % y;
+        x = temp;
+    }
+    x
+}
+
+/// Least common multiple (float version)
+fn lcmf(a: float, b: float) -> float {
+    (fabs(a) * fabs(b)) / gcdf(a, b)
+}
+
+/// Modulo operation for floats
+fn fmod(a: float, b: float) -> float {
+    __builtin_fmod(a, b)
+}
+
+/// Remainder operation
+fn remainder(a: float, b: float) -> float {
+    __builtin_remainder(a, b)
+}
+
+/// Normalize angle to [0, 2*PI)
+fn normalize_angle(angle: float) -> float {
+    let two_pi = 2.0 * PI;
+    let mut result = fmod(angle, two_pi);
+    if result < 0.0 {
+        result = result + two_pi;
+    }
+    result
+}
+
+/// Normalize angle to [-PI, PI)
+fn normalize_angle_signed(angle: float) -> float {
+    let result = normalize_angle(angle);
+    if result >= PI {
+        result - 2.0 * PI
+    } else {
+        result
+    }
+}
+
+/// Dot product of 2D vectors
+fn dot2(x1: float, y1: float, x2: float, y2: float) -> float {
+    x1 * x2 + y1 * y2
+}
+
+/// Cross product of 2D vectors (returns scalar)
+fn cross2(x1: float, y1: float, x2: float, y2: float) -> float {
+    x1 * y2 - y1 * x2
+}
+
+/// Length of 2D vector
+fn length2(x: float, y: float) -> float {
+    sqrt(x * x + y * y)
+}
+
+/// Normalize 2D vector
+fn normalize2(x: float, y: float) -> (float, float) {
+    let len = length2(x, y);
+    if len == 0.0 {
+        (0.0, 0.0)
+    } else {
+        (x / len, y / len)
+    }
+}
+
+/// Rotate 2D point around origin
+fn rotate2(x: float, y: float, angle: float) -> (float, float) {
+    let c = cos(angle);
+    let s = sin(angle);
+    (x * c - y * s, x * s + y * c)
+}
+
+/// Dot product of 3D vectors
+fn dot3(x1: float, y1: float, z1: float, x2: float, y2: float, z2: float) -> float {
+    x1 * x2 + y1 * y2 + z1 * z2
+}
+
+/// Cross product of 3D vectors
+fn cross3(x1: float, y1: float, z1: float, x2: float, y2: float, z2: float) -> (float, float, float) {
+    (
+        y1 * z2 - z1 * y2,
+        z1 * x2 - x1 * z2,
+        x1 * y2 - y1 * x2
+    )
+}
+
+/// Length of 3D vector
+fn length3(x: float, y: float, z: float) -> float {
+    sqrt(x * x + y * y + z * z)
+}
+
+/// Normalize 3D vector
+fn normalize3(x: float, y: float, z: float) -> (float, float, float) {
+    let len = length3(x, y, z);
+    if len == 0.0 {
+        (0.0, 0.0, 0.0)
+    } else {
+        (x / len, y / len, z / len)
+    }
+}
+
+/// Random float in range [0.0, 1.0)
+fn randomf() -> float {
+    rand() as float / 2147483648.0
+}
+
+/// Random float in range [min, max)
+fn random_range(min: float, max: float) -> float {
+    min + randomf() * (max - min)
+}
+
+/// Random normal distribution (Box-Muller transform)
+fn random_normal(mean: float, stddev: float) -> float {
+    let u1 = randomf();
+    let u2 = randomf();
+    
+    let z0 = sqrt(-2.0 * log(u1)) * cos(2.0 * PI * u2);
+    mean + z0 * stddev
+}
+
+/// Random exponential distribution
+fn random_exponential(lambda: float) -> float {
+    -log(1.0 - randomf()) / lambda
+}
+
+/// Mean of array
+fn mean(arr: [float]) -> float {
+    let sum = sum_float(arr);
+    sum / array_len(arr) as float
+}
+
+/// Sum of float array
+fn sum_float(arr: [float]) -> float {
+    let mut total = 0.0;
+    let mut i = 0;
+    while i < array_len(arr) {
+        total = total + arr[i];
+        i = i + 1;
+    }
+    total
+}
+
+/// Variance of array
+fn variance(arr: [float]) -> float {
+    let m = mean(arr);
+    let mut sum_sq = 0.0;
+    let mut i = 0;
+    while i < array_len(arr) {
+        let diff = arr[i] - m;
+        sum_sq = sum_sq + diff * diff;
+        i = i + 1;
+    }
+    sum_sq / array_len(arr) as float
+}
+
+/// Standard deviation
+fn stddev(arr: [float]) -> float {
+    sqrt(variance(arr))
+}
+
+/// Median of sorted array
+fn median(arr: [float]) -> float {
+    let len = array_len(arr);
+    if len == 0 {
+        return 0.0;
+    }
+    
+    let mid = len / 2;
+    if len % 2 == 0 {
+        (arr[mid - 1] + arr[mid]) / 2.0
+    } else {
+        arr[mid]
+    }
+}
+
+/// Minimum of float array
+fn minf(arr: [float]) -> float {
+    if array_len(arr) == 0 {
+        panic("Cannot find minimum of empty array")
+    }
+    
+    let mut min_val = arr[0];
+    let mut i = 1;
+    while i < array_len(arr) {
+        if arr[i] < min_val {
+            min_val = arr[i];
+        }
+        i = i + 1;
+    }
+    min_val
+}
+
+/// Maximum of float array
+fn maxf(arr: [float]) -> float {
+    if array_len(arr) == 0 {
+        panic("Cannot find maximum of empty array")
+    }
+    
+    let mut max_val = arr[0];
+    let mut i = 1;
+    while i < array_len(arr) {
+        if arr[i] > max_val {
+            max_val = arr[i];
+        }
+        i = i + 1;
+    }
+    max_val
+}
+
+/// Lerp between two integers
+fn lerpi(a: int, b: int, t: float) -> int {
+    round(lerp(a as float, b as float, t))
+}
+
+/// Clamp integer to range
+fn clampi(x: int, min_val: int, max_val: int) -> int {
+    if x < min_val { min_val }
+    else if x > max_val { max_val }
+    else { x }
+}
+
+/// Map integer from one range to another
+fn map_range(value: int, in_min: int, in_max: int, out_min: int, out_max: int) -> int {
+    out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min)
+}
+
+/// Interpolate between two floats based on integer progress
+fn lerp_progress(start: float, end: float, current: int, total: int) -> float {
+    if total == 0 {
+        start
+    } else {
+        lerp(start, end, current as float / total as float)
+    }
+}

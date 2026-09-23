@@ -1,0 +1,910 @@
+# NOVA Standard Library - Text Module
+
+// String manipulation and text processing utilities
+
+use core.*;
+use io.*;
+
+/// Join array of strings with separator
+fn join(strings: [String], separator: String) -> String {
+    if array_len(strings) == 0 {
+        ""
+    } else {
+        let mut result = strings[0];
+        let mut i = 1;
+        while i < array_len(strings) {
+            result = strcat(result, separator);
+            result = strcat(result, strings[i]);
+            i = i + 1;
+        }
+        result
+    }
+}
+
+/// Split string by delimiter
+fn split(s: String, delimiter: String) -> [String] {
+    let mut result: [String] = [];
+    let mut start = 0;
+    let mut i = 0;
+    let delim_len = strlen(delimiter);
+    
+    while i <= strlen(s) {
+        if i == strlen(s) || substr(s, i, delim_len) == delimiter {
+            if i > start {
+                array_push(result, substr(s, start, i - start));
+            }
+            start = i + delim_len;
+            i = start;
+        } else {
+            i = i + 1;
+        }
+    }
+    
+    result
+}
+
+/// Split by whitespace
+fn split_whitespace(s: String) -> [String] {
+    let mut result: [String] = [];
+    let mut start = -1;
+    let mut i = 0;
+    
+    while i < strlen(s) {
+        let c = s[i];
+        if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+            if start == -1 {
+                start = i;
+            }
+        } else if start != -1 {
+            array_push(result, substr(s, start, i - start));
+            start = -1;
+        }
+        i = i + 1;
+    }
+    
+    if start != -1 {
+        array_push(result, substr(s, start, strlen(s) - start));
+    }
+    
+    result
+}
+
+/// Trim whitespace from left
+fn trim_left(s: String) -> String {
+    let mut i = 0;
+    while i < strlen(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r') {
+        i = i + 1;
+    }
+    if i == 0 {
+        s
+    } else {
+        substr(s, i, strlen(s) - i)
+    }
+}
+
+/// Trim whitespace from right
+fn trim_right(s: String) -> String {
+    let mut i = strlen(s);
+    while i > 0 && (s[i - 1] == ' ' || s[i - 1] == '\t' || s[i - 1] == '\n' || s[i - 1] == '\r') {
+        i = i - 1;
+    }
+    substr(s, 0, i)
+}
+
+/// Trim whitespace from both ends
+fn trim(s: String) -> String {
+    trim_left(trim_right(s))
+}
+
+/// Convert to lowercase
+fn to_lower(s: String) -> String {
+    let mut result: String = "";
+    let mut i = 0;
+    while i < strlen(s) {
+        let c = s[i];
+        if c >= 'A' && c <= 'Z' {
+            result = strcat(result, tostring((c as int + 32) as char));
+        } else {
+            result = strcat(result, tostring(c));
+        }
+        i = i + 1;
+    }
+    result
+}
+
+/// Convert to uppercase
+fn to_upper(s: String) -> String {
+    let mut result: String = "";
+    let mut i = 0;
+    while i < strlen(s) {
+        let c = s[i];
+        if c >= 'a' && c <= 'z' {
+            result = strcat(result, tostring((c as int - 32) as char));
+        } else {
+            result = strcat(result, tostring(c));
+        }
+        i = i + 1;
+    }
+    result
+}
+
+/// Capitalize first letter
+fn capitalize(s: String) -> String {
+    if strlen(s) == 0 {
+        s
+    } else {
+        let first = to_upper(substr(s, 0, 1));
+        let rest = to_lower(substr(s, 1, strlen(s) - 1));
+        strcat(first, rest)
+    }
+}
+
+/// Title case (capitalize each word)
+fn title_case(s: String) -> String {
+    let words = split_whitespace(s);
+    let mut result: [String] = [];
+    let mut i = 0;
+    while i < array_len(words) {
+        array_push(result, capitalize(words[i]));
+        i = i + 1;
+    }
+    join(result, " ")
+}
+
+/// Check if starts with prefix
+fn starts_with(s: String, prefix: String) -> bool {
+    if strlen(prefix) > strlen(s) {
+        false
+    } else {
+        substr(s, 0, strlen(prefix)) == prefix
+    }
+}
+
+/// Check if ends with suffix
+fn ends_with(s: String, suffix: String) -> bool {
+    let s_len = strlen(s);
+    let suf_len = strlen(suffix);
+    if suf_len > s_len {
+        false
+    } else {
+        substr(s, s_len - suf_len, suf_len) == suffix
+    }
+}
+
+/// Check if contains substring
+fn contains(s: String, substring: String) -> bool {
+    find_string(s, substring) != -1
+}
+
+/// Find first occurrence of substring
+fn find_string(s: String, substring: String) -> int {
+    let s_len = strlen(s);
+    let sub_len = strlen(substring);
+    
+    if sub_len == 0 {
+        return 0;
+    }
+    if sub_len > s_len {
+        return -1;
+    }
+    
+    let mut i = 0;
+    while i <= s_len - sub_len {
+        if substr(s, i, sub_len) == substring {
+            return i;
+        }
+        i = i + 1;
+    }
+    
+    -1
+}
+
+/// Find last occurrence of substring
+fn rfind_string(s: String, substring: String) -> int {
+    let s_len = strlen(s);
+    let sub_len = strlen(substring);
+    
+    if sub_len == 0 {
+        return s_len;
+    }
+    if sub_len > s_len {
+        return -1;
+    }
+    
+    let mut i = s_len - sub_len;
+    while i >= 0 {
+        if substr(s, i, sub_len) == substring {
+            return i;
+        }
+        i = i - 1;
+    }
+    
+    -1
+}
+
+/// Replace first occurrence
+fn replace_first(s: String, old: String, new: String) -> String {
+    let pos = find_string(s, old);
+    if pos == -1 {
+        s
+    } else {
+        let before = substr(s, 0, pos);
+        let after = substr(s, pos + strlen(old), strlen(s) - pos - strlen(old));
+        strcat(before, strcat(new, after))
+    }
+}
+
+/// Replace all occurrences
+fn replace_all(s: String, old: String, new: String) -> String {
+    let mut result: String = "";
+    let mut last_pos = 0;
+    let old_len = strlen(old);
+    
+    if old_len == 0 {
+        return s;
+    }
+    
+    let mut pos = find_string(s, old);
+    while pos != -1 {
+        result = strcat(result, substr(s, last_pos, pos - last_pos));
+        result = strcat(result, new);
+        last_pos = pos + old_len;
+        pos = find_string(substr(s, last_pos, strlen(s) - last_pos), old);
+        if pos != -1 {
+            pos = pos + last_pos;
+        }
+    }
+    
+    result = strcat(result, substr(s, last_pos, strlen(s) - last_pos));
+    result
+}
+
+/// Repeat string n times
+fn repeat(s: String, count: int) -> String {
+    if count <= 0 {
+        ""
+    } else {
+        let mut result: String = "";
+        let mut i = 0;
+        while i < count {
+            result = strcat(result, s);
+            i = i + 1;
+        }
+        result
+    }
+}
+
+/// Pad left with character
+fn pad_left(s: String, width: int, pad_char: char) -> String {
+    let len = strlen(s);
+    if len >= width {
+        s
+    } else {
+        strcat(repeat(tostring(pad_char), width - len), s)
+    }
+}
+
+/// Pad right with character
+fn pad_right(s: String, width: int, pad_char: char) -> String {
+    let len = strlen(s);
+    if len >= width {
+        s
+    } else {
+        strcat(s, repeat(tostring(pad_char), width - len))
+    }
+}
+
+/// Center string
+fn center(s: String, width: int, pad_char: char) -> String {
+    let len = strlen(s);
+    if len >= width {
+        s
+    } else {
+        let total_pad = width - len;
+        let left_pad = total_pad / 2;
+        let right_pad = total_pad - left_pad;
+        strcat(
+            repeat(tostring(pad_char), left_pad),
+            strcat(s, repeat(tostring(pad_char), right_pad))
+        )
+    }
+}
+
+/// Pad with zeros for numbers
+fn zero_pad(n: int, width: int) -> String {
+    let s = tostring(n);
+    if n < 0 {
+        strcat("-", pad_left(substr(s, 1, strlen(s) - 1), width - 1, '0'))
+    } else {
+        pad_left(s, width, '0')
+    }
+}
+
+/// Format integer with commas
+fn format_number(n: int) -> String {
+    let s = tostring(n);
+    let is_negative = starts_with(s, "-");
+    let digits = if is_negative { substr(s, 1, strlen(s) - 1) } else { s };
+    
+    let mut result: String = "";
+    let mut count = 0;
+    let mut i = strlen(digits);
+    
+    while i > 0 {
+        if count > 0 && count % 3 == 0 {
+            result = strcat(",", result);
+        }
+        result = strcat(tostring(digits[i - 1]), result);
+        i = i - 1;
+        count = count + 1;
+    }
+    
+    if is_negative {
+        strcat("-", result)
+    } else {
+        result
+    }
+}
+
+/// Count occurrences of character
+fn count_char(s: String, c: char) -> int {
+    let mut count = 0;
+    let mut i = 0;
+    while i < strlen(s) {
+        if s[i] == c {
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+    count
+}
+
+/// Count occurrences of substring
+fn count_substring(s: String, substring: String) -> int {
+    let mut count = 0;
+    let mut pos = find_string(s, substring);
+    
+    while pos != -1 {
+        count = count + 1;
+        pos = find_string(substr(s, pos + strlen(substring), strlen(s) - pos - strlen(substring)), substring);
+        if pos != -1 {
+            pos = pos + strlen(substring);
+        }
+    }
+    
+    count
+}
+
+/// Reverse string
+fn reverse_string(s: String) -> String {
+    let mut result: String = "";
+    let mut i = strlen(s);
+    while i > 0 {
+        i = i - 1;
+        result = strcat(result, tostring(s[i]));
+    }
+    result
+}
+
+/// Check if palindrome
+fn is_palindrome(s: String) -> bool {
+    let cleaned = to_lower(trim(s));
+    cleaned == reverse_string(cleaned)
+}
+
+/// Get character at index (with bounds checking)
+fn char_at(s: String, index: int) -> Option<char> {
+    if index >= 0 && index < strlen(s) {
+        Some(s[index])
+    } else {
+        None
+    }
+}
+
+/// Get first character
+fn first_char(s: String) -> Option<char> {
+    if strlen(s) == 0 {
+        None
+    } else {
+        Some(s[0])
+    }
+}
+
+/// Get last character
+fn last_char(s: String) -> Option<char> {
+    if strlen(s) == 0 {
+        None
+    } else {
+        Some(s[strlen(s) - 1])
+    }
+}
+
+/// Remove character at index
+fn remove_char_at(s: String, index: int) -> String {
+    if index < 0 || index >= strlen(s) {
+        s
+    } else {
+        strcat(
+            substr(s, 0, index),
+            substr(s, index + 1, strlen(s) - index - 1)
+        )
+    }
+}
+
+/// Insert string at position
+fn insert_at(s: String, pos: int, insert: String) -> String {
+    if pos <= 0 {
+        strcat(insert, s)
+    } else if pos >= strlen(s) {
+        strcat(s, insert)
+    } else {
+        strcat(
+            substr(s, 0, pos),
+            strcat(insert, substr(s, pos, strlen(s) - pos))
+        )
+    }
+}
+
+/// Remove prefix if present
+fn strip_prefix(s: String, prefix: String) -> String {
+    if starts_with(s, prefix) {
+        substr(s, strlen(prefix), strlen(s) - strlen(prefix))
+    } else {
+        s
+    }
+}
+
+/// Remove suffix if present
+fn strip_suffix(s: String, suffix: String) -> String {
+    if ends_with(s, suffix) {
+        substr(s, 0, strlen(s) - strlen(suffix))
+    } else {
+        s
+    }
+}
+
+/// Truncate string to max length with ellipsis
+fn truncate(s: String, max_len: int) -> String {
+    if strlen(s) <= max_len {
+        s
+    } else if max_len <= 3 {
+        substr(s, 0, max_len)
+    } else {
+        strcat(substr(s, 0, max_len - 3), "...")
+    }
+}
+
+/// Wrap text to line width
+fn wrap_text(text: String, width: int) -> String {
+    let words = split_whitespace(text);
+    if array_len(words) == 0 {
+        ""
+    } else {
+        let mut lines: [String] = [];
+        let mut current_line = words[0];
+        let mut i = 1;
+        
+        while i < array_len(words) {
+            let test_line = strcat(current_line, " " + words[i]);
+            if strlen(test_line) <= width {
+                current_line = test_line;
+            } else {
+                array_push(lines, current_line);
+                current_line = words[i];
+            }
+            i = i + 1;
+        }
+        
+        array_push(lines, current_line);
+        join(lines, "\n")
+    }
+}
+
+/// Indent each line
+fn indent(text: String, spaces: int) -> String {
+    let lines = split(text, "\n");
+    let indent_str = repeat(" ", spaces);
+    let mut result: [String] = [];
+    
+    let mut i = 0;
+    while i < array_len(lines) {
+        array_push(result, strcat(indent_str, lines[i]));
+        i = i + 1;
+    }
+    
+    join(result, "\n")
+}
+
+/// Dedent common leading whitespace
+fn dedent(text: String) -> String {
+    let lines = split(text, "\n");
+    
+    // Find minimum indentation
+    let mut min_indent = 999999;
+    let mut i = 0;
+    while i < array_len(lines) {
+        let line = lines[i];
+        let trimmed = trim_left(line);
+        let indent = strlen(line) - strlen(trimmed);
+        if strlen(trimmed) > 0 && indent < min_indent {
+            min_indent = indent;
+        }
+        i = i + 1;
+    }
+    
+    if min_indent == 999999 {
+        return text;
+    }
+    
+    // Remove common indentation
+    let mut result: [String] = [];
+    i = 0;
+    while i < array_len(lines) {
+        let line = lines[i];
+        if strlen(line) >= min_indent {
+            array_push(result, substr(line, min_indent, strlen(line) - min_indent));
+        } else {
+            array_push(result, line);
+        }
+        i = i + 1;
+    }
+    
+    join(result, "\n")
+}
+
+/// Escape special characters for JSON/string literal
+fn escape_string(s: String) -> String {
+    let mut result: String = "";
+    let mut i = 0;
+    
+    while i < strlen(s) {
+        let c = s[i];
+        match c {
+            '"' => result = strcat(result, "\\\""),
+            '\\' => result = strcat(result, "\\\\"),
+            '\n' => result = strcat(result, "\\n"),
+            '\r' => result = strcat(result, "\\r"),
+            '\t' => result = strcat(result, "\\t"),
+            '\b' => result = strcat(result, "\\b"),
+            '\f' => result = strcat(result, "\\f"),
+            _ => result = strcat(result, tostring(c)),
+        }
+        i = i + 1;
+    }
+    
+    result
+}
+
+/// Unescape string
+fn unescape_string(s: String) -> String {
+    let mut result: String = "";
+    let mut i = 0;
+    
+    while i < strlen(s) {
+        if s[i] == '\\' && i + 1 < strlen(s) {
+            match s[i + 1] {
+                '"' => result = strcat(result, "\""),
+                '\\' => result = strcat(result, "\\"),
+                'n' => result = strcat(result, "\n"),
+                'r' => result = strcat(result, "\r"),
+                't' => result = strcat(result, "\t"),
+                'b' => result = strcat(result, "\b"),
+                'f' => result = strcat(result, "\f"),
+                _ => {
+                    result = strcat(result, tostring(s[i]));
+                    result = strcat(result, tostring(s[i + 1]));
+                }
+            }
+            i = i + 2;
+        } else {
+            result = strcat(result, tostring(s[i]));
+            i = i + 1;
+        }
+    }
+    
+    result
+}
+
+/// Check if string is empty or whitespace only
+fn is_blank(s: String) -> bool {
+    strlen(trim(s)) == 0
+}
+
+/// Check if string contains only digits
+fn is_digit_string(s: String) -> bool {
+    if strlen(s) == 0 {
+        false
+    } else {
+        let mut i = 0;
+        while i < strlen(s) {
+            if s[i] < '0' || s[i] > '9' {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+}
+
+/// Check if string is alphabetic
+fn is_alpha(s: String) -> bool {
+    if strlen(s) == 0 {
+        false
+    } else {
+        let mut i = 0;
+        while i < strlen(s) {
+            let c = s[i];
+            if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+}
+
+/// Check if string is alphanumeric
+fn is_alphanumeric(s: String) -> bool {
+    if strlen(s) == 0 {
+        false
+    } else {
+        let mut i = 0;
+        while i < strlen(s) {
+            let c = s[i];
+            if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+}
+
+/// Generate random string of given length
+fn random_string(length: int) -> String {
+    const CHARS: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut result: String = "";
+    let mut i = 0;
+    
+    while i < length {
+        let idx = rand() % strlen(CHARS);
+        result = strcat(result, tostring(CHARS[idx]));
+        i = i + 1;
+    }
+    
+    result
+}
+
+/// Generate UUID-like string
+fn uuid() -> String {
+    let hex = "0123456789abcdef";
+    let mut result: String = "";
+    
+    let mut i = 0;
+    while i < 36 {
+        if i == 8 || i == 13 || i == 18 || i == 23 {
+            result = strcat(result, "-");
+        } else {
+            let idx = rand() % strlen(hex);
+            result = strcat(result, tostring(hex[idx]));
+        }
+        i = i + 1;
+    }
+    
+    result
+}
+
+/// Levenshtein distance between two strings
+fn levenshtein(s1: String, s2: String) -> int {
+    let len1 = strlen(s1);
+    let len2 = strlen(s2);
+    
+    if len1 == 0 {
+        return len2;
+    }
+    if len2 == 0 {
+        return len1;
+    }
+    
+    // Create matrix
+    let mut matrix: [[int]] = [];
+    let mut i = 0;
+    while i <= len1 {
+        let mut row: [int] = [];
+        let mut j = 0;
+        while j <= len2 {
+            array_push(row, 0);
+            j = j + 1;
+        }
+        array_push(matrix, row);
+        i = i + 1;
+    }
+    
+    // Initialize first column
+    i = 0;
+    while i <= len1 {
+        matrix[i][0] = i;
+        i = i + 1;
+    }
+    
+    // Initialize first row
+    let mut j = 0;
+    while j <= len2 {
+        matrix[0][j] = j;
+        j = j + 1;
+    }
+    
+    // Fill matrix
+    i = 1;
+    while i <= len1 {
+        j = 1;
+        while j <= len2 {
+            let cost = if s1[i - 1] == s2[j - 1] { 0 } else { 1 };
+            matrix[i][j] = min(
+                min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1),
+                matrix[i - 1][j - 1] + cost
+            );
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    
+    matrix[len1][len2]
+}
+
+/// Check if strings are similar (within threshold)
+fn strings_similar(s1: String, s2: String, threshold: int) -> bool {
+    levenshtein(s1, s2) <= threshold
+}
+
+/// Soundex encoding (simplified)
+fn soundex(s: String) -> String {
+    if strlen(s) == 0 {
+        return "0000";
+    }
+    
+    let s_upper = to_upper(s);
+    let first = s_upper[0];
+    
+    // Mapping: ABCDEFGHIJKLMNOPQRSTUVWXYZ
+    //          012010222012221002020202
+    let mut codes: String = "012010222012221002020202";
+    
+    let mut result: String = "";
+    result = strcat(result, tostring(first));
+    
+    let mut prev_code = codes[first as int - 'A' as int] as int;
+    let mut i = 1;
+    
+    while i < strlen(s_upper) && strlen(result) < 4 {
+        let c = s_upper[i];
+        if c >= 'A' && c <= 'Z' {
+            let code = codes[c as int - 'A' as int] as int;
+            if code != 0 && code != prev_code {
+                result = strcat(result, tostring(code as char));
+            }
+            prev_code = code;
+        }
+        i = i + 1;
+    }
+    
+    // Pad with zeros
+    while strlen(result) < 4 {
+        result = strcat(result, "0");
+    }
+    
+    substr(result, 0, 4)
+}
+
+/// Hash string (simple djb2 algorithm)
+fn hash_string(s: String) -> int {
+    let mut hash = 5381;
+    let mut i = 0;
+    
+    while i < strlen(s) {
+        hash = ((hash << 5) + hash) + s[i] as int;
+        i = i + 1;
+    }
+    
+    hash
+}
+
+/// CRC32 checksum (placeholder for runtime implementation)
+fn crc32(s: String) -> int {
+    __builtin_crc32(s)
+}
+
+/// MD5 hash (placeholder for runtime implementation)
+fn md5(s: String) -> String {
+    __builtin_md5(s)
+}
+
+/// SHA256 hash (placeholder for runtime implementation)
+fn sha256(s: String) -> String {
+    __builtin_sha256(s)
+}
+
+/// Base64 encode (placeholder for runtime implementation)
+fn base64_encode(data: String) -> String {
+    __builtin_base64_encode(data)
+}
+
+/// Base64 decode (placeholder for runtime implementation)
+fn base64_decode(data: String) -> String {
+    __builtin_base64_decode(data)
+}
+
+/// URL encode
+fn url_encode(s: String) -> String {
+    let mut result: String = "";
+    let mut i = 0;
+    
+    while i < strlen(s) {
+        let c = s[i];
+        if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~' {
+            result = strcat(result, tostring(c));
+        } else if c == ' ' {
+            result = strcat(result, "+");
+        } else {
+            result = strcat(result, "%");
+            result = strcat(result, to_hex(c as int));
+        }
+        i = i + 1;
+    }
+    
+    result
+}
+
+/// URL decode
+fn url_decode(s: String) -> String {
+    let mut result: String = "";
+    let mut i = 0;
+    
+    while i < strlen(s) {
+        if s[i] == '%' && i + 2 < strlen(s) {
+            let hex = substr(s, i + 1, 2);
+            result = strcat(result, tostring(from_hex(hex) as char));
+            i = i + 3;
+        } else if s[i] == '+' {
+            result = strcat(result, " ");
+            i = i + 1;
+        } else {
+            result = strcat(result, tostring(s[i]));
+            i = i + 1;
+        }
+    }
+    
+    result
+}
+
+/// Convert to hex string
+fn to_hex(n: int) -> String {
+    const HEX: String = "0123456789ABCDEF";
+    if n == 0 {
+        "00"
+    } else {
+        strcat(
+            tostring(HEX[(n / 16) % 16]),
+            tostring(HEX[n % 16])
+        )
+    }
+}
+
+/// Convert from hex string
+fn from_hex(s: String) -> int {
+    if strlen(s) < 2 {
+        0
+    } else {
+        let h1 = s[0];
+        let h2 = s[1];
+        let v1 = if h1 >= '0' && h1 <= '9' { h1 as int - '0' as int }
+                 else if h1 >= 'a' && h1 <= 'f' { h1 as int - 'a' as int + 10 }
+                 else if h1 >= 'A' && h1 <= 'F' { h1 as int - 'A' as int + 10 }
+                 else { 0 };
+        let v2 = if h2 >= '0' && h2 <= '9' { h2 as int - '0' as int }
+                 else if h2 >= 'a' && h2 <= 'f' { h2 as int - 'a' as int + 10 }
+                 else if h2 >= 'A' && h2 <= 'F' { h2 as int - 'A' as int + 10 }
+                 else { 0 };
+        v1 * 16 + v2
+    }
+}

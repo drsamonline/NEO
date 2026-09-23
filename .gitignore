@@ -1,17 +1,1 @@
-```
-# Compiled and build artifacts
-*.o
-*.obj
-*.out
-
-# Dependencies
-stdlib/
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Editors
-.vim/
-.emacs.d/
-```
+Nothing should be ignored in this case. The changes only include Rust source files (.rs) which are source code and should be tracked in version control. No build artifacts, dependencies, or temporary files are present in the change list.
