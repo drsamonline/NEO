@@ -3,7 +3,9 @@
 Semantic Programming Platform
 
 [![Phase 1 Complete](https://img.shields.io/badge/Phase-1%20Complete-brightgreen)](DEV_PLAN.md)
+[![Phase 2 Active](https://img.shields.io/badge/Phase-2%20Active-yellow)](DEV_PLAN.md)
 [![Compiler Core](https://img.shields.io/badge/Compiler-3500%2B%20LOC-blue)](compiler/)
+[![Runtime System](https://img.shields.io/badge/Runtime-1380%20LOC-orange)](runtime/)
 [![Backends](https://img.shields.io/badge/Backends-4%20Targets-orange)](backends/)
 
 ## Overview
@@ -17,8 +19,17 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - SIR (Semantic Intermediate Representation) defined
 - Lowerer converts AST to SIR
 - 4 backends: C, JavaScript, Rust, WebAssembly
+- Total: ~3,500+ lines of compiler code
 
-**🚧 Phase 2: Runtime System - NOT STARTED**
+**🚧 Phase 2: Runtime System - ACTIVE DEVELOPMENT**
+- ✅ Memory management (195 lines, 5 tests)
+- ✅ Type system (276 lines, 3 tests)
+- ✅ Error handling (224 lines, 6 tests)
+- ✅ FFI support (193 lines, 4 tests)
+- ✅ Garbage collection foundation (420 lines, 6 tests)
+- Total: 1,380 lines, 26 tests
+- ⏳ Pending: I/O, threading, async runtime
+
 **🚧 Phase 3: Tooling - NOT STARTED**
 
 See [Development Plan](DEV_PLAN.md) for detailed status.
@@ -48,7 +59,12 @@ cargo run -- ../examples/test_final.nova --target c
 │   ├── javascript/    # JavaScript backend (343 lines)
 │   ├── rust/          # Rust backend (352 lines)
 │   └── wasm/          # WebAssembly backend (385 lines)
-├── runtime/           # Runtime system (scaffold)
+├── runtime/           # Runtime system (1,380 lines)
+│   ├── src/memory.rs  # Memory management (195 lines)
+│   ├── src/types.rs   # Runtime types (276 lines)
+│   ├── src/error.rs   # Error handling (224 lines)
+│   ├── src/ffi.rs     # FFI support (193 lines)
+│   └── src/gc.rs      # Garbage collection (420 lines)
 ├── package-manager/   # Package management (scaffold)
 ├── language-server/   # LSP implementation (scaffold)
 ├── debugger/          # Debugger (scaffold)
@@ -63,14 +79,16 @@ cargo run -- ../examples/test_final.nova --target c
 - **Semantic Analysis**: Type checking, scope resolution, name resolution
 - **Code Generation**: C, JavaScript, Rust, WebAssembly backends
 - **Type System**: Functions, structs, enums, control flow
+- **Runtime System**: Memory management, types, errors, FFI, GC foundation
 
 ### Coming Soon 🚧
-- Runtime system with memory management
+- I/O runtime support
+- Threading primitives
+- Async runtime
 - Standard library
 - Package manager
 - Language server (LSP)
 - Integrated debugger
-- FFI support
 
 ## Documentation
 

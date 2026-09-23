@@ -26,29 +26,58 @@
 
 ---
 
-## 🚧 v0.2 - Runtime System (NEXT)
+## 🚧 v0.2 - Runtime System (ACTIVE DEVELOPMENT)
 
-**Status**: Not Started  
+**Status**: Core Modules Complete ✅  
 **Priority**: HIGH  
-**Estimated**: 4-6 weeks
+**Progress**: 1,380 lines implemented, 26 tests  
+**Timeline**: In Progress
 
-### Planned Components
-- [ ] Memory management system
-- [ ] Garbage collection (optional/tracing)
-- [ ] Standard library core
-  - [ ] Basic types (String, Array, Map, Set)
-  - [ ] I/O operations
-  - [ ] Math utilities
-  - [ ] Collections
-- [ ] FFI support for C interop
-- [ ] Runtime error handling
-- [ ] Exception mechanism
+### Completed Components ✅
+- [x] **Memory Management** (195 lines)
+  - Allocatable trait for heap allocation
+  - StackBuffer for fixed-size allocations
+  - Memory utilities (copy, swap, zero-init)
+  - 5 unit tests
+- [x] **Runtime Type System** (276 lines)
+  - NovaString with concatenation
+  - NovaArray<T> dynamic arrays
+  - NovaOption<T> optional type
+  - 3 unit tests
+- [x] **Error Handling** (224 lines)
+  - NovaError with 11 error kinds
+  - Location tracking
+  - Custom error handlers
+  - NovaResult<T> type alias
+  - 6 unit tests
+- [x] **FFI Support** (193 lines)
+  - C-compatible types
+  - Safe string conversion
+  - Pointer utilities
+  - Callback definitions
+  - 4 unit tests
+- [x] **Garbage Collection Foundation** (420 lines) ⭐ NEW
+  - Reference-counted GcPtr<T>
+  - Weak references (GcWeak<T>)
+  - Automatic collection at threshold
+  - Statistics tracking
+  - Convenience macros
+  - 6 unit tests
+
+### Remaining Components
+- [ ] I/O runtime support
+- [ ] Threading primitives
+- [ ] Async runtime
+- [ ] Standard library modules
+  - [ ] File I/O
+  - [ ] Network operations
+  - [ ] Advanced collections
 
 ### Deliverables
-- Runtime library (nova-runtime)
-- Standard library modules
-- Memory allocator
-- GC implementation (if chosen)
+- ✅ Runtime library core (nova-runtime) - 1,380 lines
+- ⏳ Standard library modules (pending)
+- ✅ Memory allocator foundation
+- ✅ GC foundation (RC-based)
 
 ---
 
