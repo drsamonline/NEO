@@ -1,65 +1,22 @@
-```rust
+```
 # Compiled and build artifacts
-*.o
-*.obj
-*.a
-*.lib
-*.dll
-*.so
-*.dylib
-*.exe
-*.out
+target/
+**/*.rs.bk
+**/*.rlib
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.exe
 
 # Dependencies
-target/
 Cargo.lock
+vendor/
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
-*.swo
 
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# Coverage reports
-coverage/
-htmlcov/
-*.coverage
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Python specific
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-.PyInstaller/
-.pytest_cache/
-.mypy_cache/
-
-# Node.js specific
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build outputs
-dist/
-build/
-*.min.js
-*.min.css
-
-# OS generated files
-.DS_Store
-Thumbs.db
 ```

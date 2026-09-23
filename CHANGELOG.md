@@ -5,41 +5,41 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
-#### Runtime System Core (1,380 lines) ⭐ NEW
-- **Memory Management** (`memory.rs` - 195 lines):
-  - `Allocatable` trait for type-safe heap allocation
-  - `StackBuffer<T, N>` for fixed-size stack allocations
-  - Memory copy, swap, and zero-initialization utilities
-  - Comprehensive test suite (5 tests)
+#### Runtime System Core (1,220+ lines) ⭐ NEW
+- **Memory Management** (`memory.rs` - 192 lines):
+  - `MemoryArena` for efficient arena-based allocation
+  - `GarbageCollector` foundation with mark-and-sweep placeholder
+  - `ManagedPtr<T>` for safe runtime-managed pointers
+  - Global memory statistics tracking
+  - Comprehensive test suite (2 tests)
 
-- **Type System** (`types.rs` - 276 lines):
-  - `NovaString` - Runtime string wrapper with concatenation
-  - `NovaArray<T>` - Dynamic array with bounds checking
-  - `NovaOption<T>` - Runtime-visible optional type
-  - Full trait implementations and conversions (3 tests)
+- **Type System** (`types.rs` - 260 lines):
+  - `TypeId` and `TypeInfo` for runtime type information
+  - `TypeRegistry` with primitive types pre-registered
+  - `DynamicValue` for runtime type checking
+  - Field and variant info for structs/enums (3 tests)
 
-- **Error Handling** (`error.rs` - 224 lines):
-  - `NovaError` core error type with location tracking
-  - `ErrorKind` enumeration (11 error categories)
-  - Custom error handlers
-  - `NovaResult<T>` type alias (6 tests)
+- **Error Handling** (`error.rs` - 297 lines):
+  - `RuntimeError` enum with 10 error categories
+  - `RuntimeErrorWithTrace` with backtrace support
+  - Panic hook initialization and handling
+  - `catch_unwind` utility function (4 tests)
 
-- **FFI Support** (`ffi.rs` - 193 lines):
-  - C-compatible types and constants
-  - Safe Rust ↔ C string conversion
-  - Pointer utilities and null checks
-  - Callback type definitions (4 tests)
+- **FFI Support** (`ffi.rs` - 332 lines):
+  - `NovaValue` C-compatible tagged union
+  - `FfiString` for Rust ↔ C string conversion
+  - `FfiArray<T>` for FFI-safe dynamic arrays
+  - `FfiHandle` for resource management
+  - `FfiFunction` wrapper for callbacks (6 tests)
 
-- **Garbage Collection** (`gc.rs` - 420 lines) ⭐ NEW:
-  - Reference-counted GC pointers (`GcPtr<T>`)
-  - Weak reference support (`GcWeak<T>`)
-  - Automatic collection at threshold
-  - Statistics tracking and heap limits
-  - Convenience macros (`gc_new!`, `gc_weak!`) (6 tests)
+- **Core Runtime Library** (`lib.rs` - 139 lines):
+  - Runtime initialization and statistics
+  - Module exports and version info
+  - Integration tests (6 tests)
 
 ### Technical Details
-- Runtime LOC: 1,380 lines
-- Test coverage: 26 tests across 5 modules
+- Runtime LOC: 1,220+ lines
+- Test coverage: 20+ tests across 5 modules
 - Status: Core modules complete, I/O and threading pending
 
 ## [1.0.0-alpha] - Phase 1: Compiler Core Complete - 2024
