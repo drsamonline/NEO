@@ -296,8 +296,6 @@ impl SemanticAnalyzer {
     }
 
     /// Check impl block
-    fn check_impl_block(&mut self, _impl_block: &ImplBlock) {
-        // TODO: Implement impl block checking
     fn check_impl_block(&mut self, impl_block: &ImplBlock) {
         // Validate that the type being implemented exists
         if self.symbol_table.lookup(&impl_block.type_name).is_none() {

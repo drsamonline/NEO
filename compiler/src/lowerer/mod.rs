@@ -91,17 +91,16 @@ impl Lowerer {
                     }
                     _ => {}
                 }
-                vec![SirStatement::Expr(self.lower_expr(expr))]
                 // Check if the expression is a control flow construct that should be a statement
                 match expr {
                     Expr::If(cond, then_block, else_block) => {
                         let then_stmts = self.lower_block(then_block);
                         let else_stmts = else_block.as_ref().map(|b| self.lower_block(b));
-                        vec![SirStatement::If {
+                        return vec![SirStatement::If {
                             condition: self.lower_expr(cond),
                             then_block: then_stmts,
                             else_block: else_stmts,
-                        }]
+                        }];
                     }
                     Expr::While(cond, body) => {
                         vec![SirStatement::While {
@@ -204,6 +203,8 @@ impl Lowerer {
             iterable: iterable_expr,
             body: body_stmts,
         }
+    }
+
     fn lower_block(&mut self, block: &nova_common::Block) -> Vec<SirStatement> {
         let mut stmts = Vec::new();
         for stmt in &block.statements {
@@ -333,15 +334,7 @@ impl Lowerer {
                 // Statement context is handled by lower_statement
                 let _value_expr = value.as_ref().map(|v| self.lower_expr(v));
                 
-                SirExpr::Literal(SirLiteral::Unit)
-                // Lower if expression (returns a value)
-                let then_expr = self.lower_block_as_expr(then_block);
-                let else_expr = else_block.as_ref().map(|b| Box::new(self.lower_block_as_expr(b)));
-                SirExpr::If {
-                    condition: Box::new(self.lower_expr(cond)),
-                    then_expr: Box::new(then_expr),
-                    else_expr,
-                }
+                            SirExpr::Literal(SirLiteral::Unit)
             }
             Expr::While(cond, body) => {
                 // While as expression returns Unit
@@ -396,7 +389,6 @@ impl Lowerer {
                 let final_val = block.final_expr.as_ref()
                     .map(|e| Box::new(self.lower_expr(e)));
                 
-                SirExpr::Block(stmts, final_val)
                 self.lower_block_as_expr(block)
             }
             Expr::Loop(body) => {
