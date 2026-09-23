@@ -5,6 +5,7 @@ members = [
     "package-manager",
     "language-server",
     "debugger",
+    "dbg",
     "crates/nova-common",
     "backends/c",
     "backends/javascript",
