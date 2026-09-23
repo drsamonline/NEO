@@ -109,8 +109,8 @@ impl<T: GcManaged> GcPtr<T> {
     }
     
     /// Get a reference to the inner value
-    pub fn get(&self) -> RefCell<T> {
-        self.inner.clone()
+    pub fn get(&self) -> &Rc<RefCell<T>> {
+        &self.inner
     }
     
     /// Try to get a mutable borrow

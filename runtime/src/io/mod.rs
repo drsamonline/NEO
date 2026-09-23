@@ -3,7 +3,7 @@
 //! Provides file I/O, streams, and buffered operations for the NOVA runtime.
 
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Write, Seek, SeekFrom, BufReader, BufWriter};
+use std::io::{self, Read, Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use crate::error::NovaError;
 

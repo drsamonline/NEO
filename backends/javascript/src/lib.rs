@@ -3,6 +3,7 @@
 //! This module converts SIR (Semantic Intermediate Representation) to JavaScript code.
 
 use nova_compiler::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
+use nova_compiler::sir::SirBinOp::*;
 
 pub struct JsBackend {
     output: String,
