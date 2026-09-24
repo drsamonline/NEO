@@ -1,9 +1,0 @@
-fn range(start: int, end: int) -> int {
-    return start;
-}
-
-fn main() {
-    for i in range(1, 5) {
-        println(i);
-    }
-}

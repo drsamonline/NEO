@@ -1,2 +1,5 @@
 # Rust build artifacts
 target/
+# Editor / temp artifacts
+*.swp
+*.tmp

@@ -2,9 +2,8 @@
 members = [
     "compiler",
     "runtime",
-    "package-manager",
-    "language-server",
-    "debugger",
+    "pkg",
+    "lsp",
     "dbg",
     "crates/nova-common",
     "backends/c",
