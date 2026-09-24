@@ -357,28 +357,33 @@ impl WasmBackend {
 mod tests {
     use super::*;
     use nova_compiler::sir::*;
+    use nova_common::Span;
 
     #[test]
     fn test_simple_function() {
         let program = SirProgram {
             functions: vec![SirFunction {
                 name: "add".to_string(),
-                params: vec!["a".to_string(), "b".to_string()],
-                return_type: "int".to_string(),
+                params: vec![
+                    SirParam { name: "a".to_string(), typ: "int".to_string() },
+                    SirParam { name: "b".to_string(), typ: "int".to_string() },
+                ],
+                return_type: Some("int".to_string()),
                 body: vec![
-                    SirStatement::Return(Some(SirExpr::Binary {
-                        left: Box::new(SirExpr::Identifier("a".to_string())),
+                    SirStatement::Return(Some(SirExpr::BinOp {
+                        left: Box::new(SirExpr::Var("a".to_string())),
                         op: SirBinOp::Add,
-                        right: Box::new(SirExpr::Identifier("b".to_string())),
+                        right: Box::new(SirExpr::Var("b".to_string())),
                     })),
                 ],
+                span: Span::default(),
             }],
             globals: vec![],
         };
 
         let mut backend = WasmBackend::new();
         let wasm_code = backend.generate(&program);
-        
+
         assert!(wasm_code.contains("(func $add"));
         assert!(wasm_code.contains("(export \"main\""));
     }

@@ -280,6 +280,7 @@ impl JsBackend {
 mod tests {
     use super::*;
     use nova_compiler::sir::*;
+    use nova_common::Span;
 
     #[test]
     fn test_simple_function() {
@@ -308,7 +309,8 @@ mod tests {
         
         assert!(js_code.contains("function add(a, b)"));
         assert!(js_code.contains("return (a + b);"));
-        assert!(js_code.contains("main();"));
+        // No trailing `main();` expected: the test program defines only `add`.
+        assert!(!js_code.contains("main();"));
     }
 
     #[test]
