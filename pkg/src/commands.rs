@@ -66,12 +66,14 @@ pub fn hello() -> String {{
 }}
 "#, name, name)
     } else {
-        r#"// NOVA Application Entry Point
+        String::from(
+            r#"// NOVA Application Entry Point
 
 fn main() {
     print("Hello, NOVA!");
 }
-"#
+"#,
+        )
     };
     std::fs::write(&source_path, source_content)?;
     

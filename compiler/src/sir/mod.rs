@@ -6,12 +6,14 @@
 use nova_common::Span;
 
 /// SIR Program - the root of the SIR tree
+#[derive(Debug, Clone)]
 pub struct SirProgram {
     pub functions: Vec<SirFunction>,
     pub globals: Vec<SirGlobal>,
 }
 
 /// SIR Function
+#[derive(Debug, Clone)]
 pub struct SirFunction {
     pub name: String,
     pub params: Vec<SirParam>,
@@ -21,12 +23,14 @@ pub struct SirFunction {
 }
 
 /// SIR Function Parameter
+#[derive(Debug, Clone)]
 pub struct SirParam {
     pub name: String,
     pub typ: String,
 }
 
 /// SIR Global Variable
+#[derive(Debug, Clone)]
 pub struct SirGlobal {
     pub name: String,
     pub typ: String,

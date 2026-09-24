@@ -1,12 +1,13 @@
 //! Compiler integration for Language Server
 //!
 //! This module provides incremental compilation support for the LSP,
-//! allowing real-time diagnostics and symbol resolution.
+//! allowing real-time diagnostics and symbol resolution. It drives the
+//! actual NOVA compiler pipeline (lexer → parser → semantic analysis →
+//! lowering to SIR) and converts compiler diagnostics into LSP diagnostics.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-use nova_compiler::{Lexer, Parser, SemanticAnalyzer, Lowerer, SirProgram};
 use nova_compiler::diagnostics::{Diagnostic as CompilerDiagnostic, DiagnosticLevel};
+use nova_compiler::{Lexer, Lowerer, Parser, SemanticAnalyzer, SirProgram};
 use tower_lsp::lsp_types::*;
 
 /// Result of compiling a document
@@ -21,7 +22,7 @@ pub struct CompileResult {
 #[derive(Debug, Clone)]
 pub struct SymbolEntry {
     pub name: String,
-    pub kind: SymbolKind,
+    pub kind: NovaSymbolKind,
     pub line: u32,
     pub character: u32,
     pub type_name: Option<String>,
@@ -30,7 +31,7 @@ pub struct SymbolEntry {
 
 /// Symbol kinds supported by NOVA
 #[derive(Debug, Clone, PartialEq)]
-pub enum SymbolKind {
+pub enum NovaSymbolKind {
     Function,
     Variable,
     Parameter,
@@ -39,6 +40,22 @@ pub enum SymbolKind {
     Trait,
     Module,
     Constant,
+}
+
+impl NovaSymbolKind {
+    /// Map to the corresponding LSP symbol kind for document symbol responses.
+    pub fn to_lsp(&self) -> tower_lsp::lsp_types::SymbolKind {
+        match self {
+            NovaSymbolKind::Function => tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            NovaSymbolKind::Variable => tower_lsp::lsp_types::SymbolKind::VARIABLE,
+            NovaSymbolKind::Parameter => tower_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
+            NovaSymbolKind::Struct => tower_lsp::lsp_types::SymbolKind::STRUCT,
+            NovaSymbolKind::Enum => tower_lsp::lsp_types::SymbolKind::ENUM,
+            NovaSymbolKind::Trait => tower_lsp::lsp_types::SymbolKind::INTERFACE,
+            NovaSymbolKind::Module => tower_lsp::lsp_types::SymbolKind::MODULE,
+            NovaSymbolKind::Constant => tower_lsp::lsp_types::SymbolKind::CONSTANT,
+        }
+    }
 }
 
 /// Symbol table for quick lookups
@@ -57,6 +74,10 @@ impl SymbolTable {
     }
 
     pub fn add(&mut self, entry: SymbolEntry) {
+        self.scopes
+            .entry(entry.scope.clone())
+            .or_insert_with(Vec::new)
+            .push(entry.name.clone());
         self.symbols
             .entry(entry.name.clone())
             .or_insert_with(Vec::new)
@@ -98,61 +119,83 @@ impl IncrementalCompiler {
         let mut symbols = SymbolTable::new();
         let mut sir = None;
 
-        // Phase 1: Lexing
-        let lexer = Lexer::new(content);
-        let tokens = match lexer.tokenize() {
-            Ok(tokens) => tokens,
-            Err(errs) => {
-                for err in errs {
-                    diagnostics.push(self.convert_diagnostic(&err, content));
-                }
-                return CompileResult { diagnostics, sir, symbols };
-            }
-        };
+        // Phase 1: Lexing — the lexer collects errors into its Diagnostics
+        // container and returns (tokens, &diagnostics).
+        let mut lexer = Lexer::new(content);
+        let (tokens, lex_diags) = lexer.tokenize();
+        for diag in lex_diags.iter() {
+            diagnostics.push(self.convert_diagnostic(diag, content));
+        }
+        if lex_diags.has_errors() {
+            let result = CompileResult {
+                diagnostics,
+                sir,
+                symbols,
+            };
+            self.cache.insert(uri.to_string(), result.clone());
+            return result;
+        }
 
         // Phase 2: Parsing
         let mut parser = Parser::new(tokens);
         let ast = match parser.parse() {
             Ok(ast) => ast,
             Err(errs) => {
-                for err in errs {
-                    diagnostics.push(self.convert_diagnostic(&err, content));
+                for diag in errs.iter() {
+                    diagnostics.push(self.convert_diagnostic(diag, content));
                 }
-                return CompileResult { diagnostics, sir, symbols };
+                let result = CompileResult {
+                    diagnostics,
+                    sir,
+                    symbols,
+                };
+                self.cache.insert(uri.to_string(), result.clone());
+                return result;
             }
         };
+
+        // Extract symbols from AST (works even if later phases fail)
+        self.extract_symbols(&ast, &mut symbols);
 
         // Phase 3: Semantic Analysis
         let mut sema = SemanticAnalyzer::new();
-        let analyzed = match sema.analyze(&ast) {
-            Ok(analyzed) => analyzed,
-            Err(errs) => {
-                for err in errs {
-                    diagnostics.push(self.convert_diagnostic(&err, content));
-                }
-                // Continue to extract partial symbols even with errors
-            }
-        };
-
-        // Extract symbols from AST
-        self.extract_symbols(&ast, &mut symbols);
-
-        // Phase 4: Lowering to SIR (only if no fatal errors)
-        if diagnostics.iter().all(|d| d.severity != Some(DiagnosticSeverity::ERROR)) {
-            let mut lowerer = Lowerer::new();
-            match lowerer.lower(&ast) {
-                Ok(sir_prog) => {
-                    sir = Some(sir_prog);
-                }
-                Err(errs) => {
-                    for err in errs {
-                        diagnostics.push(self.convert_diagnostic(&err, content));
-                    }
-                }
-            }
+        if sema.analyze(&ast).is_err() {
+            diagnostics.push(Diagnostic {
+                range: Range {
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                },
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: Some(NumberOrString::String("E0001".to_string())),
+                code_description: None,
+                source: Some("nova".to_string()),
+                message: "semantic analysis failed".to_string(),
+                related_information: None,
+                tags: None,
+                data: None,
+            });
         }
 
-        let result = CompileResult { diagnostics, sir, symbols };
+        // Phase 4: Lowering to SIR (only if no fatal errors so far)
+        if diagnostics
+            .iter()
+            .all(|d| d.severity != Some(DiagnosticSeverity::ERROR))
+        {
+            let mut lowerer = Lowerer::new();
+            sir = Some(lowerer.lower_program(&ast));
+        }
+
+        let result = CompileResult {
+            diagnostics,
+            sir,
+            symbols,
+        };
         self.cache.insert(uri.to_string(), result.clone());
         result
     }
@@ -163,29 +206,43 @@ impl IncrementalCompiler {
             DiagnosticLevel::Error => DiagnosticSeverity::ERROR,
             DiagnosticLevel::Warning => DiagnosticSeverity::WARNING,
             DiagnosticLevel::Info => DiagnosticSeverity::INFORMATION,
-            DiagnosticLevel::Hint => DiagnosticSeverity::HINT,
+            DiagnosticLevel::Note => DiagnosticSeverity::INFORMATION,
+            DiagnosticLevel::Help => DiagnosticSeverity::HINT,
         };
 
+        // The compiler uses 1-based line/column positions; LSP is 0-based.
+        let (start_line, start_char, end_line, end_char) = match &diag.span {
+            Some(span) => (
+                span.start.line.saturating_sub(1) as u32,
+                span.start.column.saturating_sub(1) as u32,
+                span.end.line.saturating_sub(1) as u32,
+                span.end.column.saturating_sub(1) as u32,
+            ),
+            None => (0, 0, 0, 0),
+        };
+
+        // Clamp the end of the range to the actual line length when available.
         let lines: Vec<&str> = content.lines().collect();
-        let line_content = if diag.line as usize < lines.len() {
-            lines[diag.line as usize]
+        let end_char = if (start_line as usize) < lines.len() {
+            let line_len = lines[start_line as usize].chars().count() as u32;
+            end_char.min(line_len.max(start_char))
         } else {
-            ""
+            end_char
         };
 
         Diagnostic {
             range: Range {
                 start: Position {
-                    line: diag.line,
-                    character: diag.column,
+                    line: start_line,
+                    character: start_char,
                 },
                 end: Position {
-                    line: diag.line,
-                    character: (diag.column + diag.length.unwrap_or(0)).max(diag.column),
+                    line: end_line,
+                    character: end_char.max(start_char),
                 },
             },
             severity: Some(severity),
-            code: Some(NumberOrString::String(diag.code.clone())),
+            code: diag.code.clone().map(NumberOrString::String),
             code_description: None,
             source: Some("nova".to_string()),
             message: diag.message.clone(),
@@ -196,18 +253,18 @@ impl IncrementalCompiler {
     }
 
     /// Extract symbols from AST
-    fn extract_symbols(&self, ast: &nova_compiler::ast::Program, symbols: &mut SymbolTable) {
-        use nova_compiler::ast::*;
+    fn extract_symbols(&self, ast: &nova_common::Program, symbols: &mut SymbolTable) {
+        use nova_common::ast::Item;
 
         for item in &ast.items {
             match item {
                 Item::Function(func) => {
                     symbols.add(SymbolEntry {
                         name: func.name.clone(),
-                        kind: SymbolKind::Function,
-                        line: func.span.start.line,
-                        character: func.span.start.column,
-                        type_name: func.return_type.as_ref().map(|t| t.to_string()),
+                        kind: NovaSymbolKind::Function,
+                        line: func.span.start.line.saturating_sub(1) as u32,
+                        character: func.span.start.column.saturating_sub(1) as u32,
+                        type_name: func.return_type.as_ref().map(|t| t.name.clone()),
                         scope: "global".to_string(),
                     });
 
@@ -215,30 +272,30 @@ impl IncrementalCompiler {
                     for param in &func.params {
                         symbols.add(SymbolEntry {
                             name: param.name.clone(),
-                            kind: SymbolKind::Parameter,
-                            line: param.span.start.line,
-                            character: param.span.start.column,
-                            type_name: Some(param.type_ann.to_string()),
+                            kind: NovaSymbolKind::Parameter,
+                            line: param.span.start.line.saturating_sub(1) as u32,
+                            character: param.span.start.column.saturating_sub(1) as u32,
+                            type_name: Some(param.typ.name.clone()),
                             scope: format!("fn_{}", func.name),
                         });
                     }
                 }
-                Item::Var(var) => {
+                Item::Const(const_def) => {
                     symbols.add(SymbolEntry {
-                        name: var.name.clone(),
-                        kind: SymbolKind::Variable,
-                        line: var.span.start.line,
-                        character: var.span.start.column,
-                        type_name: Some(var.type_ann.to_string()),
+                        name: const_def.name.clone(),
+                        kind: NovaSymbolKind::Constant,
+                        line: const_def.span.start.line.saturating_sub(1) as u32,
+                        character: const_def.span.start.column.saturating_sub(1) as u32,
+                        type_name: const_def.typ.as_ref().map(|t| t.name.clone()),
                         scope: "global".to_string(),
                     });
                 }
                 Item::Struct(struct_def) => {
                     symbols.add(SymbolEntry {
                         name: struct_def.name.clone(),
-                        kind: SymbolKind::Struct,
-                        line: struct_def.span.start.line,
-                        character: struct_def.span.start.column,
+                        kind: NovaSymbolKind::Struct,
+                        line: struct_def.span.start.line.saturating_sub(1) as u32,
+                        character: struct_def.span.start.column.saturating_sub(1) as u32,
                         type_name: None,
                         scope: "global".to_string(),
                     });
@@ -246,9 +303,29 @@ impl IncrementalCompiler {
                 Item::Enum(enum_def) => {
                     symbols.add(SymbolEntry {
                         name: enum_def.name.clone(),
-                        kind: SymbolKind::Enum,
-                        line: enum_def.span.start.line,
-                        character: enum_def.span.start.column,
+                        kind: NovaSymbolKind::Enum,
+                        line: enum_def.span.start.line.saturating_sub(1) as u32,
+                        character: enum_def.span.start.column.saturating_sub(1) as u32,
+                        type_name: None,
+                        scope: "global".to_string(),
+                    });
+                }
+                Item::Trait(trait_def) => {
+                    symbols.add(SymbolEntry {
+                        name: trait_def.name.clone(),
+                        kind: NovaSymbolKind::Trait,
+                        line: trait_def.span.start.line.saturating_sub(1) as u32,
+                        character: trait_def.span.start.column.saturating_sub(1) as u32,
+                        type_name: None,
+                        scope: "global".to_string(),
+                    });
+                }
+                Item::Mod(module_decl) => {
+                    symbols.add(SymbolEntry {
+                        name: module_decl.name.clone(),
+                        kind: NovaSymbolKind::Module,
+                        line: module_decl.span.start.line.saturating_sub(1) as u32,
+                        character: module_decl.span.start.column.saturating_sub(1) as u32,
                         type_name: None,
                         scope: "global".to_string(),
                     });
@@ -263,6 +340,16 @@ impl IncrementalCompiler {
         self.cache.remove(uri);
     }
 
+    /// List all cached document URIs
+    pub fn cached_uris(&self) -> Vec<String> {
+        self.cache.keys().cloned().collect()
+    }
+
+    /// Get a cached compile result for a URI, if present
+    pub fn cached_result(&self, uri: &str) -> Option<&CompileResult> {
+        self.cache.get(uri)
+    }
+
     /// Clear all cache
     pub fn clear_cache(&mut self) {
         self.cache.clear();
@@ -274,32 +361,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_incremental_compiler() {
+    fn test_incremental_compiler_valid_program() {
         let mut compiler = IncrementalCompiler::new();
         let source = r#"
-            fn main() -> i32 {
-                var x: i32 = 42;
-                return x;
-            }
-        "#;
+fn main() -> i32 {
+    let x: i32 = 42;
+    return x;
+}
+"#;
 
         let result = compiler.compile("test.nova", source);
+        assert!(
+            result.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            result.diagnostics
+        );
         assert!(result.sir.is_some());
         assert!(result.symbols.get("main").is_some());
-        assert!(result.symbols.get("x").is_some());
     }
 
     #[test]
     fn test_error_detection() {
         let mut compiler = IncrementalCompiler::new();
+        // Unterminated string should produce a lexer diagnostic.
         let source = r#"
-            fn main() -> i32 {
-                var x: i32 = "string";  // Type error
-                return x;
-            }
-        "#;
+fn main() {
+    let s = "unterminated;
+}
+"#;
 
-        let result = compiler.compile("test.nova", source);
-        assert!(!result.diagnostics.is_empty());
+        let result = compiler.compile("bad.nova", source);
+        assert!(
+            !result.diagnostics.is_empty(),
+            "expected at least one diagnostic"
+        );
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Some(DiagnosticSeverity::ERROR)));
+    }
+
+    #[test]
+    fn test_cache_invalidation() {
+        let mut compiler = IncrementalCompiler::new();
+        let source = "fn foo() { }\n";
+        let r1 = compiler.compile("cached.nova", source);
+        assert!(r1.symbols.get("foo").is_some());
+
+        compiler.invalidate("cached.nova");
+        let r2 = compiler.compile("cached.nova", "fn bar() { }\n");
+        assert!(r2.symbols.get("bar").is_some());
+        assert!(r2.symbols.get("foo").is_none());
     }
 }

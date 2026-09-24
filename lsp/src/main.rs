@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use thiserror::Error;
-use crate::compiler_integration::{IncrementalCompiler, CompileResult, SymbolEntry, SymbolKind};
+use crate::compiler_integration::{IncrementalCompiler, NovaSymbolKind};
 
 #[derive(Error, Debug)]
 pub enum LspError {
@@ -417,9 +417,52 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
-    async fn workspace_symbol(&self, _params: WorkspaceSymbolParams) -> Result<Option<Vec<SymbolInformation>>> {
-        // TODO: Implement workspace-wide symbol search
-        Ok(None)
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
+        // Search all open documents' symbol tables for names matching the query.
+        let query = params.query.to_lowercase();
+        let compiler = self.compiler.read().await;
+        let mut results = Vec::new();
+
+        for uri_str in compiler.cached_uris() {
+            let Some(cached) = compiler.cached_result(&uri_str) else {
+                continue;
+            };
+            let Ok(uri) = Url::parse(&uri_str) else {
+                continue;
+            };
+            for entries in cached.symbols.symbols.values() {
+                for entry in entries {
+                    if !query.is_empty() && !entry.name.to_lowercase().contains(&query) {
+                        continue;
+                    }
+                    results.push(SymbolInformation {
+                        name: entry.name.clone(),
+                        kind: entry.kind.to_lsp(),
+                        tags: None,
+                        deprecated: None,
+                        location: Location {
+                            uri: uri.clone(),
+                            range: Range {
+                                start: Position {
+                                    line: entry.line,
+                                    character: entry.character,
+                                },
+                                end: Position {
+                                    line: entry.line,
+                                    character: entry.character + entry.name.len() as u32,
+                                },
+                            },
+                        },
+                        container_name: Some(entry.scope.clone()),
+                    });
+                }
+            }
+        }
+
+        Ok(Some(results))
     }
 
     async fn diagnostic(&self, params: DocumentDiagnosticParams) -> Result<DocumentDiagnosticReportResult> {
