@@ -1,7 +1,0 @@
-fn main() {
-    let x = 10;
-    if x > 5 {
-        return x;
-    }
-    println("Value is small");
-}

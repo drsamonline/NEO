@@ -137,9 +137,9 @@ Converts AST to SIR:
 │   └── wasm/            # WebAssembly backend
 │
 ├── runtime/              # Runtime system (scaffold)
-├── package-manager/      # Package management (scaffold)
-├── language-server/      # LSP implementation (scaffold)
-├── debugger/             # Debugger (scaffold)
+├── pkg/                  # Package manager (nova-pkg)
+├── lsp/                  # LSP implementation
+├── dbg/                  # Debugger
 │
 └── crates/
     └── nova-common/      # Shared utilities

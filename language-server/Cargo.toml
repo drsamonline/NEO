@@ -1,6 +1,0 @@
-[package]
-name = "nova-language-server"
-version.workspace = true
-edition.workspace = true
-publish = false
-description = "NOVA language server architecture scaffold"
