@@ -30,7 +30,7 @@ pub enum ResolverError {
 
 /// Resolve all dependencies for a manifest
 pub fn resolve(manifest: &Manifest) -> Result<HashMap<String, Manifest>, ResolverError> {
-    let mut resolved = HashMap::new();
+    let mut resolved: HashMap<String, Manifest> = HashMap::new();
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     
