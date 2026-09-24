@@ -284,6 +284,12 @@ impl CGenerator {
                 self.indent_level -= 1;
                 self.writeln("}");
             }
+            SirStatement::Break => {
+                self.writeln("break;");
+            }
+            SirStatement::Continue => {
+                self.writeln("continue;");
+            }
         }
     }
 
@@ -388,6 +394,8 @@ impl CGenerator {
             SirBinOp::Ge => ">=",
             SirBinOp::And => "&&",
             SirBinOp::Or => "||",
+            // Ranges are lowered before codegen; if one reaches here, degrade to a comma expression.
+            SirBinOp::Range => ",",
         }
     }
 

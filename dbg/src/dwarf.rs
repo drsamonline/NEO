@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::fs::File;
-use std::io::{Read, Seek};
+use std::io::Read;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -207,7 +207,7 @@ impl DwarfParser {
     }
 
     /// Parse DWARF info from a buffer
-    pub fn parse_buffer(&self, data: &[u8]) -> Result<DwarfInfo, DwarfError> {
+    pub fn parse_buffer(&self, _data: &[u8]) -> Result<DwarfInfo, DwarfError> {
         // Placeholder implementation
         // In production, this would use gimli or similar library
         // to parse .debug_info, .debug_abbrev, .debug_str, etc.
@@ -293,14 +293,14 @@ impl DwarfParser {
     }
 
     /// Find function by address
-    pub fn find_function_by_addr(&self, info: &DwarfInfo, addr: u64) -> Option<&FunctionSymbol> {
+    pub fn find_function_by_addr<'a>(&self, info: &'a DwarfInfo, addr: u64) -> Option<&'a FunctionSymbol> {
         info.symbol_table.functions.iter().find(|f| {
             addr >= f.low_pc && addr < f.high_pc
         })
     }
 
     /// Find variable by name and scope
-    pub fn find_variable(&self, info: &DwarfInfo, name: &str, scope: &str) -> Option<&VariableSymbol> {
+    pub fn find_variable<'a>(&self, info: &'a DwarfInfo, name: &str, scope: &str) -> Option<&'a VariableSymbol> {
         info.symbol_table.variables.iter().find(|v| {
             v.name == name && v.scope == scope
         })

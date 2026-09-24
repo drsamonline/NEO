@@ -32,6 +32,20 @@ pub enum DebuggerError {
     
     #[error("Failed to attach to process: {0}")]
     AttachFailed(String),
+
+    #[error("Readline error: {0}")]
+    Readline(#[from] rustyline::error::ReadlineError),
+}
+
+impl std::fmt::Display for session::StackFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.file, self.line) {
+            (Some(file), Some(line)) => {
+                write!(f, "{} () at {}:{} (0x{:x})", self.function, file, line, self.address)
+            }
+            _ => write!(f, "{} () at 0x{:x}", self.function, self.address),
+        }
+    }
 }
 
 #[derive(Parser)]
@@ -51,9 +65,9 @@ struct Cli {
     #[arg(short, long)]
     remote: Option<String>,
     
-    /// Command script to execute
-    #[arg(short, long)]
-    command: Option<PathBuf>,
+    /// Command script file containing debugger commands, one per line
+    #[arg(short = 'c', long = "script")]
+    script: Option<PathBuf>,
     
     /// Start in non-interactive mode
     #[arg(short, long)]
@@ -164,6 +178,11 @@ fn run(cli: Cli) -> Result<(), DebuggerError> {
     // Create debug session
     let mut session = session::DebugSession::new(target)?;
     
+    // Execute a command script file if provided (one REPL-style command per line)
+    if let Some(script) = cli.script {
+        return run_script(&mut session, &script);
+    }
+    
     // Handle subcommands
     if let Some(cmd) = cli.command {
         return execute_command(&mut session, cmd);
@@ -247,6 +266,23 @@ fn execute_command(session: &mut session::DebugSession, cmd: Commands) -> Result
             Ok(())
         }
     }
+}
+
+/// Execute a script file of debugger commands (one REPL-style command per line).
+fn run_script(session: &mut session::DebugSession, path: &std::path::Path) -> Result<(), DebuggerError> {
+    let content = std::fs::read_to_string(path)?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        match commands::execute_line(session, trimmed) {
+            Ok(commands::LineOutcome::Continue) => {}
+            Ok(commands::LineOutcome::Quit) => break,
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+    Ok(())
 }
 
 fn repl_loop(session: &mut session::DebugSession) -> Result<(), DebuggerError> {

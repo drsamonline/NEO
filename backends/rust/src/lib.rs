@@ -294,28 +294,33 @@ impl RustBackend {
 mod tests {
     use super::*;
     use nova_compiler::sir::*;
+    use nova_common::Span;
 
     #[test]
     fn test_simple_function() {
         let program = SirProgram {
             functions: vec![SirFunction {
                 name: "add".to_string(),
-                params: vec!["a".to_string(), "b".to_string()],
-                return_type: "int".to_string(),
+                params: vec![
+                    SirParam { name: "a".to_string(), typ: "int".to_string() },
+                    SirParam { name: "b".to_string(), typ: "int".to_string() },
+                ],
+                return_type: Some("int".to_string()),
                 body: vec![
-                    SirStatement::Return(Some(SirExpr::Binary {
-                        left: Box::new(SirExpr::Identifier("a".to_string())),
+                    SirStatement::Return(Some(SirExpr::BinOp {
+                        left: Box::new(SirExpr::Var("a".to_string())),
                         op: SirBinOp::Add,
-                        right: Box::new(SirExpr::Identifier("b".to_string())),
+                        right: Box::new(SirExpr::Var("b".to_string())),
                     })),
                 ],
+                span: Span::default(),
             }],
             globals: vec![],
         };
 
         let mut backend = RustBackend::new();
         let rust_code = backend.generate(&program);
-        
+
         assert!(rust_code.contains("fn add("));
         assert!(rust_code.contains("return (a + b);"));
     }
@@ -326,27 +331,28 @@ mod tests {
             functions: vec![SirFunction {
                 name: "main".to_string(),
                 params: vec![],
-                return_type: "void".to_string(),
+                return_type: Some("void".to_string()),
                 body: vec![
                     SirStatement::For {
                         pattern: "i".to_string(),
-                        iterable: SirExpr::Binary {
+                        iterable: SirExpr::BinOp {
                             left: Box::new(SirExpr::Literal(SirLiteral::Int(0))),
                             op: SirBinOp::Range,
                             right: Box::new(SirExpr::Literal(SirLiteral::Int(5))),
                         },
                         body: vec![
-                            SirStatement::Expr(SirExpr::Identifier("i".to_string())),
+                            SirStatement::Expr(SirExpr::Var("i".to_string())),
                         ],
                     },
                 ],
+                span: Span::default(),
             }],
             globals: vec![],
         };
 
         let mut backend = RustBackend::new();
         let rust_code = backend.generate(&program);
-        
+
         assert!(rust_code.contains("for i in 0..5"));
     }
 }

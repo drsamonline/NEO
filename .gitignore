@@ -1,5 +1,2 @@
 # Rust build artifacts
 target/
-
-# Cargo lock file (optional, usually committed for applications, ignored for libraries)
-# Cargo.lock
