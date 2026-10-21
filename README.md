@@ -23,7 +23,6 @@
 
 ---
 
-# NOVA
 
 Semantic Programming Platform
 
