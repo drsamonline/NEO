@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEO — NOVA, a Semantic Programming Platform</title>
+<meta name="description" content="NEO hosts NOVA, a statically-typed, compiled systems programming language. A semantic compiler pipeline lowers source to C, JavaScript, Rust and WebAssembly, with a runtime, package manager, language server and debugger.">
+<meta name="keywords" content="NOVA, NEO, semantic programming platform, systems programming language, compiler, Rust, WebAssembly, JavaScript backend, C backend, language server, debugger, package manager, drsamonline">
+<meta name="author" content="Dr. Sohil Momin">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#050505">
+<link rel="canonical" href="https://drsamonline.github.io/NEO/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NEO">
+<meta property="og:title" content="NEO — NOVA, a Semantic Programming Platform">
+<meta property="og:description" content="A statically-typed, compiled systems programming language. Source lowers through a semantic pipeline to C, JavaScript, Rust and WebAssembly.">
+<meta property="og:url" content="https://drsamonline.github.io/NEO/">
+<meta property="og:image" content="https://socialify.git.ci/drsamonline/NEO/image?name=1&amp;owner=1&amp;description=1&amp;language=1&amp;theme=Dark&amp;font=Inter">
+<meta property="og:image:alt" content="NEO — NOVA, a semantic programming platform">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEO — NOVA, a Semantic Programming Platform">
+<meta name="twitter:description" content="A statically-typed, compiled systems programming language. Source lowers through a semantic pipeline to C, JavaScript, Rust and WebAssembly.">
+<meta name="twitter:image" content="https://socialify.git.ci/drsamonline/NEO/image?name=1&amp;owner=1&amp;description=1&amp;language=1&amp;theme=Dark&amp;font=Inter">
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+
+<style>
+  :root{
+    --bg:#050505;
+    --fg:#ffffff;
+    --muted:rgba(255,255,255,.52);
+    --faint:rgba(255,255,255,.30);
+    --line:rgba(255,255,255,.12);
+    --line-strong:rgba(255,255,255,.22);
+    --accent:#3b82f6;
+    --maxw:1120px;
+    --ease:cubic-bezier(.22,.61,.36,1);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--fg);
+    font-family:"Inter","Helvetica Neue",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    font-weight:300;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  ::selection{background:var(--accent);color:#050505}
+  a{color:inherit;text-decoration:none}
+  img{max-width:100%;display:block}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+  .rule{height:1px;background:var(--line);border:0;margin:0}
+  .accent-rule{height:1px;width:64px;background:var(--accent);border:0;margin:0}
+
+  /* ---------- nav ---------- */
+  .nav{
+    position:sticky;top:0;z-index:50;
+    background:rgba(5,5,5,.72);
+    backdrop-filter:saturate(140%) blur(14px);
+    -webkit-backdrop-filter:saturate(140%) blur(14px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    max-width:var(--maxw);margin:0 auto;padding:0 28px;
+    height:64px;display:flex;align-items:center;justify-content:space-between;gap:24px;
+  }
+  .brand{display:flex;align-items:center;gap:12px;font-weight:400;letter-spacing:.32em;font-size:12px;text-transform:uppercase}
+  .brand svg{width:18px;height:18px;display:block}
+  .nav-links{display:flex;align-items:center;gap:30px}
+  .nav-links a{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);transition:color .3s var(--ease)}
+  .nav-links a:hover{color:var(--fg)}
+  .nav-links a.gh{color:var(--fg)}
+  .nav-links a.gh:hover{color:var(--accent)}
+  .nav-toggle{display:none;background:none;border:1px solid var(--line);color:var(--fg);width:40px;height:34px;border-radius:2px;cursor:pointer}
+  @media (max-width:760px){
+    .nav-links{
+      position:absolute;top:64px;left:0;right:0;
+      flex-direction:column;align-items:flex-start;gap:0;
+      background:#070707;border-bottom:1px solid var(--line);
+      padding:8px 28px 18px;display:none;
+    }
+    .nav-links.open{display:flex}
+    .nav-links a{padding:12px 0;width:100%}
+    .nav-toggle{display:block}
+  }
+
+  /* ---------- hero ---------- */
+  .hero{padding:clamp(88px,17vh,190px) 0 clamp(72px,12vh,150px);position:relative}
+  .hero .eyebrow{
+    font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:var(--faint);
+    display:flex;align-items:center;gap:16px;margin-bottom:34px;
+  }
+  .hero .eyebrow .dot{width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
+  .display{
+    font-weight:200;
+    font-size:clamp(56px,13.5vw,168px);
+    line-height:.94;
+    letter-spacing:-.035em;
+    margin:0;
+  }
+  .display .thin{color:var(--faint)}
+  .hero .lede{
+    margin:40px 0 0;max-width:600px;
+    font-size:clamp(16px,2.1vw,20px);font-weight:300;color:rgba(255,255,255,.82);
+  }
+  .hero .sub{margin:20px 0 0;max-width:560px;color:var(--muted);font-size:15px}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:16px;margin-top:46px}
+  .btn{
+    display:inline-flex;align-items:center;gap:10px;
+    padding:13px 26px;border:1px solid var(--line-strong);border-radius:2px;
+    font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--fg);
+    transition:border-color .35s var(--ease),color .35s var(--ease),background .35s var(--ease);
+    background:transparent;cursor:pointer;font-family:inherit;
+  }
+  .btn:hover{border-color:var(--fg)}
+  .btn.primary{border-color:var(--accent);color:var(--accent)}
+  .btn.primary:hover{background:var(--accent);color:#050505}
+  .btn svg{width:14px;height:14px}
+
+  /* ---------- badges ---------- */
+  .badges{padding:0 0 clamp(56px,9vh,104px)}
+  .badge-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding-top:26px}
+  .badge-row + .badge-row{margin-top:16px;padding-top:0}
+  .badge-row img{height:20px;opacity:.9}
+  .badge-label{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--faint);margin-right:6px}
+  .cchip{
+    display:inline-flex;align-items:center;gap:8px;
+    border:1px solid var(--line);border-radius:999px;padding:5px 13px;
+    font-size:11px;letter-spacing:.06em;color:var(--muted);
+  }
+  .cchip b{color:var(--fg);font-weight:400}
+  .cchip .swatch{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+
+  /* ---------- sections ---------- */
+  section{position:relative}
+  .sec{padding:clamp(72px,12vh,140px) 0}
+  .sec-head{margin-bottom:clamp(40px,7vh,72px)}
+  .sec-num{font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:var(--faint)}
+  .sec-title{
+    font-weight:200;font-size:clamp(30px,5vw,56px);line-height:1.05;
+    letter-spacing:-.02em;margin:18px 0 0;
+  }
+  .sec-desc{margin:22px 0 0;max-width:620px;color:var(--muted);font-size:15px}
+  .sec-head .accent-rule{margin-top:28px}
+
+  /* ---------- cards ---------- */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line)}
+  .card{
+    background:var(--bg);padding:40px 34px 44px;min-height:236px;
+    display:flex;flex-direction:column;gap:18px;
+    transition:background .4s var(--ease);
+  }
+  .card:hover{background:#0a0a0a}
+  .card .ico{width:26px;height:26px;color:var(--accent)}
+  .card h3{margin:0;font-weight:400;font-size:17px;letter-spacing:-.01em}
+  .card p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}
+  .card .k{font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--faint);margin-top:auto;padding-top:12px}
+  @media (max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:620px){.grid{grid-template-columns:1fr}}
+
+  /* ---------- pipeline / how ---------- */
+  .steps{border-top:1px solid var(--line)}
+  .step{
+    display:grid;grid-template-columns:76px 1fr auto;gap:26px;align-items:baseline;
+    padding:30px 0;border-bottom:1px solid var(--line);
+    transition:padding-left .45s var(--ease);
+  }
+  .step:hover{padding-left:12px}
+  .step .idx{font-size:12px;letter-spacing:.2em;color:var(--faint)}
+  .step .body h3{margin:0 0 8px;font-weight:400;font-size:17px}
+  .step .body p{margin:0;color:var(--muted);font-size:14px;max-width:660px}
+  .step .meta{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+  @media (max-width:640px){.step{grid-template-columns:44px 1fr}.step .meta{display:none}}
+  .chain{
+    margin-top:44px;padding:26px 28px;border:1px solid var(--line);border-radius:2px;
+    font-size:13px;color:var(--muted);overflow-x:auto;white-space:nowrap;
+    letter-spacing:.02em;
+  }
+  .chain .hl{color:var(--accent)}
+  .chain .sep{color:var(--faint);padding:0 8px}
+
+  /* ---------- demo / code ---------- */
+  .demo-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:start}
+  @media (max-width:860px){.demo-grid{grid-template-columns:1fr;gap:32px}}
+  .codebox{
+    border:1px solid var(--line);border-radius:2px;overflow:hidden;background:#080808;
+  }
+  .codebar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:11px 16px;border-bottom:1px solid var(--line);
+    font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--faint);
+  }
+  .codebar .dots{display:flex;gap:6px}
+  .codebar .dots i{width:7px;height:7px;border-radius:50%;background:var(--line-strong)}
+  .codebar .dots i:first-child{background:var(--accent)}
+  pre{margin:0;padding:22px 20px;overflow-x:auto;font-size:12.5px;line-height:1.85}
+  code,pre{font-family:"SFMono-Regular",ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;font-weight:400}
+  pre .c{color:rgba(255,255,255,.34)}
+  pre .kw{color:var(--accent)}
+  pre .t{color:rgba(255,255,255,.86)}
+  pre .n{color:rgba(255,255,255,.62)}
+  .demo-note{margin:22px 0 0;font-size:13px;color:var(--faint);border-left:1px solid var(--accent);padding-left:16px}
+  .demo-col h3{font-weight:400;font-size:15px;letter-spacing:.02em;margin:0 0 14px}
+  .demo-col + .demo-col{margin-top:34px}
+  .terminal{
+    border:1px solid var(--line);border-radius:2px;background:#080808;padding:20px;
+    font-size:12.5px;line-height:2;overflow-x:auto;
+  }
+  .terminal .p{color:var(--accent)}
+  .terminal .o{color:var(--muted)}
+  .terminal .cm{color:rgba(255,255,255,.34)}
+
+  /* ---------- get started ---------- */
+  .gs-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:44px}
+  @media (max-width:820px){.gs-grid{grid-template-columns:1fr;gap:36px}}
+  .gs-block h3{font-weight:400;font-size:15px;margin:0 0 18px;letter-spacing:.02em}
+  .gs-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+  .gs-list li{padding:16px 0;border-bottom:1px solid var(--line);color:var(--muted);font-size:14px;display:flex;gap:14px}
+  .gs-list li svg{width:16px;height:16px;color:var(--accent);flex:none;margin-top:4px}
+  .cmd{
+    border:1px solid var(--line);border-radius:2px;background:#080808;padding:22px 20px;
+    font-size:12.5px;line-height:2;overflow-x:auto;
+  }
+  .cmd .p{color:var(--accent)}
+  .cmd .cm{color:rgba(255,255,255,.34)}
+  .cta{margin-top:64px;border-top:1px solid var(--line);padding-top:44px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+  .cta p{margin:0;color:var(--muted);font-size:15px;max-width:520px}
+
+  /* ---------- faq ---------- */
+  .faq{border-top:1px solid var(--line)}
+  details{border-bottom:1px solid var(--line)}
+  summary{
+    list-style:none;cursor:pointer;padding:26px 0;display:flex;align-items:center;justify-content:space-between;gap:24px;
+    font-size:16px;font-weight:400;transition:color .3s var(--ease);
+  }
+  summary::-webkit-details-marker{display:none}
+  summary:hover{color:var(--accent)}
+  summary .pm{position:relative;width:14px;height:14px;flex:none}
+  summary .pm::before,summary .pm::after{content:"";position:absolute;background:currentColor;transition:transform .35s var(--ease),opacity .35s var(--ease)}
+  summary .pm::before{left:0;top:6.5px;width:14px;height:1px}
+  summary .pm::after{left:6.5px;top:0;width:1px;height:14px}
+  details[open] summary .pm::after{transform:scaleY(0);opacity:0}
+  details[open] summary{color:var(--fg)}
+  details p{margin:0 0 26px;color:var(--muted);font-size:14.5px;max-width:760px}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--line);padding:64px 0 72px;margin-top:0}
+  .foot-top{display:flex;flex-wrap:wrap;gap:36px;justify-content:space-between;align-items:flex-start}
+  .foot-brand .display{font-size:clamp(34px,6vw,64px);line-height:1}
+  .foot-brand p{margin:16px 0 0;color:var(--faint);font-size:13px;max-width:340px}
+  .foot-cols{display:flex;gap:72px;flex-wrap:wrap}
+  .foot-col h4{margin:0 0 16px;font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--faint);font-weight:400}
+  .foot-col a{display:block;font-size:13px;color:var(--muted);padding:6px 0;transition:color .3s var(--ease)}
+  .foot-col a:hover{color:var(--accent)}
+  .foot-bottom{
+    margin-top:56px;padding-top:26px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;
+    font-size:12px;color:var(--faint);letter-spacing:.04em;
+  }
+  .foot-bottom .built b{color:var(--fg);font-weight:400}
+  .foot-bottom a:hover{color:var(--accent)}
+
+  /* ---------- motion ---------- */
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .9s var(--ease),transform .9s var(--ease)}
+  .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .reveal{opacity:1;transform:none;transition:none}
+    .step:hover{padding-left:0}
+    *{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav" aria-label="Primary">
+  <div class="nav-inner">
+    <a class="brand" href="#top" aria-label="NEO home">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10.2" stroke="#3b82f6" stroke-width="1"/>
+        <circle cx="12" cy="12" r="3.2" fill="#ffffff"/>
+      </svg>
+      NEO
+    </a>
+    <div class="nav-links" id="navlinks">
+      <a href="#capabilities">Capabilities</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#demo">Demo</a>
+      <a href="#start">Get started</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/drsamonline/NEO" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+    <button class="nav-toggle" id="navtoggle" aria-label="Toggle navigation" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+        <path d="M4 8h16M4 16h16" stroke="#fff" stroke-width="1.2"/>
+      </svg>
+    </button>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="top">
+  <div class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span> Repository · drsamonline/NEO</p>
+    <h1 class="display reveal">NOVA<span class="thin">.</span></h1>
+    <p class="lede reveal">A semantic programming platform. A statically-typed, compiled systems language whose compiler lowers source through a semantic pipeline to C, JavaScript, Rust and WebAssembly.</p>
+    <p class="sub reveal">The repository is <strong style="font-weight:400;color:var(--fg)">NEO</strong>; the language and toolchain inside it are <strong style="font-weight:400;color:var(--fg)">NOVA</strong>. Phase&nbsp;1–3 are marked complete; Phase&nbsp;4 is next.</p>
+    <div class="hero-actions reveal">
+      <a class="btn primary" href="https://github.com/drsamonline/NEO" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        View source
+      </a>
+      <a class="btn" href="#pipeline">The pipeline</a>
+    </div>
+  </div>
+</header>
+
+<hr class="rule">
+
+<!-- ============ BADGES ============ -->
+<div class="badges">
+  <div class="wrap">
+    <div class="badge-row reveal">
+      <span class="badge-label">Live</span>
+      <img src="https://img.shields.io/badge/Phase%201-Complete-brightgreen" alt="Phase 1 Complete" onerror="this.style.display='none'">
+      <img src="https://img.shields.io/badge/Phase%202-Complete-brightgreen" alt="Phase 2 Complete" onerror="this.style.display='none'">
+      <img src="https://img.shields.io/badge/Phase%203-Complete-brightgreen" alt="Phase 3 Complete" onerror="this.style.display='none'">
+      <img src="https://img.shields.io/badge/Phase%204-Next-yellow" alt="Phase 4 Next" onerror="this.style.display='none'">
+      <img src="https://img.shields.io/badge/Backends-4%20targets-orange" alt="4 backend targets" onerror="this.style.display='none'">
+      <img src="https://img.shields.io/badge/version-0.6.0-blue" alt="Version 0.6.0" onerror="this.style.display='none'">
+      <img src="https://img.shields.io/badge/language-Rust-dea584" alt="Written in Rust" onerror="this.style.display='none'">
+    </div>
+    <div class="badge-row reveal">
+      <span class="badge-label">In page</span>
+      <span class="cchip"><span class="swatch"></span>Compiler core <b>~3,500 LOC</b></span>
+      <span class="cchip">Runtime <b>2,881 LOC</b></span>
+      <span class="cchip">Tooling <b>3,601 LOC</b></span>
+      <span class="cchip">Backends <b>C · JS · Rust · WASM</b></span>
+    </div>
+  </div>
+</div>
+
+<hr class="rule">
+
+<!-- ============ CAPABILITIES ============ -->
+<section class="sec" id="capabilities">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="sec-num">01 — Capabilities</p>
+      <h2 class="sec-title">What is implemented.</h2>
+      <p class="sec-desc">Claims below are taken from the repository's own README and development plan. Where a piece is a scaffold rather than a finished feature, it is marked as such.</p>
+      <hr class="accent-rule">
+    </div>
+
+    <div class="grid">
+      <article class="card reveal">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+        <h3>Semantic pipeline</h3>
+        <p>A multi-pass compiler: lexer, recursive-descent parser, semantic analyser, a Semantic Intermediate Representation, a lowerer, and a backend interface.</p>
+        <span class="k">Phase 1 · complete</span>
+      </article>
+
+      <article class="card reveal">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="4" width="7" height="7" stroke="currentColor" stroke-width="1.1"/>
+          <rect x="14" y="4" width="7" height="7" stroke="currentColor" stroke-width="1.1"/>
+          <rect x="3" y="13" width="7" height="7" stroke="currentColor" stroke-width="1.1"/>
+          <rect x="14" y="13" width="7" height="7" stroke="currentColor" stroke-width="1.1"/>
+        </svg>
+        <h3>Four backends</h3>
+        <p>Code generators for C, JavaScript, Rust and WebAssembly sit behind one backend abstraction, so a single SIR can be emitted to multiple targets.</p>
+        <span class="k">1,529 LOC total</span>
+      </article>
+
+      <article class="card reveal">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.4" stroke="currentColor" stroke-width="1.1"/>
+          <path d="M12 7.4v4.6l3 1.8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+        <h3>Runtime system</h3>
+        <p>Memory management with an arena allocator and mark-and-sweep GC foundation, a runtime type registry, error handling with backtraces, FFI, I/O, threading and async primitives.</p>
+        <span class="k">Phase 2 · 2,881 LOC · 30+ tests</span>
+      </article>
+
+      <article class="card reveal">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 6.5 12 3l8 3.5v11L12 21l-8-3.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+          <path d="M4 6.5 12 10l8-3.5M12 10v11" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+        </svg>
+        <h3>Package manager</h3>
+        <p>A <code>nova-pkg</code> CLI with twelve commands, <code>Nova.toml</code> manifest parsing and validation, and a semver resolver with conflict detection.</p>
+        <span class="k">Phase 3 · 1,674 LOC</span>
+      </article>
+
+      <article class="card reveal">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M8 4 3 12l5 8M16 4l5 8-5 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h3>Language server &amp; debugger</h3>
+        <p>An LSP implementation covering completion, hover, go-to-definition, symbols and diagnostics, plus an interactive debugger with breakpoints and session control.</p>
+        <span class="k">Phase 3 · LSP 522 · dbg 1,405</span>
+      </article>
+
+      <article class="card reveal">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h3>Written in Rust</h3>
+        <p>A multi-crate Cargo workspace — compiler, runtime, package manager, language server, debugger, four backends and a shared <code>nova-common</code> crate.</p>
+        <span class="k">workspace v0.6.0</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ PIPELINE ============ -->
+<section class="sec" id="pipeline">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="sec-num">02 — How it works</p>
+      <h2 class="sec-title">Source in. Target code out.</h2>
+      <p class="sec-desc">Every stage below is described in the repository's architecture document, with the line counts the project reports for each module.</p>
+      <hr class="accent-rule">
+    </div>
+
+    <div class="steps">
+      <div class="step reveal">
+        <span class="idx">01</span>
+        <div class="body"><h3>Lexer</h3><p>Tokenises keywords, identifiers, literals and operators with Unicode support, and carries span information for diagnostics.</p></div>
+        <span class="meta">309 LOC</span>
+      </div>
+      <div class="step reveal">
+        <span class="idx">02</span>
+        <div class="body"><h3>Parser</h3><p>A recursive-descent parser with operator precedence and error recovery that keeps going after a syntax error to report more of them.</p></div>
+        <span class="meta">907 LOC</span>
+      </div>
+      <div class="step reveal">
+        <span class="idx">03</span>
+        <div class="body"><h3>Semantic analyser</h3><p>Builds the symbol table, resolves names and scopes, and type-checks — including basic inference — before any code is generated.</p></div>
+        <span class="meta">773 LOC</span>
+      </div>
+      <div class="step reveal">
+        <span class="idx">04</span>
+        <div class="body"><h3>SIR &amp; lowerer</h3><p>The annotated AST is lowered into a language-agnostic Semantic Intermediate Representation: a type-preserving, optimisation-ready IR.</p></div>
+        <span class="meta">146 + 550 LOC</span>
+      </div>
+      <div class="step reveal">
+        <span class="idx">05</span>
+        <div class="body"><h3>Backend</h3><p>The SIR is emitted to a chosen target through the backend interface — portable C99, ES6+ JavaScript, idiomatic Rust, or a WebAssembly module.</p></div>
+        <span class="meta">1,529 LOC</span>
+      </div>
+    </div>
+
+    <div class="chain reveal" aria-label="Compilation pipeline">
+      Source<span class="sep">→</span>Lexer<span class="sep">→</span>Parser<span class="sep">→</span>AST<span class="sep">→</span><span class="hl">Semantic Analyser</span><span class="sep">→</span>SIR<span class="sep">→</span>Lowerer<span class="sep">→</span><span class="hl">Backend</span><span class="sep">→</span>Target Code
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ DEMO ============ -->
+<section class="sec" id="demo">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="sec-num">03 — Demo</p>
+      <h2 class="sec-title">The language, as shipped.</h2>
+      <p class="sec-desc">A real example from the repository — recursive Fibonacci — and the documented way to build and run it.</p>
+      <hr class="accent-rule">
+    </div>
+
+    <div class="demo-grid">
+      <div class="reveal">
+        <div class="codebox">
+          <div class="codebar"><span>examples/fibonacci.nova</span><span class="dots"><i></i><i></i><i></i></span></div>
+<pre><code><span class="c">// NOVA Example: Fibonacci Sequence</span>
+<span class="kw">fn</span> fibonacci(n: <span class="t">int</span>) -&gt; <span class="t">int</span> {
+    <span class="kw">if</span> n &lt;= <span class="n">1</span> {
+        <span class="kw">return</span> n;
+    }
+    <span class="kw">return</span> fibonacci(n - <span class="n">1</span>) + fibonacci(n - <span class="n">2</span>);
+}
+
+<span class="kw">fn</span> main() -&gt; <span class="t">int</span> {
+    <span class="kw">let</span> count: <span class="t">int</span> = <span class="n">10</span>;
+    print(<span class="t">"First"</span>);
+    print(count);
+    <span class="kw">return</span> <span class="n">0</span>;
+}</code></pre>
+        </div>
+        <p class="demo-note">Screenshot placeholder: the repository currently ships no product screenshots. This block reproduces the example source verbatim; nothing here is a mock-up of a feature that does not exist.</p>
+      </div>
+
+      <div>
+        <div class="demo-col reveal">
+          <h3>Build &amp; compile</h3>
+          <div class="terminal">
+<span class="cm"># Rust toolchain required</span>
+<span class="p">$</span> cargo build --release
+<span class="p">$</span> export PATH="$PWD/target/release:$PATH"
+<span class="p">$</span> nova compile examples/fibonacci.nova
+<span class="p">$</span> nova run examples/fibonacci.nova
+          </div>
+        </div>
+        <div class="demo-col reveal">
+          <h3>Choose a target</h3>
+          <div class="terminal">
+<span class="p">$</span> nova compile --target <span class="o">c</span>           examples/hello.nova
+<span class="p">$</span> nova compile --target <span class="o">javascript</span>  examples/hello.nova
+<span class="p">$</span> nova compile --target <span class="o">rust</span>        examples/hello.nova
+<span class="p">$</span> nova compile --target <span class="o">wasm</span>        examples/hello.nova
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ GET STARTED ============ -->
+<section class="sec" id="start">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="sec-num">04 — Get started</p>
+      <h2 class="sec-title">Clone, build, compile.</h2>
+      <p class="sec-desc">The steps below follow the repository's examples guide. Note that the project is pre-release and Phase 4 work — standard library, integration and docs — is still to come.</p>
+      <hr class="accent-rule">
+    </div>
+
+    <div class="gs-grid">
+      <div class="reveal">
+        <div class="gs-block">
+          <h3>Prerequisites</h3>
+          <ul class="gs-list">
+            <li>
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              A Rust toolchain, installed via <code>rustup</code>.
+            </li>
+            <li>
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              A C toolchain, if you want to compile the C backend output.
+            </li>
+            <li>
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Git, to clone <code>drsamonline/NEO</code>.
+            </li>
+            <li>
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              An editor of choice; the repo also carries a VS Code extension scaffold.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <div class="gs-block">
+          <h3>From zero to a compiled example</h3>
+          <div class="cmd">
+<span class="cm"># 1. Clone</span>
+<span class="p">$</span> git clone https://github.com/drsamonline/NEO.git
+<span class="p">$</span> cd NEO
+
+<span class="cm"># 2. Build the workspace</span>
+<span class="p">$</span> cargo build --release
+
+<span class="cm"># 3. Compile and run</span>
+<span class="p">$</span> nova compile examples/hello.nova
+<span class="p">$</span> ./hello
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta reveal">
+      <p>Everything lives in the repository — source, examples, language spec and development plan. Read it, build it, and see where Phase 4 goes.</p>
+      <a class="btn primary" href="https://github.com/drsamonline/NEO" target="_blank" rel="noopener">Open the repository ↗</a>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ FAQ ============ -->
+<section class="sec" id="faq">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="sec-num">05 — FAQ</p>
+      <h2 class="sec-title">Questions, answered plainly.</h2>
+      <hr class="accent-rule">
+    </div>
+
+    <div class="faq">
+      <details class="reveal" open>
+        <summary>Is NOVA replacing all languages?<span class="pm"></span></summary>
+        <p>No. The repository's FAQ is direct about this: it aims to orchestrate existing ecosystems rather than replace them.</p>
+      </details>
+
+      <details class="reveal">
+        <summary>Why is the repository called NEO and the language NOVA?<span class="pm"></span></summary>
+        <p>The repository is <code>drsamonline/NEO</code>; the project it contains is named NOVA and describes itself as a semantic programming platform. This page uses both names as the source does.</p>
+      </details>
+
+      <details class="reveal">
+        <summary>What targets can it emit today?<span class="pm"></span></summary>
+        <p>Four backends are implemented: C, JavaScript, Rust and WebAssembly. The C backend is described as tested and working; the others are described as implemented.</p>
+      </details>
+
+      <details class="reveal">
+        <summary>How mature is the project?<span class="pm"></span></summary>
+        <p>Phases 1 to 3 — compiler core, runtime system and tooling — are marked complete in the development plan. Phase 4 (polish and integration: standard library, end-to-end testing, performance and documentation) is listed as next. It is a pre-release codebase.</p>
+      </details>
+
+      <details class="reveal">
+        <summary>How do I build it?<span class="pm"></span></summary>
+        <p>With a Rust toolchain installed, clone the repository and run <code>cargo build --release</code>. CI does the same, building and testing the whole workspace with <code>cargo build --workspace --all-targets</code> and <code>cargo test --workspace</code>.</p>
+      </details>
+
+      <details class="reveal">
+        <summary>What is the license?<span class="pm"></span></summary>
+        <p>Not yet chosen. The repository's LICENSE file is a placeholder asking to pick Apache-2.0 or MIT before the first public release — so treat this as unlicensed for now.</p>
+      </details>
+
+      <details class="reveal">
+        <summary>Where is the documentation?<span class="pm"></span></summary>
+        <p>In the repository: <code>docs/language/</code> holds a numbered language specification, alongside architecture, development-plan and runtime-progress documents. The documentation site under <code>website/</code> is a scaffold with placeholder pages.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand reveal">
+        <div class="display">NOVA<span style="color:var(--faint)">.</span></div>
+        <p>A semantic programming platform, built in the open inside the NEO repository.</p>
+      </div>
+      <div class="foot-cols reveal">
+        <div class="foot-col">
+          <h4>Repository</h4>
+          <a href="https://github.com/drsamonline/NEO" target="_blank" rel="noopener">Source code ↗</a>
+          <a href="https://github.com/drsamonline/NEO/blob/master/README.md" target="_blank" rel="noopener">README ↗</a>
+          <a href="https://github.com/drsamonline/NEO/blob/master/DEV_PLAN.md" target="_blank" rel="noopener">Development plan ↗</a>
+          <a href="https://github.com/drsamonline/NEO/blob/master/ARCHITECTURE.md" target="_blank" rel="noopener">Architecture ↗</a>
+        </div>
+        <div class="foot-col">
+          <h4>Documentation</h4>
+          <a href="https://github.com/drsamonline/NEO/tree/master/docs/language" target="_blank" rel="noopener">Language spec ↗</a>
+          <a href="https://github.com/drsamonline/NEO/tree/master/examples" target="_blank" rel="noopener">Examples ↗</a>
+          <a href="https://github.com/drsamonline/NEO/blob/master/CHANGELOG.md" target="_blank" rel="noopener">Changelog ↗</a>
+          <a href="https://github.com/drsamonline/NEO/blob/master/FAQ.md" target="_blank" rel="noopener">FAQ ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span class="built">Built by <b>Dr. Sohil Momin</b></span>
+      <span>© <span id="yr">2026</span> NEO · NOVA</span>
+    </div>
+  </div>
+</footer>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareSourceCode",
+      "name": "NOVA",
+      "alternateName": "NEO",
+      "description": "NOVA is a statically-typed, compiled systems programming language and semantic programming platform. Its compiler lowers source through a lexer, parser, semantic analyser, SIR and lowerer to four backends: C, JavaScript, Rust and WebAssembly.",
+      "codeRepository": "https://github.com/drsamonline/NEO",
+      "url": "https://drsamonline.github.io/NEO/",
+      "programmingLanguage": ["NOVA", "Rust"],
+      "runtimePlatform": "Cross-platform",
+      "license": "https://github.com/drsamonline/NEO/blob/master/LICENSE",
+      "author": {
+        "@type": "Person",
+        "name": "Dr. Sohil Momin",
+        "url": "https://github.com/drsamonline"
+      },
+      "keywords": "NOVA, NEO, semantic programming platform, compiler, Rust, WebAssembly, language server, debugger, package manager"
+    },
+    {
+      "@type": "WebSite",
+      "name": "NEO — NOVA, a Semantic Programming Platform",
+      "url": "https://drsamonline.github.io/NEO/",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is NOVA replacing all languages?",
+          "acceptedAnswer": {"@type": "Answer", "text": "No. It aims to orchestrate existing ecosystems."}
+        },
+        {
+          "@type": "Question",
+          "name": "What targets can it emit?",
+          "acceptedAnswer": {"@type": "Answer", "text": "Four backends are implemented: C, JavaScript, Rust and WebAssembly."}
+        },
+        {
+          "@type": "Question",
+          "name": "How mature is the project?",
+          "acceptedAnswer": {"@type": "Answer", "text": "Phases 1 to 3 — compiler core, runtime system and tooling — are marked complete. Phase 4, polish and integration, is listed as next."}
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // year
+  var yr = document.getElementById("yr");
+  if (yr) { yr.textContent = new Date().getFullYear(); }
+
+  // mobile nav
+  var toggle = document.getElementById("navtoggle");
+  var links = document.getElementById("navlinks");
+  if (toggle && links) {
+    toggle.addEventListener("click", function(){
+      var open = links.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    links.addEventListener("click", function(e){
+      if (e.target.tagName === "A") {
+        links.classList.remove("open");
+        toggle.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  // reveal on scroll
+  var items = Array.prototype.slice.call(document.querySelectorAll(".reveal"));
+  if (reduce || !("IntersectionObserver" in window)) {
+    items.forEach(function(el){ el.classList.add("in"); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (entry.isIntersecting) {
+        entry.target.classList.add("in");
+        io.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+  items.forEach(function(el, i){
+    el.style.transitionDelay = Math.min(i % 6 * 60, 300) + "ms";
+    io.observe(el);
+  });
+})();
+</script>
+</body>
+</html>

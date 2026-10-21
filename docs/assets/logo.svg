@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48" role="img" aria-label="NEO">
+  <g fill="none" stroke="#3b82f6" stroke-width="1">
+    <circle cx="20" cy="24" r="10"/>
+  </g>
+  <circle cx="20" cy="24" r="3" fill="#ffffff"/>
+  <text x="44" y="31" fill="#ffffff" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="300" letter-spacing="8">NEO</text>
+</svg>

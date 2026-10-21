@@ -1,3 +1,28 @@
+<div align="center">
+
+<img src="docs/assets/logo.svg" alt="NEO — NOVA" width="200">
+
+# NOVA — Semantic Programming Platform
+
+**A statically-typed, compiled systems programming language.** Its compiler lowers NOVA source through a semantic pipeline — lexer, parser, semantic analyser, SIR, lowerer — to four backends: **C, JavaScript, Rust and WebAssembly**, with a runtime, package manager, language server and debugger alongside.
+
+<a href="https://drsamonline.github.io/NEO/"><img src="https://img.shields.io/badge/Landing%20Page-Visit-3b82f6?style=flat-square" alt="Landing page"></a>
+<a href="https://img.shields.io/badge/Phase%201-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%201-Complete-brightgreen?style=flat-square" alt="Phase 1 Complete"></a>
+<a href="https://img.shields.io/badge/Phase%202-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%202-Complete-brightgreen?style=flat-square" alt="Phase 2 Complete"></a>
+<a href="https://img.shields.io/badge/Phase%203-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%203-Complete-brightgreen?style=flat-square" alt="Phase 3 Complete"></a>
+<a href="https://img.shields.io/badge/Phase%204-Next-yellow"><img src="https://img.shields.io/badge/Phase%204-Next-yellow?style=flat-square" alt="Phase 4 Next"></a>
+<a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.0-blue?style=flat-square" alt="Version 0.6.0"></a>
+<a href="backends/"><img src="https://img.shields.io/badge/Backends-4%20targets-orange?style=flat-square" alt="4 backend targets"></a>
+<a href="https://img.shields.io/badge/language-Rust-dea584"><img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square" alt="Rust"></a>
+
+**[Landing page](https://drsamonline.github.io/NEO/)** · **[Examples](examples/)** · **[Language spec](docs/language/)** · **[Development plan](DEV_PLAN.md)** · **[Architecture](ARCHITECTURE.md)**
+
+<sub>Live demo: not yet available — the project is pre-release (Phase 4 in progress).</sub>
+
+</div>
+
+---
+
 # NOVA
 
 Semantic Programming Platform

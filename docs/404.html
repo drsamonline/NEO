@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>404 — Not found · NEO</title>
+<meta name="description" content="The page you were looking for does not exist.">
+<meta name="robots" content="noindex, follow">
+<meta name="theme-color" content="#050505">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<style>
+  :root{--bg:#050505;--fg:#fff;--muted:rgba(255,255,255,.52);--faint:rgba(255,255,255,.30);--line:rgba(255,255,255,.12);--accent:#3b82f6}
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;background:var(--bg);color:var(--fg);
+    font-family:"Inter","Helvetica Neue",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    font-weight:300;display:flex;flex-direction:column;justify-content:center;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:0 28px;width:100%}
+  .eyebrow{font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:var(--faint);display:flex;align-items:center;gap:16px}
+  .eyebrow .dot{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+  h1{font-weight:200;font-size:clamp(72px,20vw,220px);line-height:.9;letter-spacing:-.04em;margin:28px 0 0}
+  h1 .thin{color:var(--faint)}
+  .rule{height:1px;background:var(--line);border:0;margin:36px 0}
+  p{color:var(--muted);max-width:520px;font-size:16px;margin:0}
+  .actions{display:flex;gap:16px;flex-wrap:wrap;margin-top:40px}
+  a.btn{
+    display:inline-flex;align-items:center;gap:10px;padding:13px 26px;border:1px solid rgba(255,255,255,.22);
+    border-radius:2px;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--fg);text-decoration:none;
+    transition:border-color .35s ease,color .35s ease,background .35s ease;
+  }
+  a.btn:hover{border-color:#fff}
+  a.btn.primary{border-color:var(--accent);color:var(--accent)}
+  a.btn.primary:hover{background:var(--accent);color:#050505}
+  footer{margin-top:64px;font-size:12px;color:var(--faint)}
+  footer a{color:var(--faint);text-decoration:none}
+  footer a:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="eyebrow"><span class="dot"></span> Error 404</p>
+    <h1>Not found<span class="thin">.</span></h1>
+    <hr class="rule">
+    <p>This path does not exist on the NEO site. It may have been renamed, or it never existed.</p>
+    <div class="actions">
+      <a class="btn primary" href="/NEO/">Back to home</a>
+      <a class="btn" href="https://github.com/drsamonline/NEO" target="_blank" rel="noopener">Repository ↗</a>
+    </div>
+    <footer>Built by Dr. Sohil Momin · <a href="https://github.com/drsamonline/NEO">drsamonline/NEO</a></footer>
+  </div>
+</body>
+</html>

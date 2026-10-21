@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="NEO — NOVA, a semantic programming platform">
+  <rect width="1200" height="630" fill="#050505"/>
+  <line x1="80" y1="150" x2="1120" y2="150" stroke="rgba(255,255,255,.14)"/>
+  <line x1="80" y1="480" x2="1120" y2="480" stroke="rgba(255,255,255,.14)"/>
+  <circle cx="140" cy="300" r="26" fill="none" stroke="#3b82f6"/>
+  <circle cx="140" cy="300" r="8" fill="#ffffff"/>
+  <text x="200" y="320" fill="#ffffff" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="96" font-weight="200" letter-spacing="14">NOVA</text>
+  <text x="200" y="380" fill="rgba(255,255,255,.55)" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="26" font-weight="300" letter-spacing="2">A semantic programming platform</text>
+  <text x="80" y="560" fill="rgba(255,255,255,.34)" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="18" font-weight="300" letter-spacing="6">drsamonline/NEO</text>
+</svg>
