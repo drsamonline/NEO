@@ -15,7 +15,7 @@
 <a href="backends/"><img src="https://img.shields.io/badge/Backends-4%20targets-orange?style=flat-square" alt="4 backend targets"></a>
 <a href="https://img.shields.io/badge/language-Rust-dea584"><img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square" alt="Rust"></a>
 
-**[Landing page](https://drsamonline.github.io/NEO/)** · **[Examples](examples/)** · **[Language spec](docs/language/)** · **[Development plan](DEV_PLAN.md)** · **[Architecture](ARCHITECTURE.md)**
+**[Landing page](https://drsamonline.github.io/NEO/)** · **[Examples](examples/)** · **[Language spec](docs/language/)** · **[Development plan](DEV_PLAN.md)** · **[Architecture](ARCHITECTURE.md)** · **[All projects](https://drsamonline.github.io/)**
 
 <sub>Live demo: not yet available — the project is pre-release (Phase 4 in progress).</sub>
 
