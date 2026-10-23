@@ -475,7 +475,6 @@ impl LanguageServer for Backend {
                 full_document_diagnostic_report: FullDocumentDiagnosticReport {
                     result_id: None,
                     uri: uri.clone(),
-                    version: Some(doc.version),
                     items: doc.diagnostics.clone(),
                 },
             });
@@ -489,7 +488,6 @@ impl LanguageServer for Backend {
                 full_document_diagnostic_report: FullDocumentDiagnosticReport {
                     result_id: None,
                     uri,
-                    version: None,
                     items: vec![],
                 },
             }),
