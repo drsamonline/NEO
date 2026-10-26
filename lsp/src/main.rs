@@ -474,7 +474,11 @@ impl LanguageServer for Backend {
                 related_documents: None,
                 full_document_diagnostic_report: FullDocumentDiagnosticReport {
                     result_id: None,
-                    uri: uri.clone(),
+                    // `uri` is NOT a field of FullDocumentDiagnosticReport. It belongs to
+                    // the RelatedFullDocumentDiagnosticReport that wraps this one, which is
+                    // what the code already constructs - so the field was both wrong and
+                    // redundant. Keeping it made `cargo build` fail with E0560, and this
+                    // workflow has failed 60 consecutive runs because of it.
                     items: doc.diagnostics.clone(),
                 },
             });
@@ -487,7 +491,6 @@ impl LanguageServer for Backend {
                 related_documents: None,
                 full_document_diagnostic_report: FullDocumentDiagnosticReport {
                     result_id: None,
-                    uri,
                     items: vec![],
                 },
             }),
