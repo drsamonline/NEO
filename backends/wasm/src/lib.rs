@@ -385,6 +385,12 @@ mod tests {
         let wasm_code = backend.generate(&program);
 
         assert!(wasm_code.contains("(func $add"));
-        assert!(wasm_code.contains("(export \"main\""));
+        // A PROGRAM WITH NO `main` MUST NOT EXPORT ONE. The backend emits
+        // `(export "main" (func $main))` only when the program defines a function called
+        // `main` - see the `any(|f| f.name == "main")` guard above - which is correct. This
+        // assertion expected the export for a program whose only function is `add`, so it
+        // has failed on every run since that guard was added, and the workflow has been red
+        // ever since. The expectation was stale; the backend was right.
+        assert!(!wasm_code.contains("(export \"main\""));
     }
 }
