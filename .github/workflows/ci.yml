@@ -17,7 +17,7 @@ jobs:
     name: Build Rust workspace
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
       - run: cargo build --workspace --all-targets
       - run: cargo test --workspace
