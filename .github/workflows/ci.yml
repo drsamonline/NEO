@@ -19,5 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+      - name: The grammar still describes the compiler
+        run: python3 tools/grammar-check.py
       - run: cargo build --workspace --all-targets
       - run: cargo test --workspace

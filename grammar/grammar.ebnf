@@ -1,3 +1,120 @@
-; NOVA grammar scaffold
-program = { statement } ;
-statement = identifier ;
+; NOVA grammar — the subset the parser actually implements.
+;
+; This file used to be a three-line scaffold. It is now the grammar of
+; compiler/src/parser/mod.rs, written from that file production by production,
+; and tools/grammar-check.py keeps the two in step:
+;
+;   * every keyword the lexer knows is either used in a production here or
+;     declared reserved below — adding a keyword to token.rs without deciding
+;     which of those it is fails the build;
+;   * every operator the lexer can produce is likewise used or reserved;
+;   * every non-terminal is defined and reachable from `program`;
+;   * the expression chain below is in the same order as the parser's
+;     parse_* functions, so a new precedence level cannot be added on one
+;     side only.
+;
+; Literals are quoted. `? ... ?` marks a token class described in prose.
+; A word in quotes is a keyword and must exist in crates/nova-common/src/token.rs.
+
+program        = { item } ;
+
+item           = function
+               | struct
+               | enum
+               | use_decl
+               | mod_decl
+               | const_decl
+               | impl_block
+               | let_stmt
+               | expr_stmt ;
+
+function       = "fn" identifier "(" [ param { "," param } ] ")" [ "->" type_expr ] ( block | ";" ) ;
+param          = identifier [ ":" type_expr ] ;
+type_expr      = identifier ;
+block          = "{" { statement } "}" ;
+statement      = let_stmt
+               | if_stmt
+               | while_stmt
+               | for_stmt
+               | return_stmt
+               | break_stmt
+               | continue_stmt
+               | block
+               | expr_stmt ;
+
+let_stmt       = "let" [ "mut" ] identifier [ ":" type_expr ] [ "=" expr ] ";" ;
+if_stmt        = "if" expr block [ "else" block ] ;
+while_stmt     = "while" expr block ;
+for_stmt       = "for" identifier "in" expr block ;
+return_stmt    = "return" [ expr ] ";" ;
+break_stmt     = "break" ";" ;
+continue_stmt  = "continue" ";" ;
+expr_stmt      = expr [ ";" ] ;
+
+const_decl     = "const" identifier [ ":" type_expr ] "=" expr ";" ;
+struct         = "struct" identifier "{" [ field { "," field } ] "}" ;
+field          = identifier ":" type_expr ;
+enum           = "enum" identifier "{" [ variant { "," variant } ] "}" ;
+variant        = identifier [ "(" [ type_expr { "," type_expr } ] ")" ] ;
+use_decl       = "use" path ";" ;
+path           = identifier { "::" identifier } ;
+mod_decl       = "mod" identifier ;
+impl_block     = "impl" identifier "{" { function } "}" ;
+
+; Expression chain, loosest first. The order is the parser's own: assignment ->
+; or -> and -> equality -> comparison -> term -> range -> factor -> unary ->
+; call -> primary. Note that `range` sits between term and factor, which is what
+; the parser does, not what a reader would expect — the grammar reports the
+; code, it does not tidy it.
+expr           = assignment ;
+assignment     = or_expr [ "=" assignment ] ;
+or_expr        = and_expr { ( "||" | "|" ) and_expr } ;
+and_expr       = equality { ( "&&" | "&" ) equality } ;
+equality       = comparison { ( "==" | "!=" ) comparison } ;
+comparison     = term { ( "<" | ">" | "<=" | ">=" ) term } ;
+term           = range { ( "+" | "-" ) range } ;
+range          = factor [ ".." factor ] ;
+factor         = unary { ( "*" | "/" | "%" ) unary } ;
+unary          = ( "!" | "-" ) unary | call ;
+call           = primary { call_suffix } ;
+call_suffix    = "(" [ expr { "," expr } ] ")"
+               | "." identifier
+               | "[" expr "]" ;
+primary        = "true"
+               | "false"
+               | integer
+               | float
+               | string
+               | char
+               | identifier
+               | "(" expr ")"
+               | "[" [ expr { "," expr } ] "]" ;
+
+identifier     = ? identifier token ? ;
+integer        = ? integer literal ? ;
+float          = ? floating point literal ? ;
+string         = ? string literal ? ;
+char           = ? character literal ? ;
+
+; ---------------------------------------------------------------------------
+; Lexed but not parsed yet. These are real tokens in token.rs that no
+; production above consumes. They are listed here rather than quietly omitted,
+; so the gap is visible and grammar-check.py can fail if one of them starts
+; being used (it would then belong in a production) or a new one appears.
+; ---------------------------------------------------------------------------
+
+@reserved-keyword match
+@reserved-keyword type
+@reserved-keyword as
+@reserved-keyword loop
+@reserved-keyword pub
+
+@reserved-operator +=
+@reserved-operator -=
+@reserved-operator *=
+@reserved-operator /=
+@reserved-operator ^
+@reserved-operator ~
+@reserved-operator <<
+@reserved-operator >>
+@reserved-operator =>

@@ -5,6 +5,19 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### The grammar is now a checked artefact ⭐ NEW
+- **`grammar/grammar.ebnf`** — replaced the three-line scaffold with the grammar of the
+  subset `compiler/src/parser/mod.rs` actually implements: items, statements, the
+  expression chain in the parser's own precedence order, and a written-down list of the
+  tokens that are lexed but not parsed yet (`match`, `type`, `as`, `loop`, `pub`, and
+  nine operators).
+- **`tools/grammar-check.py`** — a test for the grammar itself. It reads `token.rs` and
+  `parser/mod.rs` and fails when the grammar and the code disagree: a keyword or operator
+  that is neither used nor declared reserved, a word literal that is not a real keyword
+  (invented syntax), a rule that is undefined or unreachable, or an expression level
+  edited on one side only. Wired into CI, so a new keyword cannot be added without
+  deciding where it belongs.
+
 #### Runtime System Core (1,220+ lines) ⭐ NEW
 - **Memory Management** (`memory.rs` - 192 lines):
   - `MemoryArena` for efficient arena-based allocation
