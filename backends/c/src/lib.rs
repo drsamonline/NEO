@@ -300,7 +300,7 @@ impl CGenerator {
                     SirLiteral::Int(i) => self.write(&format!("{}", i)),
                     SirLiteral::Float(f) => self.write(&format!("{}", f)),
                     SirLiteral::Bool(b) => self.write(if *b { "1" } else { "0" }),
-                    SirLiteral::String(s) => self.write(&format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))),
+                    SirLiteral::String(s) => self.write(&format!("\"{}\"", nova_common::escape_string_literal(s))),
                     SirLiteral::Char(c) => self.write(&format!("'{}'", c)),
                     SirLiteral::Unit => {},
                 }
@@ -453,5 +453,38 @@ mod tests {
         assert!(c_code.contains("Hello, World!"));
         // The return is already in the body, so we just check it exists
         assert!(c_code.contains("return"));
+    }
+
+    #[test]
+    fn a_string_with_a_newline_is_written_as_an_escape() {
+        // The lexer turns `"two\nlines"` into a real newline before it reaches
+        // the backend, and a raw newline inside a C literal does not compile.
+        let mut generator = CGenerator::new();
+        let program = SirProgram {
+            functions: vec![SirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                return_type: Some("int".to_string()),
+                body: vec![
+                    SirStatement::Expr(SirExpr::Call {
+                        callee: "puts".to_string(),
+                        args: vec![SirExpr::Literal(SirLiteral::String(
+                            "two\nlines\tand a \"quote\"".to_string(),
+                        ))],
+                    }),
+                    SirStatement::Return(Some(SirExpr::Literal(SirLiteral::Int(0)))),
+                ],
+                span: Span::default(),
+            }],
+            globals: vec![],
+        };
+
+        let c_code = generator.generate(&program);
+        let escaped = "\"two\\nlines\\tand a \\\"quote\\\"\"";
+        assert!(c_code.contains(escaped), "the literal was not escaped: {c_code}");
+        assert!(
+            !c_code.contains("two\nlines"),
+            "the literal spans lines: {c_code}"
+        );
     }
 }
