@@ -23,29 +23,45 @@ Recursive Fibonacci sequence calculation demonstrating:
 
 ### array_ops.nova
 Array manipulation examples showing:
-- Array declaration and initialization
+- Array literal initialisation
 - Array indexing and mutation
 - Passing arrays to functions
 - Common array algorithms (sum, max, reverse)
 - Loop patterns for array traversal
+
+> **On the type annotation.** The parser has no array *type* syntax — `parse_type_expr`
+> reads a single name, so `[int]` and `[int; 5]` do not parse. Array parameters and
+> variables are therefore annotated with the plain name `Array`, exactly as `int` and
+> `string` are plain names. The annotation is a name, not a checked type; adding real
+> array types is a parser change, not an example change.
 
 **Run:** `nova compile examples/array_ops.nova && ./array_ops`
 
 ## Advanced Examples
 
 ### basic/ Directory
-Contains fundamental examples covering:
-- Variable declarations and type annotations
-- Control flow (if/else, while, for)
-- Function definitions and calls
-- Basic data types (int, float, bool, string)
+`basic/hello.nova` is the same hello-world as `hello.nova`, kept as the entry point
+of the "start here" path. The other fundamentals — typed declarations, `if`/`else`,
+`while`, `for`, function definitions and calls — are demonstrated in `fibonacci.nova`
+and `array_ops.nova` rather than in separate files.
 
 ### web/ Directory
-Demonstrates NOVA's web development capabilities:
-- HTTP server creation
-- Request/response handling
-- JSON serialization
-- Async/await patterns
+`web/app.nova` builds and prints the page a small site would serve. It is a program,
+not a server: NOVA has no HTTP server, no JSON serialisation and no `async`/`await`
+yet — those are Phase 4 work, and this file does not pretend otherwise.
+
+## Every example is checked
+
+`tools/example-check.py` reads `grammar/grammar.ebnf`, turns it into a recogniser and
+requires every `examples/**/*.nova` to parse from `program` to EOF. It runs in CI
+beside `tools/grammar-check.py`, so an example that is not a NOVA program fails the
+build instead of being discovered by a reader. It also refuses a file of comments with
+no program in it, and it self-tests the recogniser against known-good and known-bad
+sources so the check cannot pass by being vacuous.
+
+```bash
+python3 tools/example-check.py
+```
 
 ## Running Examples
 
@@ -124,7 +140,8 @@ When adding new examples:
 1. **Keep it focused** - Each example should demonstrate 1-2 specific features
 2. **Add comments** - Explain non-obvious code sections
 3. **Include expected output** - Document what the program should print
-4. **Test thoroughly** - Ensure the example compiles and runs correctly
+4. **Test thoroughly** - `python3 tools/example-check.py` must pass; that proves the
+   example is a NOVA program, and a CI run proves the compiler accepts it
 5. **Update this README** - Add your example to the appropriate section
 
 Example template:
@@ -151,8 +168,8 @@ For beginners learning NOVA:
 ## Troubleshooting
 
 **Compilation errors:**
-- Ensure all statements end with semicolons
-- Verify type annotations are correct
+- Ensure all statements end with semicolons (at top level the `;` is required)
+- Verify type annotations are names the parser reads — a single identifier, never `[T]`
 - Check function signatures match calls
 
 **Runtime errors:**

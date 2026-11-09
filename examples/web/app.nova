@@ -1,1 +1,16 @@
-// Web example scaffold
+// NOVA Example: the page a small site serves
+// Demonstrates a function with a typed parameter and return, a let, and a call.
+// NOVA ships no HTTP server: this builds and prints the page, and serving it is
+// the runtime's job. The parser has no string interpolation, so the markup is
+// written out in full.
+
+fn title_of(site: string) -> string {
+    return site;
+}
+
+fn main() -> int {
+    let site: string = "NOVA";
+    print(title_of(site));
+    print("<html><body><h1>Hello from NOVA</h1></body></html>");
+    return 0;
+}
