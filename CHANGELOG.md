@@ -18,6 +18,27 @@ All notable changes to the NOVA project will be documented in this file.
   edited on one side only. Wired into CI, so a new keyword cannot be added without
   deciding where it belongs.
 
+#### Every example is now a program the grammar accepts ⭐ NEW
+- **`tools/example-check.py`** — reads `grammar/grammar.ebnf`, turns it into a
+  packrat recogniser and requires every `examples/**/*.nova` to parse from `program`
+  to EOF. It self-tests the recogniser on eleven known-good and known-bad sources
+  first, so a passing run means something. Wired into CI beside `grammar-check.py`.
+  Nothing read the examples before this: the grammar was checked against the Rust and
+  the Rust tests parse snippets inside `#[test]` functions, so an example could say
+  anything.
+- **Three of the five shipped examples were not NOVA programs**, which is what the
+  new check found. `examples/basic/hello.nova` was `print "Hello from NOVA"` — no
+  parentheses, no semicolon, which the parser rejects; it is now `print("Hello, NOVA");`.
+  `examples/web/app.nova` was a single comment and no program at all; it is now a small
+  program that prints the page a site would serve. `examples/array_ops.nova` annotated
+  arrays as `[int]` and `[int; 5]`, which `parse_type_expr` cannot read (it takes one
+  name), so it is now `Array` — and `examples/README.md` says why, and no longer claims
+  an HTTP server, JSON serialisation or `async`/`await` that do not exist.
+- **The grammar had drifted too.** `item` used `expr_stmt`, whose `;` is optional, but
+  `parse_top_level` *requires* the `;` after a top-level expression. A looser rule that
+  accepted syntax the parser rejects is still a false grammar; it is now
+  `top_expr_stmt = expr ";"` at top level and `expr_stmt = expr [ ";" ]` inside a block.
+
 #### Runtime System Core (1,220+ lines) ⭐ NEW
 - **Memory Management** (`memory.rs` - 192 lines):
   - `MemoryArena` for efficient arena-based allocation

@@ -21,5 +21,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
       - name: The grammar still describes the compiler
         run: python3 tools/grammar-check.py
+      - name: Every shipped example is a NOVA program
+        run: python3 tools/example-check.py
       - run: cargo build --workspace --all-targets
       - run: cargo test --workspace

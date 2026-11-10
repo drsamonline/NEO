@@ -26,7 +26,7 @@ item           = function
                | const_decl
                | impl_block
                | let_stmt
-               | expr_stmt ;
+               | top_expr_stmt ;
 
 function       = "fn" identifier "(" [ param { "," param } ] ")" [ "->" type_expr ] ( block | ";" ) ;
 param          = identifier [ ":" type_expr ] ;
@@ -49,6 +49,11 @@ for_stmt       = "for" identifier "in" expr block ;
 return_stmt    = "return" [ expr ] ";" ;
 break_stmt     = "break" ";" ;
 continue_stmt  = "continue" ";" ;
+; At top level the parser REQUIRES the ';' after an expression (parse_top_level
+; calls expect(Semicolon)); inside a block it does not (parse_stmt calls
+; match_token and carries on either way). One production could not say both, and
+; the looser one accepted `print "hi"` at top level, which the parser rejects.
+top_expr_stmt  = expr ";" ;
 expr_stmt      = expr [ ";" ] ;
 
 const_decl     = "const" identifier [ ":" type_expr ] "=" expr ";" ;

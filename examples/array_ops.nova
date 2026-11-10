@@ -1,7 +1,7 @@
 // NOVA Example: Array Operations
 // Demonstrates arrays, loops, and standard library usage
 
-fn sum_array(arr: [int], size: int) -> int {
+fn sum_array(arr: Array, size: int) -> int {
     let sum: int = 0;
     let i: int = 0;
     while i < size {
@@ -11,7 +11,7 @@ fn sum_array(arr: [int], size: int) -> int {
     return sum;
 }
 
-fn find_max(arr: [int], size: int) -> int {
+fn find_max(arr: Array, size: int) -> int {
     if size <= 0 {
         return 0;
     }
@@ -27,7 +27,7 @@ fn find_max(arr: [int], size: int) -> int {
     return max;
 }
 
-fn reverse_array(arr: [int], size: int) {
+fn reverse_array(arr: Array, size: int) {
     let left: int = 0;
     let right: int = size - 1;
     while left < right {
@@ -40,7 +40,7 @@ fn reverse_array(arr: [int], size: int) {
 }
 
 fn main() -> int {
-    let numbers: [int; 5] = [5, 2, 8, 1, 9];
+    let numbers: Array = [5, 2, 8, 1, 9];
     let size: int = 5;
     
     print("Original array:");

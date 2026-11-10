@@ -176,7 +176,7 @@ impl RustBackend {
                 match lit {
                     SirLiteral::Int(n) => n.to_string(),
                     SirLiteral::Float(f) => format!("{}f64", f),
-                    SirLiteral::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+                    SirLiteral::String(s) => format!("\"{}\"", nova_common::escape_string_literal(s)),
                     SirLiteral::Bool(b) => b.to_string(),
                     SirLiteral::Char(c) => format!("'{}'", c),
                     SirLiteral::Unit => "()".to_string(),
