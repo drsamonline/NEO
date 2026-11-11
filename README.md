@@ -13,7 +13,7 @@
 <a href="https://img.shields.io/badge/Phase%202-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%202-Complete-brightgreen?style=flat-square" alt="Phase 2 Complete"></a>
 <a href="https://img.shields.io/badge/Phase%203-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%203-Complete-brightgreen?style=flat-square" alt="Phase 3 Complete"></a>
 <a href="https://img.shields.io/badge/Phase%204-Next-yellow"><img src="https://img.shields.io/badge/Phase%204-Next-yellow?style=flat-square" alt="Phase 4 Next"></a>
-<a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.0-blue?style=flat-square" alt="Version 0.6.0"></a>
+<a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.1-blue?style=flat-square" alt="Version 0.6.0"></a>
 <a href="backends/"><img src="https://img.shields.io/badge/Backends-4%20targets-orange?style=flat-square" alt="4 backend targets"></a>
 <a href="https://img.shields.io/badge/language-Rust-dea584"><img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square" alt="Rust"></a>
 

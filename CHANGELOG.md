@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+
+- Release cut so the tag describes the code it ships: this is the first release since 0.6.0.
+
 All notable changes to the NOVA project will be documented in this file.
 
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
