@@ -1,8 +1,8 @@
 ; NOVA grammar — the subset the parser actually implements.
 ;
-; This file used to be a three-line scaffold. It is now the grammar of
-; compiler/src/parser/mod.rs, written from that file production by production,
-; and tools/grammar-check.py keeps the two in step:
+; This file is the grammar of compiler/src/parser/mod.rs, written from that
+; file production by production, and tools/grammar-check.py keeps the two in
+; step:
 ;
 ;   * every keyword the lexer knows is either used in a production here or
 ;     declared reserved below — adding a keyword to token.rs without deciding
@@ -24,15 +24,31 @@ item           = function
                | use_decl
                | mod_decl
                | const_decl
+               | static_decl
                | impl_block
                | let_stmt
                | top_expr_stmt ;
 
-function       = "fn" identifier "(" [ param { "," param } ] ")" [ "->" type_expr ] ( block | ";" ) ;
-param          = identifier [ ":" type_expr ] ;
-type_expr      = identifier ;
-block          = "{" { statement } "}" ;
+function       = "fn" identifier [ generic_params ] "(" [ param { "," param } ] ")" [ "->" type_expr ] ( block | ";" ) ;
+generic_params = "<" identifier { "," identifier } ">" ;
+param          = [ "&" ] [ "mut" ] identifier [ ":" type_expr ] ;
+
+; Types. `&mut T` and `[T]` are spelled as single type expressions; the parser
+; builds their names out of the parts, it has no separate reference type.
+type_expr      = "&" [ "mut" ] type_expr
+               | "[" type_expr "]"
+               | "(" [ type_expr { "," type_expr } ] ")"
+               | "!"
+               | function_type
+               | named_type ;
+function_type  = "fn" "(" [ type_expr { "," type_expr } ] ")" [ "->" type_expr ] ;
+named_type     = identifier [ "<" type_expr { "," type_expr } ">" ] ;
+
+; A block's last expression is its value when it has no ';'.
+block          = "{" { statement } [ final_expr ] "}" ;
 statement      = let_stmt
+               | const_decl
+               | static_decl
                | if_stmt
                | while_stmt
                | for_stmt
@@ -43,7 +59,7 @@ statement      = let_stmt
                | expr_stmt ;
 
 let_stmt       = "let" [ "mut" ] identifier [ ":" type_expr ] [ "=" expr ] ";" ;
-if_stmt        = "if" expr block [ "else" block ] ;
+if_stmt        = if_expr ;
 while_stmt     = "while" expr block ;
 for_stmt       = "for" identifier "in" expr block ;
 return_stmt    = "return" [ expr ] ";" ;
@@ -55,36 +71,42 @@ continue_stmt  = "continue" ";" ;
 ; the looser one accepted `print "hi"` at top level, which the parser rejects.
 top_expr_stmt  = expr ";" ;
 expr_stmt      = expr [ ";" ] ;
+final_expr     = expr ;
 
 const_decl     = "const" identifier [ ":" type_expr ] "=" expr ";" ;
+static_decl    = "static" identifier [ ":" type_expr ] "=" expr ";" ;
 struct         = "struct" identifier "{" [ field { "," field } ] "}" ;
 field          = identifier ":" type_expr ;
 enum           = "enum" identifier "{" [ variant { "," variant } ] "}" ;
 variant        = identifier [ "(" [ type_expr { "," type_expr } ] ")" ] ;
 use_decl       = "use" path ";" ;
-path           = identifier { "::" identifier } ;
+path           = identifier { ( "::" | "." ) ( identifier | "*" ) } ;
 mod_decl       = "mod" identifier ;
 impl_block     = "impl" identifier "{" { function } "}" ;
 
 ; Expression chain, loosest first. The order is the parser's own: assignment ->
-; or -> and -> equality -> comparison -> term -> range -> factor -> unary ->
-; call -> primary. Note that `range` sits between term and factor, which is what
-; the parser does, not what a reader would expect — the grammar reports the
-; code, it does not tidy it.
+; or -> and -> equality -> comparison -> term -> shift -> range -> factor ->
+; unary -> cast -> call -> primary. Note that `range` sits between term and factor, which
+; is what the parser does, not what a reader would expect — the grammar reports
+; the code, it does not tidy it.
 expr           = assignment ;
 assignment     = or_expr [ "=" assignment ] ;
 or_expr        = and_expr { ( "||" | "|" ) and_expr } ;
 and_expr       = equality { ( "&&" | "&" ) equality } ;
 equality       = comparison { ( "==" | "!=" ) comparison } ;
 comparison     = term { ( "<" | ">" | "<=" | ">=" ) term } ;
-term           = range { ( "+" | "-" ) range } ;
+term           = shift { ( "+" | "-" ) shift } ;
+shift          = range { ( "<<" | ">>" ) range } ;
 range          = factor [ ".." factor ] ;
 factor         = unary { ( "*" | "/" | "%" ) unary } ;
-unary          = ( "!" | "-" ) unary | call ;
+unary          = ( "!" | "-" | "&" [ "mut" ] ) unary | cast ;
+cast           = call { "as" type_expr } ;
 call           = primary { call_suffix } ;
 call_suffix    = "(" [ expr { "," expr } ] ")"
                | "." identifier
-               | "[" expr "]" ;
+               | "[" expr "]"
+               | "{" [ field_init { "," field_init } ] "}" ;
+field_init     = identifier [ ":" expr ] ;
 primary        = "true"
                | "false"
                | integer
@@ -92,8 +114,27 @@ primary        = "true"
                | string
                | char
                | identifier
-               | "(" expr ")"
-               | "[" [ expr { "," expr } ] "]" ;
+               | "(" [ expr { "," expr } ] ")"
+               | "[" [ expr { "," expr } ] "]"
+               | if_expr
+               | match_expr
+               | block
+               | closure ;
+
+if_expr        = "if" expr block [ "else" ( block | if_expr ) ] ;
+match_expr     = "match" expr "{" { match_arm } "}" ;
+match_arm      = pattern [ "if" expr ] "=>" expr [ "," ] ;
+; `_` is an identifier token, so it is covered by `identifier` here. The parser
+; turns `_` into a wildcard, `Some(x)` into a variant pattern and
+; `LogLevel.DEBUG` into a path pattern.
+pattern        = [ "mut" ] ( integer
+                           | float
+                           | string
+                           | char
+                           | "true"
+                           | "false"
+                           | identifier [ "(" pattern ")" ] [ "." identifier ] ) ;
+closure        = ( "|" | "||" ) [ identifier { "," identifier } ] ( "|" | "||" ) expr ;
 
 identifier     = ? identifier token ? ;
 integer        = ? integer literal ? ;
@@ -108,9 +149,7 @@ char           = ? character literal ? ;
 ; being used (it would then belong in a production) or a new one appears.
 ; ---------------------------------------------------------------------------
 
-@reserved-keyword match
 @reserved-keyword type
-@reserved-keyword as
 @reserved-keyword loop
 @reserved-keyword pub
 
@@ -120,6 +159,3 @@ char           = ? character literal ? ;
 @reserved-operator /=
 @reserved-operator ^
 @reserved-operator ~
-@reserved-operator <<
-@reserved-operator >>
-@reserved-operator =>

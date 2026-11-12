@@ -42,7 +42,7 @@ EXAMPLES = ROOT / "examples"
 KEYWORDS = {
     "fn", "let", "mut", "if", "else", "while", "for", "return", "true", "false",
     "struct", "enum", "match", "use", "mod", "pub", "const", "type", "as", "in",
-    "loop", "break", "continue", "impl",
+    "loop", "break", "continue", "impl", "static",
 }
 
 # Longest first: the Rust lexer dispatches on the first character and then peeks
@@ -431,7 +431,10 @@ SELFTEST = [
     ('print("Hello, NOVA");', True, "a call with parentheses and a semicolon"),
     ('print "Hello from NOVA"', False, "a call with no parentheses is not a call"),
     ("fn f(a: int) -> int { return a; }", True, "typed parameter and return"),
-    ("fn f(a: [int]) {}", False, "there is no array type syntax in the grammar"),
+    ("fn f(a: [int]) {}", True, "a slice type"),
+    ("fn id<T>(x: T) -> T { x }", True, "generic parameters"),
+    ("fn main() { match 1 { 1 => print(1), _ => print(0) } }", True, "match arms"),
+    ("fn main() { let r = Range { start, end }; }", True, "a struct literal"),
     ("let x: int = 1;", True, "a top-level let"),
     ("let x = 1", False, "a let needs its ';'"),
     ("// only a comment\n", False, "a file of comments is not a program"),

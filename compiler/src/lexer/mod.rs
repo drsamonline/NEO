@@ -67,6 +67,15 @@ impl Lexer {
     }
 
     fn skip_comment(&mut self) -> bool {
+        // `#` starts a line comment. The standard library modules use it for
+        // their file headers; `//` and `/* */` are the documented forms.
+        if let Some('#') = self.current_char() {
+            while let Some(ch) = self.current_char() {
+                if ch == '\n' { break; }
+                self.advance();
+            }
+            return true;
+        }
         if let Some('/') = self.current_char() {
             if let Some(next) = self.peek_char() {
                 if next == '/' {
@@ -183,9 +192,25 @@ impl Lexer {
                 '\\' => {
                     self.advance();
                     if let Some(e) = self.current_char() {
+                        if e == 'x' {
+                            // `\xNN`: the standard library uses ANSI colours.
+                            self.advance();
+                            let high = self.current_char().and_then(|c| c.to_digit(16));
+                            self.advance();
+                            let low = self.current_char().and_then(|c| c.to_digit(16));
+                            self.advance();
+                            match (high, low) {
+                                (Some(high), Some(low)) => content.push(
+                                    char::from_u32(high * 16 + low).unwrap_or('\u{fffd}'),
+                                ),
+                                _ => self.diagnostics.warning("Invalid \\x escape"),
+                            }
+                            continue;
+                        }
                         content.push(match e {
                             'n' => '\n', 'r' => '\r', 't' => '\t',
                             '\\' => '\\', '"' => '"', '\'' => '\'', '0' => '\0',
+                            'b' => '\u{8}', 'f' => '\u{c}', 'v' => '\u{b}', 'a' => '\u{7}',
                             _ => { self.diagnostics.warning("Unknown escape"); '\\'; e }
                         });
                         self.advance();
@@ -206,7 +231,11 @@ impl Lexer {
             if c == '\\' {
                 self.advance();
                 if let Some(e) = self.current_char() {
-                    result = match e { 'n' => '\n', 'r' => '\r', 't' => '\t', '\\' => '\\', '\'' => '\'', _ => e };
+                    result = match e {
+                        'n' => '\n', 'r' => '\r', 't' => '\t', '0' => '\0',
+                        '\\' => '\\', '\'' => '\'', 'b' => '\u{8}', 'f' => '\u{c}',
+                        _ => e,
+                    };
                     self.advance();
                 }
             } else { result = c; self.advance(); }
@@ -227,9 +256,10 @@ impl Lexer {
     pub fn tokenize(&mut self) -> (Vec<Token>, &Diagnostics) {
         let mut tokens = Vec::new();
         loop {
-            let start_pos = self.position();
             self.skip_whitespace_and_comments();
             let ch = match self.current_char() { Some(c) => c, None => break };
+            // The token starts here, not at the whitespace that preceded it.
+            let start_pos = self.position();
             let kind = match ch {
                 'a'..='z'|'A'..='Z'|'_' => self.read_identifier(),
                 '0'..='9' => self.read_number(),
@@ -240,7 +270,7 @@ impl Lexer {
                 '*' => { self.advance(); if self.current_char() == Some('=') { self.advance(); TokenKind::StarAssign } else { TokenKind::Star } }
                 '/' => { self.advance(); if self.current_char() == Some('=') { self.advance(); TokenKind::SlashAssign } else { TokenKind::Slash } }
                 '%' => { self.advance(); TokenKind::Percent }
-                '=' => { self.advance(); if self.current_char() == Some('=') { self.advance(); TokenKind::EqualEqual } else { TokenKind::Assign } }
+                '=' => { self.advance(); if self.current_char() == Some('=') { self.advance(); TokenKind::EqualEqual } else if self.current_char() == Some('>') { self.advance(); TokenKind::FatArrow } else { TokenKind::Assign } }
                 '!' => { self.advance(); if self.current_char() == Some('=') { self.advance(); TokenKind::NotEqual } else { TokenKind::Not } }
                 '<' => { self.advance(); if self.current_char() == Some('=') { self.advance(); TokenKind::LessEqual } else if self.current_char() == Some('<') { self.advance(); TokenKind::LeftShift } else { TokenKind::Less } }
                 '>' => { self.advance(); if self.current_char() == Some('=') { self.advance(); TokenKind::GreaterEqual } else if self.current_char() == Some('>') { self.advance(); TokenKind::RightShift } else { TokenKind::Greater } }
@@ -285,6 +315,7 @@ impl Lexer {
             "const" => TokenKind::Const, "type" => TokenKind::Type, "as" => TokenKind::As,
             "in" => TokenKind::In, "loop" => TokenKind::Loop, "break" => TokenKind::Break,
             "continue" => TokenKind::Continue,
+            "impl" => TokenKind::Impl, "static" => TokenKind::Static,
             _ => TokenKind::Identifier(s.to_string()),
         }
     }

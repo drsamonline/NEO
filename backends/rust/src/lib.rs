@@ -226,6 +226,17 @@ impl RustBackend {
                     format!("if {} {{ {} }}", cond_str, then_str)
                 }
             }
+            SirExpr::Typed { expr, .. } => self.expr_to_rust(expr),
+            SirExpr::StructLiteral { name, fields } => {
+                let fields: Vec<String> = fields
+                    .iter()
+                    .map(|(field, value)| format!("{}: {}", field, self.expr_to_rust(value)))
+                    .collect();
+                format!("{} {{ {} }}", name, fields.join(", "))
+            }
+            SirExpr::FieldAccess { object, field } => {
+                format!("({}).{}", self.expr_to_rust(object), field)
+            }
             SirExpr::Block(stmts, final_expr) => {
                 // Blocks in Rust are expressions
                 let mut block_code = "{ ".to_string();
@@ -251,6 +262,28 @@ impl RustBackend {
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_rust(value))
             }
+            SirExpr::FieldAssign { object, field, value } => {
+                format!(
+                    "({}).{} = {}",
+                    self.expr_to_rust(object),
+                    field,
+                    self.expr_to_rust(value)
+                )
+            }
+            SirExpr::AddressOf(inner) => format!("&({})", self.expr_to_rust(inner)),
+            SirExpr::Array(items) => {
+                let values: Vec<String> = items.iter().map(|item| self.expr_to_rust(item)).collect();
+                format!("vec![{}]", values.join(", "))
+            }
+            SirExpr::Index { array, index } => {
+                format!("({})[{}]", self.expr_to_rust(array), self.expr_to_rust(index))
+            }
+            SirExpr::IndexAssign { array, index, value } => format!(
+                "({})[{}] = {}",
+                self.expr_to_rust(array),
+                self.expr_to_rust(index),
+                self.expr_to_rust(value)
+            ),
         }
     }
 
@@ -316,6 +349,7 @@ mod tests {
                 span: Span::default(),
             }],
             globals: vec![],
+            structs: vec![],
         };
 
         let mut backend = RustBackend::new();
@@ -348,6 +382,7 @@ mod tests {
                 span: Span::default(),
             }],
             globals: vec![],
+            structs: vec![],
         };
 
         let mut backend = RustBackend::new();

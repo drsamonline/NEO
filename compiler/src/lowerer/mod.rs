@@ -2,10 +2,45 @@
 
 use crate::sir::*;
 use nova_common::{Program, Function, Statement, Expr, Literal, BinOp as AstBinOp, UnOp as AstUnOp, Pattern, MatchArm, Block};
+use std::collections::{HashMap, HashSet};
 
 pub struct Lowerer {
     pub functions: Vec<SirFunction>,
     pub globals: Vec<SirGlobal>,
+    /// Name -> declared type, innermost scope last. Used to type expressions so
+    /// codegen knows what it is printing.
+    scopes: Vec<HashMap<String, String>>,
+    /// Function name -> declared return type, collected before any body is
+    /// lowered so a call may precede its callee's definition.
+    signatures: HashMap<String, Option<String>>,
+    /// Struct name -> field name -> declared type.
+    struct_types: HashMap<String, HashMap<String, String>>,
+    /// Struct name -> method name -> signature, collected from `impl` blocks.
+    methods: HashMap<String, HashMap<String, MethodSig>>,
+    /// Enum name -> variant names, in declaration order.
+    enums: HashMap<String, Vec<String>>,
+    /// Generic functions, keyed by name; lowered once per instantiation.
+    generic_decls: HashMap<String, Function>,
+    /// Instantiations that still need to be lowered.
+    pending: Vec<PendingInstance>,
+    /// Concrete names already scheduled, so each instantiation is emitted once.
+    instantiated: HashSet<String>,
+    /// Generic parameter -> concrete type while an instantiation is lowered.
+    substitutions: Vec<HashMap<String, String>>,
+}
+
+/// A generic function specialised for one set of concrete type arguments.
+#[derive(Clone)]
+struct PendingInstance {
+    function: Function,
+    concrete_name: String,
+    substitution: HashMap<String, String>,
+}
+
+/// What the lowerer needs to know about one `impl` method.
+#[derive(Clone)]
+struct MethodSig {
+    return_type: Option<String>,
 }
 
 impl Lowerer {
@@ -13,17 +48,185 @@ impl Lowerer {
         Self {
             functions: Vec::new(),
             globals: Vec::new(),
+            scopes: Vec::new(),
+            signatures: HashMap::new(),
+            struct_types: HashMap::new(),
+            methods: HashMap::new(),
+            enums: HashMap::new(),
+            generic_decls: HashMap::new(),
+            pending: Vec::new(),
+            instantiated: HashSet::new(),
+            substitutions: Vec::new(),
+        }
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn declare(&mut self, name: &str, typ: Option<String>) {
+        if let (Some(scope), Some(typ)) = (self.scopes.last_mut(), typ) {
+            scope.insert(name.to_string(), typ);
+        }
+    }
+
+    fn lookup(&self, name: &str) -> Option<String> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).cloned())
+    }
+
+    /// The type of a literal, which is all the inference this compiler has.
+    fn literal_type(expr: &Expr) -> Option<String> {
+        match expr.unspanned() {
+            Expr::Literal(Literal::Integer(_)) => Some("int".to_string()),
+            Expr::Literal(Literal::Float(_)) => Some("float".to_string()),
+            Expr::Literal(Literal::Bool(_)) => Some("bool".to_string()),
+            Expr::Literal(Literal::String(_)) => Some("string".to_string()),
+            Expr::Literal(Literal::Char(_)) => Some("char".to_string()),
+            _ => None,
+        }
+    }
+
+    /// The declared type of an expression, where the lowerer can know it.
+    /// The type of an expression, with the active generic substitution applied.
+    fn expr_type(&self, expr: &Expr) -> Option<String> {
+        self.expr_type_raw(expr).map(|typ| self.substitute(&typ))
+    }
+
+    fn expr_type_raw(&self, expr: &Expr) -> Option<String> {
+        match expr.unspanned() {
+            Expr::Literal(_) => Self::literal_type(expr),
+            Expr::Identifier(name) => self.lookup(name),
+            Expr::StructLiteral(name, _) => Some(name.clone()),
+            Expr::Array(_) => Some("Array".to_string()),
+            Expr::Index(_, _) => Some("int".to_string()),
+            Expr::Field(object, field) => {
+                let struct_name = self.expr_type(object)?;
+                self.struct_types
+                    .get(&struct_name)
+                    .and_then(|fields| fields.get(field).cloned())
+            }
+            Expr::Call(callee, args) => match callee.unspanned() {
+                Expr::Identifier(name) => {
+                    if let Some((declaration, bindings)) = self.generic_bindings(name, args) {
+                        declaration
+                            .return_type
+                            .as_ref()
+                            .map(|typ| substitute_type_name(&typ.name, &bindings))
+                    } else {
+                        self.signatures.get(name).cloned().flatten()
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
         }
     }
 
     pub fn lower_program(&mut self, program: &Program) -> SirProgram {
         let mut functions = Vec::new();
         let mut globals = Vec::new();
+        let mut structs = Vec::new();
+
+        // Signatures and struct layouts first: a body may call a function or
+        // build a struct defined after it.
+        for item in &program.items {
+            match item {
+                nova_common::Item::Function(func) => {
+                    if !func.generics.is_empty() {
+                        self.generic_decls.insert(func.name.clone(), func.clone());
+                    }
+                    self.signatures.insert(
+                        func.name.clone(),
+                        func.return_type.as_ref().map(|t| t.name.clone()),
+                    );
+                }
+                nova_common::Item::Enum(enum_def) => {
+                    self.enums.insert(
+                        enum_def.name.clone(),
+                        enum_def
+                            .variants
+                            .iter()
+                            .filter(|variant| variant.fields.is_none())
+                            .map(|variant| variant.name.clone())
+                            .collect(),
+                    );
+                }
+                nova_common::Item::Impl(impl_block) => {
+                    for method in &impl_block.methods {
+                        self.methods
+                            .entry(impl_block.type_name.clone())
+                            .or_default()
+                            .insert(
+                                method.name.clone(),
+                                MethodSig {
+                                    return_type: method
+                                        .return_type
+                                        .as_ref()
+                                        .map(|typ| typ.name.clone()),
+                                },
+                            );
+                    }
+                }
+                nova_common::Item::Struct(struct_def) => {
+                    self.struct_types.insert(
+                        struct_def.name.clone(),
+                        struct_def
+                            .fields
+                            .iter()
+                            .map(|field| (field.name.clone(), field.typ.name.clone()))
+                            .collect(),
+                    );
+                    structs.push(SirStruct {
+                        name: struct_def.name.clone(),
+                        fields: struct_def
+                            .fields
+                            .iter()
+                            .map(|field| SirStructField {
+                                name: field.name.clone(),
+                                typ: field.typ.name.clone(),
+                            })
+                            .collect(),
+                    });
+                }
+                _ => {}
+            }
+        }
 
         for item in &program.items {
             match item {
                 nova_common::Item::Function(func) => {
-                    functions.push(self.lower_function(func));
+                    // A generic function is emitted once per instantiation, not
+                    // as a template.
+                    if func.generics.is_empty() {
+                        functions.push(self.lower_function(func));
+                    }
+                }
+                nova_common::Item::Impl(impl_block) => {
+                    // Methods become ordinary C functions named `Type_method`.
+                    for method in &impl_block.methods {
+                        functions.push(self.lower_method(method, &impl_block.type_name));
+                    }
+                }
+                nova_common::Item::Enum(enum_def) => {
+                    // Payload-less variants become integer constants, so a match
+                    // against `Color.Red` is an ordinary integer comparison.
+                    for (index, variant) in enum_def.variants.iter().enumerate() {
+                        if variant.fields.is_some() {
+                            continue;
+                        }
+                        globals.push(SirGlobal {
+                            name: format!("{}_{}", enum_def.name, variant.name),
+                            typ: "int".to_string(),
+                            init_value: Some(SirExpr::Literal(SirLiteral::Int(index as i64))),
+                        });
+                    }
                 }
                 nova_common::Item::Const(const_def) => {
                     let init_value = self.lower_expr(&const_def.value);
@@ -37,17 +240,154 @@ impl Lowerer {
             }
         }
 
+        // Specialise every generic call the bodies above reached. Lowering an
+        // instantiation may discover further ones, so drain the queue.
+        let mut index = 0;
+        while index < self.pending.len() {
+            let instance = self.pending[index].clone();
+            index += 1;
+            functions.push(self.lower_instance(&instance));
+        }
+
         SirProgram {
             functions,
             globals,
+            structs,
         }
     }
 
+    /// Lower one instantiation of a generic function, with `T` replaced by the
+    /// concrete type its call site determined.
+    fn lower_instance(&mut self, instance: &PendingInstance) -> SirFunction {
+        self.substitutions.push(instance.substitution.clone());
+        self.push_scope();
+
+        let mut params = Vec::new();
+        for param in &instance.function.params {
+            let typ = self.substitute(&param.typ.name);
+            self.declare(&param.name, Some(typ.clone()));
+            params.push(SirParam {
+                name: param.name.clone(),
+                typ,
+            });
+        }
+
+        let body = match &instance.function.body {
+            Some(block) => self.lower_block(block),
+            None => Vec::new(),
+        };
+        let return_type = instance
+            .function
+            .return_type
+            .as_ref()
+            .map(|typ| self.substitute(&typ.name));
+        let body = Self::finish_body(body, &return_type);
+
+        self.pop_scope();
+        self.substitutions.pop();
+
+        SirFunction {
+            name: instance.concrete_name.clone(),
+            params,
+            return_type,
+            body,
+            span: instance.function.span.clone(),
+        }
+    }
+
+    /// The active generic substitution applied to a type name.
+    fn substitute(&self, typ: &str) -> String {
+        let mut result = typ.to_string();
+        for substitution in &self.substitutions {
+            result = substitute_type_name(&result, substitution);
+        }
+        result
+    }
+
+    /// Bind a generic declaration's parameters to the types of a call's
+    /// arguments. `None` when the callee is not generic.
+    fn generic_bindings(
+        &self,
+        name: &str,
+        args: &[Expr],
+    ) -> Option<(Function, HashMap<String, String>)> {
+        let declaration = self.generic_decls.get(name)?.clone();
+        let mut bindings = HashMap::new();
+        for (param, arg) in declaration.params.iter().zip(args.iter()) {
+            if declaration
+                .generics
+                .iter()
+                .any(|generic| generic == &param.typ.name)
+            {
+                if let Some(found) = self.expr_type(arg) {
+                    bindings.entry(param.typ.name.clone()).or_insert(found);
+                }
+            }
+        }
+        Some((declaration, bindings))
+    }
+
+    /// Resolve a call to a generic function into a concrete function name and
+    /// the instantiated return type, scheduling the instantiation if it is new.
+    fn resolve_generic_call(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+    ) -> Option<(String, Option<String>)> {
+        let (declaration, bindings) = self.generic_bindings(name, args)?;
+
+        let type_args: Vec<String> = declaration
+            .generics
+            .iter()
+            .map(|generic| bindings.get(generic).cloned().unwrap_or_else(|| "int".to_string()))
+            .collect();
+
+        let mut substitution = HashMap::new();
+        for (generic, concrete) in declaration.generics.iter().zip(type_args.iter()) {
+            substitution.insert(generic.clone(), concrete.clone());
+        }
+
+        let concrete_name = format!(
+            "{}_{}",
+            name,
+            type_args
+                .iter()
+                .map(|typ| mangle_type(typ))
+                .collect::<Vec<_>>()
+                .join("_")
+        );
+
+        if !self.instantiated.contains(&concrete_name) {
+            self.instantiated.insert(concrete_name.clone());
+            self.pending.push(PendingInstance {
+                function: declaration.clone(),
+                concrete_name: concrete_name.clone(),
+                substitution: substitution.clone(),
+            });
+        }
+
+        let return_type = declaration
+            .return_type
+            .as_ref()
+            .map(|typ| substitute_type_name(&typ.name, &substitution));
+        Some((concrete_name, return_type))
+    }
+
     fn lower_function(&mut self, func: &Function) -> SirFunction {
+        self.push_scope();
+        for param in &func.params {
+            self.declare(&param.name, Some(param.typ.name.clone()));
+        }
+
         let body_stmts = match &func.body {
             Some(block) => self.lower_block(block),
             None => Vec::new(),
         };
+        let body_stmts = Self::finish_body(
+            body_stmts,
+            &func.return_type.as_ref().map(|typ| typ.name.clone()),
+        );
+        self.pop_scope();
 
         SirFunction {
             name: func.name.clone(),
@@ -61,6 +401,94 @@ impl Lowerer {
         }
     }
 
+    /// An `impl` method becomes `Type_method`, with `self` passed as a pointer.
+    fn lower_method(&mut self, method: &Function, type_name: &str) -> SirFunction {
+        self.push_scope();
+        let mut params = Vec::new();
+        for (index, param) in method.params.iter().enumerate() {
+            let is_self = index == 0 && param.name == "self";
+            if is_self {
+                // Inside the body `self` keeps the struct's type so field types
+                // resolve; in C it is a pointer to the receiver.
+                self.declare(&param.name, Some(type_name.to_string()));
+                let by_reference = param.typ.name.trim_start().starts_with('&');
+                params.push(SirParam {
+                    name: param.name.clone(),
+                    typ: if by_reference {
+                        format!("{}*", type_name)
+                    } else {
+                        type_name.to_string()
+                    },
+                });
+            } else {
+                self.declare(&param.name, Some(param.typ.name.clone()));
+                params.push(SirParam {
+                    name: param.name.clone(),
+                    typ: param.typ.name.clone(),
+                });
+            }
+        }
+
+        let body = match &method.body {
+            Some(block) => self.lower_block(block),
+            None => Vec::new(),
+        };
+        let body = Self::finish_body(
+            body,
+            &method.return_type.as_ref().map(|typ| typ.name.clone()),
+        );
+        self.pop_scope();
+
+        SirFunction {
+            name: format!("{}_{}", type_name, method.name),
+            params,
+            return_type: method.return_type.as_ref().map(|typ| typ.name.clone()),
+            body,
+            span: method.span.clone(),
+        }
+    }
+
+    /// A function that declares a value and ends in an expression returns that
+    /// expression, rather than leaving it as a discarded statement.
+    fn finish_body(mut body: Vec<SirStatement>, return_type: &Option<String>) -> Vec<SirStatement> {
+        let returns_value = return_type
+            .as_deref()
+            .map(|typ| !matches!(typ.to_lowercase().as_str(), "void" | "unit"))
+            .unwrap_or(false);
+        // Check before popping: a trailing `return` must not be dropped.
+        if returns_value && matches!(body.last(), Some(SirStatement::Expr(_))) {
+            if let Some(SirStatement::Expr(expr)) = body.pop() {
+                body.push(SirStatement::Return(Some(expr)));
+            }
+        }
+        body
+    }
+
+    /// `value.method(args)` becomes `Type_method(&value, args)` when the receiver
+    /// has a known struct type and the method is declared in an `impl` block.
+    fn lower_method_call(&mut self, callee: &Expr, args: &[Expr]) -> Option<SirExpr> {
+        let Expr::Field(receiver, method) = callee.unspanned() else {
+            return None;
+        };
+        let type_name = self.expr_type(receiver)?;
+        let signature = self.methods.get(&type_name)?.get(method)?.clone();
+
+        let mut lowered_args = vec![SirExpr::AddressOf(Box::new(self.lower_expr(receiver)))];
+        lowered_args.extend(args.iter().map(|arg| self.lower_expr(arg)));
+
+        let call = SirExpr::Call {
+            callee: format!("{}_{}", type_name, method),
+            args: lowered_args,
+        };
+        Some(match signature.return_type {
+            Some(typ) => SirExpr::Typed {
+                expr: Box::new(call),
+                typ,
+            },
+            None => call,
+        })
+    }
+
     fn lower_statement(&mut self, stmt: &Statement) -> Vec<SirStatement> {
         match stmt {
             Statement::Let(let_stmt) => {
@@ -68,13 +496,20 @@ impl Lowerer {
                     Pattern::Identifier(n) => n.clone(),
                     _ => "_".to_string(),
                 };
-                let typ = let_stmt.typ.as_ref().map(|t| t.name.clone());
+                let declared = let_stmt.typ.as_ref().map(|t| self.substitute(&t.name));
                 let value = let_stmt.init.as_ref()
                     .map(|e| self.lower_expr(e))
                     .unwrap_or_else(|| SirExpr::Literal(SirLiteral::Int(0)));
+                // An annotation wins; otherwise a literal initialiser tells the type.
+                let typ = declared.or_else(|| let_stmt.init.as_ref().and_then(|init| self.expr_type(init)));
+                if name != "_" {
+                    self.declare(&name, typ.clone());
+                }
                 vec![SirStatement::Let { name, typ, value }]
             }
             Statement::Expr(expr) => {
+                // Control-flow detection looks through the span wrapper.
+                let expr = expr.unspanned();
                 // Check if the expression is a control flow statement that should be lowered as a statement
                 match expr {
                     Expr::If(cond, then_block, else_block) => {
@@ -206,26 +641,66 @@ impl Lowerer {
     }
 
     fn lower_block(&mut self, block: &nova_common::Block) -> Vec<SirStatement> {
+        self.push_scope();
         let mut stmts = Vec::new();
         for stmt in &block.statements {
             stmts.extend(self.lower_statement(stmt));
         }
         if let Some(final_expr) = &block.final_expr {
             // Handle control flow in final expression
-            match &**final_expr {
+            match final_expr.unspanned() {
                 Expr::Return(value) => {
                     stmts.push(SirStatement::Return(value.as_ref().map(|v| self.lower_expr(v))));
+                }
+                // A block's value may be a control-flow construct; lowering it as
+                // an expression would lose its loop/if statements, so reuse the
+                // statement lowering that knows about them.
+                Expr::If(..) | Expr::While(..) | Expr::For(..) | Expr::Loop(..) | Expr::Block(..) => {
+                    stmts.extend(self.lower_statement(&Statement::Expr((**final_expr).clone())));
                 }
                 _ => {
                     stmts.push(SirStatement::Expr(self.lower_expr(final_expr)));
                 }
             }
         }
+        self.pop_scope();
         stmts
     }
 
     fn lower_expr(&mut self, expr: &Expr) -> SirExpr {
         match expr {
+            Expr::Spanned(inner, _) => self.lower_expr(inner),
+            Expr::StructLiteral(name, fields) => {
+                let fields = fields
+                    .iter()
+                    .map(|(field, value)| {
+                        // `Point { x }` means `Point { x: x }`.
+                        let value = match value {
+                            Some(value) => self.lower_expr(value),
+                            None => self.lower_expr(&Expr::Identifier(field.clone())),
+                        };
+                        (field.clone(), value)
+                    })
+                    .collect();
+                SirExpr::Typed {
+                    expr: Box::new(SirExpr::StructLiteral {
+                        name: name.clone(),
+                        fields,
+                    }),
+                    typ: self.substitute(name),
+                }
+            }
+            Expr::Tuple(_) | Expr::Closure(_, _) => {
+                // Tuples and closures have no representation in SIR yet; they
+                // parse and are checked as unknown-typed.
+                SirExpr::Literal(SirLiteral::Unit)
+            }
+            Expr::Array(items) => SirExpr::Typed {
+                expr: Box::new(SirExpr::Array(
+                    items.iter().map(|item| self.lower_expr(item)).collect(),
+                )),
+                typ: "Array".to_string(),
+            },
             Expr::Literal(lit) => {
                 SirExpr::Literal(match lit {
                     Literal::Integer(i) => SirLiteral::Int(*i),
@@ -236,13 +711,39 @@ impl Lowerer {
                 })
             }
             Expr::Identifier(name) => {
-                SirExpr::Var(name.clone())
+                let var = SirExpr::Var(name.clone());
+                match self.lookup(name) {
+                    // A known type rides along so codegen can print the value correctly.
+                    Some(typ) => SirExpr::Typed {
+                        expr: Box::new(var),
+                        typ: self.substitute(&typ),
+                    },
+                    None => var,
+                }
             }
             Expr::Binary(left, op, right) => {
-                SirExpr::BinOp {
+                let expr = SirExpr::BinOp {
                     left: Box::new(self.lower_expr(left)),
                     op: self.lower_bin_op(op),
                     right: Box::new(self.lower_expr(right)),
+                };
+                if matches!(
+                    op,
+                    AstBinOp::Eq
+                        | AstBinOp::Ne
+                        | AstBinOp::Lt
+                        | AstBinOp::Le
+                        | AstBinOp::Gt
+                        | AstBinOp::Ge
+                        | AstBinOp::And
+                        | AstBinOp::Or
+                ) {
+                    SirExpr::Typed {
+                        expr: Box::new(expr),
+                        typ: "bool".to_string(),
+                    }
+                } else {
+                    expr
                 }
             }
             Expr::Unary(op, operand) => {
@@ -252,23 +753,67 @@ impl Lowerer {
                 }
             }
             Expr::Call(callee, args) => {
-                SirExpr::Call {
-                    callee: match callee.as_ref() {
-                        Expr::Identifier(name) => name.clone(),
-                        _ => "unknown".to_string(),
-                    },
+                // `value.method(...)` is a call on the method's mangled function.
+                if let Some(call) = self.lower_method_call(callee, args) {
+                    return call;
+                }
+                // A generic function is called through its instantiation.
+                if let Expr::Identifier(name) = callee.unspanned() {
+                    if let Some((concrete_name, return_type)) =
+                        self.resolve_generic_call(name, args)
+                    {
+                        let call = SirExpr::Call {
+                            callee: concrete_name,
+                            args: args.iter().map(|arg| self.lower_expr(arg)).collect(),
+                        };
+                        return match return_type {
+                            Some(typ) => SirExpr::Typed {
+                                expr: Box::new(call),
+                                typ,
+                            },
+                            None => call,
+                        };
+                    }
+                }
+                let callee_name = match callee.unspanned() {
+                    Expr::Identifier(name) => Some(name.clone()),
+                    _ => None,
+                };
+                let call = SirExpr::Call {
+                    callee: callee_name.clone().unwrap_or_else(|| "unknown".to_string()),
                     args: args.iter().map(|a| self.lower_expr(a)).collect(),
+                };
+                // A declared return type rides along, so printing `f()` uses the
+                // same runtime function as printing a variable of that type.
+                match callee_name.and_then(|name| self.signatures.get(&name).cloned().flatten()) {
+                    Some(typ) => SirExpr::Typed {
+                        expr: Box::new(call),
+                        typ: self.substitute(&typ),
+                    },
+                    None => call,
                 }
             }
-            Expr::Assign(target, value) => {
-                SirExpr::Assign {
-                    target: match target.as_ref() {
+            Expr::Assign(target, value) => match target.unspanned() {
+                // A field target keeps the object and the field name, so codegen
+                // can emit `object.field = value` instead of losing the target.
+                Expr::Field(object, field) => SirExpr::FieldAssign {
+                    object: Box::new(self.lower_expr(object)),
+                    field: field.clone(),
+                    value: Box::new(self.lower_expr(value)),
+                },
+                Expr::Index(array, index) => SirExpr::IndexAssign {
+                    array: Box::new(self.lower_expr(array)),
+                    index: Box::new(self.lower_expr(index)),
+                    value: Box::new(self.lower_expr(value)),
+                },
+                target => SirExpr::Assign {
+                    target: match target {
                         Expr::Identifier(name) => name.clone(),
                         _ => "unknown".to_string(),
                     },
                     value: Box::new(self.lower_expr(value)),
-                }
-            }
+                },
+            },
             Expr::If(cond, then_block, else_block) => {
                 // If used in expression context, keep as If expression
                 let condition = Box::new(self.lower_expr(cond));
@@ -414,19 +959,47 @@ impl Lowerer {
                 }
             }
             Expr::Field(obj, field) => {
-                SirExpr::Call {
-                    callee: "field_access".to_string(),
-                    args: vec![self.lower_expr(obj), SirExpr::Literal(SirLiteral::String(field.clone()))],
+                // `Color.Red` is an enum variant constant, not a struct field.
+                if let Expr::Identifier(enum_name) = obj.unspanned() {
+                    let is_variant = self
+                        .enums
+                        .get(enum_name)
+                        .map(|variants| variants.iter().any(|variant| variant == field))
+                        .unwrap_or(false);
+                    if is_variant {
+                        return SirExpr::Typed {
+                            expr: Box::new(SirExpr::Var(format!("{}_{}", enum_name, field))),
+                            typ: "int".to_string(),
+                        };
+                    }
+                }
+                let access = SirExpr::FieldAccess {
+                    object: Box::new(self.lower_expr(obj)),
+                    field: field.clone(),
+                };
+                // Knowing the field's declared type lets `print` pick the right
+                // runtime function.
+                match self.expr_type(expr) {
+                    Some(typ) => SirExpr::Typed {
+                        expr: Box::new(access),
+                        typ,
+                    },
+                    None => access,
                 }
             }
             Expr::Index(obj, index) => {
-                SirExpr::Call {
-                    callee: "index_access".to_string(),
-                    args: vec![self.lower_expr(obj), self.lower_expr(index)],
+                let access = SirExpr::Index {
+                    array: Box::new(self.lower_expr(obj)),
+                    index: Box::new(self.lower_expr(index)),
+                };
+                // Elements are typed `int` for now, so `print(arr[i])` works.
+                SirExpr::Typed {
+                    expr: Box::new(access),
+                    typ: "int".to_string(),
                 }
             }
             Expr::Range(start, end) => {
-                let start_expr = match &**start {
+                let start_expr = match start.unspanned() {
                     Expr::Literal(Literal::Integer(0)) => SirExpr::Literal(SirLiteral::Int(0)),
                     _ => self.lower_expr(start),
                 };
@@ -438,7 +1011,7 @@ impl Lowerer {
             }
             Expr::Match(scrutinee, arms) => {
                 // Lower match as a series of if-else expressions
-                self.lower_match_as_if(scrutinee, arms)
+                self.lower_match_chain(scrutinee, arms)
             }
         }
     }
@@ -452,6 +1025,7 @@ impl Lowerer {
         SirExpr::Block(stmts, final_expr)
     }
 
+    #[allow(dead_code)]
     fn lower_match_as_if(&mut self, scrutinee: &Expr, arms: &[MatchArm]) -> SirExpr {
         if arms.is_empty() {
             return SirExpr::Literal(SirLiteral::Unit);
@@ -512,6 +1086,50 @@ impl Lowerer {
         current_if.unwrap_or_else(|| SirExpr::Literal(SirLiteral::Unit))
     }
 
+    /// `match` becomes a chain of equality tests (ternaries in C). Supported
+    /// patterns: literals, `Enum.Variant` paths, and the wildcard arm.
+    fn lower_match_chain(&mut self, scrutinee: &Expr, arms: &[MatchArm]) -> SirExpr {
+        let scrutinee_expr = self.lower_expr(scrutinee);
+        let mut result: Option<SirExpr> = None;
+
+        for arm in arms.iter().rev() {
+            let body = self.lower_expr(&arm.body);
+            let condition = match &arm.pattern {
+                Pattern::Literal(literal) => Some(SirExpr::BinOp {
+                    left: Box::new(scrutinee_expr.clone()),
+                    op: SirBinOp::Eq,
+                    right: Box::new(match literal {
+                        Literal::Integer(n) => SirExpr::Literal(SirLiteral::Int(*n)),
+                        Literal::Float(f) => SirExpr::Literal(SirLiteral::Float(*f)),
+                        Literal::Bool(b) => SirExpr::Literal(SirLiteral::Bool(*b)),
+                        Literal::Char(c) => SirExpr::Literal(SirLiteral::Char(*c)),
+                        // String matching needs a runtime strcmp; until then the
+                        // arm is treated as the fallback rather than mis-compiled.
+                        Literal::String(_) => return body,
+                    }),
+                }),
+                Pattern::Path(parts) if parts.len() == 2 => Some(SirExpr::BinOp {
+                    left: Box::new(scrutinee_expr.clone()),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Var(format!("{}_{}", parts[0], parts[1]))),
+                }),
+                // Wildcards and patterns without a test become the fallback.
+                _ => None,
+            };
+
+            result = Some(match condition {
+                Some(condition) => SirExpr::If {
+                    condition: Box::new(condition),
+                    then_expr: Box::new(body),
+                    else_expr: result.map(Box::new),
+                },
+                None => body,
+            });
+        }
+
+        result.unwrap_or(SirExpr::Literal(SirLiteral::Unit))
+    }
+
     fn lower_bin_op(&self, op: &AstBinOp) -> SirBinOp {
         match op {
             AstBinOp::Add => SirBinOp::Add,
@@ -537,6 +1155,329 @@ impl Lowerer {
             AstUnOp::Not => SirUnOp::Not,
             AstUnOp::Deref => SirUnOp::Neg, // Placeholder for Deref
             AstUnOp::AddrOf => SirUnOp::Not, // Placeholder for AddrOf
+        }
+    }
+}
+
+/// Replace whole identifiers in a type name: `T` in `[T]`, but not inside
+/// `Total`.
+fn substitute_type_name(typ: &str, substitution: &HashMap<String, String>) -> String {
+    let mut result = typ.to_string();
+    for (generic, concrete) in substitution {
+        result = replace_identifier(&result, generic, concrete);
+    }
+    result
+}
+
+fn replace_identifier(text: &str, from: &str, to: &str) -> String {
+    let mut out = String::new();
+    let mut word = String::new();
+    for ch in text.chars() {
+        if ch.is_alphanumeric() || ch == '_' {
+            word.push(ch);
+        } else {
+            push_word(&mut out, &mut word, from, to);
+            out.push(ch);
+        }
+    }
+    push_word(&mut out, &mut word, from, to);
+    out
+}
+
+fn push_word(out: &mut String, word: &mut String, from: &str, to: &str) {
+    if word.is_empty() {
+        return;
+    }
+    if word == from {
+        out.push_str(to);
+    } else {
+        out.push_str(word);
+    }
+    word.clear();
+}
+
+/// `int` -> `int`, `&mut [int]` -> `mut_int`: a C-identifier-safe suffix.
+fn mangle_type(typ: &str) -> String {
+    let mut out = String::new();
+    for ch in typ.chars() {
+        if ch.is_alphanumeric() {
+            out.push(ch);
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Lexer, Parser};
+
+    fn lower(source: &str) -> SirProgram {
+        let mut lexer = Lexer::new(source);
+        let (tokens, diagnostics) = lexer.tokenize();
+        assert!(!diagnostics.has_errors(), "unexpected lexer errors");
+        let program = Parser::new(tokens).parse().expect("program should parse");
+        let mut lowerer = Lowerer::new();
+        lowerer.lower_program(&program)
+    }
+
+    fn print_arg(program: &SirProgram, index: usize) -> &SirExpr {
+        match &program.functions[0].body[index] {
+            SirStatement::Expr(SirExpr::Call { args, .. }) => &args[0],
+            other => panic!("expected a print call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn variables_and_comparisons_carry_their_type() {
+        let program = lower(
+            "fn main() {\n    let flag: bool = true;\n    print(flag);\n    print(1 < 2);\n}\n",
+        );
+        assert!(
+            matches!(print_arg(&program, 1), SirExpr::Typed { typ, .. } if typ == "bool"),
+            "a declared bool variable should be typed: {:?}",
+            print_arg(&program, 1)
+        );
+        assert!(
+            matches!(print_arg(&program, 2), SirExpr::Typed { typ, .. } if typ == "bool"),
+            "a comparison should be typed bool: {:?}",
+            print_arg(&program, 2)
+        );
+    }
+
+    #[test]
+    fn literal_initialisers_are_typed_without_annotations() {
+        let program = lower("fn main() {\n    let s = \"hi\";\n    let f = 1.5;\n    let b = true;\n}\n");
+        let body = &program.functions[0].body;
+        assert!(matches!(&body[0], SirStatement::Let { typ: Some(t), .. } if t == "string"));
+        assert!(matches!(&body[1], SirStatement::Let { typ: Some(t), .. } if t == "float"));
+        assert!(matches!(&body[2], SirStatement::Let { typ: Some(t), .. } if t == "bool"));
+    }
+
+    #[test]
+    fn call_results_carry_the_declared_return_type() {
+        let program = lower(
+            "fn is_ready() -> bool {\n    return 1 < 2;\n}\n\nfn main() {\n    print(is_ready());\n}\n",
+        );
+        let main = program.functions.last().expect("main should be lowered");
+        match &main.body[0] {
+            SirStatement::Expr(SirExpr::Call { args, .. }) => assert!(
+                matches!(&args[0], SirExpr::Typed { typ, .. } if typ == "bool"),
+                "expected a typed call, got {:?}",
+                args[0]
+            ),
+            other => panic!("unexpected statement: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forward_references_are_typed() {
+        let program = lower(
+            "fn main() {\n    print(greeting());\n}\n\nfn greeting() -> string {\n    return \"hi\";\n}\n",
+        );
+        match &program.functions[0].body[0] {
+            SirStatement::Expr(SirExpr::Call { args, .. }) => assert!(
+                matches!(&args[0], SirExpr::Typed { typ, .. } if typ == "string"),
+                "expected a typed call, got {:?}",
+                args[0]
+            ),
+            other => panic!("unexpected statement: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn field_assignment_keeps_its_target() {
+        let program = lower(
+            "struct Point {\n    x: int,\n    y: int,\n}\n\nfn main() {\n    let mut p = Point { x: 1, y: 2 };\n    p.x = 5;\n}\n",
+        );
+        let main = program.functions.last().expect("main should be lowered");
+        match &main.body[1] {
+            SirStatement::Expr(SirExpr::FieldAssign { object, field, value }) => {
+                // The object is a known variable, so it carries its type.
+                let object = match object.as_ref() {
+                    SirExpr::Typed { expr, .. } => expr.as_ref(),
+                    other => other,
+                };
+                assert!(matches!(object, SirExpr::Var(name) if name == "p"));
+                assert_eq!(field, "x");
+                assert!(matches!(**value, SirExpr::Literal(SirLiteral::Int(5))));
+            }
+            other => panic!("expected a field assignment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn methods_lower_to_mangled_functions_with_a_pointer_receiver() {
+        let program = lower(
+            "struct Counter {\n    value: int,\n}\n\nimpl Counter {\n    fn bump(&mut self) {\n        self.value = self.value + 1;\n    }\n}\n\nfn main() {\n    let mut c = Counter { value: 0 };\n    c.bump();\n}\n",
+        );
+
+        let bump = program
+            .functions
+            .iter()
+            .find(|function| function.name == "Counter_bump")
+            .expect("the method should be lowered as Counter_bump");
+        assert_eq!(bump.params[0].name, "self");
+        assert_eq!(bump.params[0].typ, "Counter*");
+        assert!(
+            bump.body.iter().any(|statement| matches!(
+                statement,
+                SirStatement::Expr(SirExpr::FieldAssign { field, .. }) if field == "value"
+            )),
+            "the method body should assign self.value: {:?}",
+            bump.body
+        );
+
+        let main = program.functions.last().expect("main should be lowered");
+        match &main.body[1] {
+            SirStatement::Expr(SirExpr::Call { callee, args }) => {
+                assert_eq!(callee, "Counter_bump");
+                assert!(
+                    matches!(args.first(), Some(SirExpr::AddressOf(_))),
+                    "the receiver should be passed by address: {args:?}"
+                );
+            }
+            other => panic!("expected a method call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_trailing_expression_becomes_a_return() {
+        let program = lower("fn value() -> int {\n    6 * 7\n}\n");
+        let function = program
+            .functions
+            .iter()
+            .find(|function| function.name == "value")
+            .expect("value should be lowered");
+        assert!(
+            matches!(function.body.last(), Some(SirStatement::Return(Some(_)))),
+            "the trailing expression should be returned: {:?}",
+            function.body
+        );
+    }
+
+    #[test]
+    fn generic_functions_are_instantiated_per_call() {
+        let program = lower(
+            "fn id<T>(x: T) -> T {\n    x\n}\n\nfn show<T>(value: T) {\n    print(value);\n}\n\nfn main() {\n    print(id(7));\n    print(id(\"hi\"));\n    show(42);\n    show(\"hey\");\n}\n",
+        );
+
+        let names: Vec<&str> = program
+            .functions
+            .iter()
+            .map(|function| function.name.as_str())
+            .collect();
+        assert!(names.contains(&"id_int"), "functions: {names:?}");
+        assert!(names.contains(&"id_string"), "functions: {names:?}");
+        assert!(names.contains(&"show_int"), "functions: {names:?}");
+        assert!(names.contains(&"show_string"), "functions: {names:?}");
+        assert!(
+            !names.contains(&"id") && !names.contains(&"show"),
+            "the generic templates should not be emitted: {names:?}"
+        );
+
+        let id_string = program
+            .functions
+            .iter()
+            .find(|function| function.name == "id_string")
+            .expect("id_string should be lowered");
+        assert_eq!(id_string.params[0].typ, "string");
+        assert_eq!(id_string.return_type.as_deref(), Some("string"));
+    }
+
+    #[test]
+    fn enums_become_constants_and_match_becomes_comparisons() {
+        let program = lower(
+            "enum Color {\n    Red,\n    Green,\n    Blue,\n}\n\nfn code(c: Color) -> int {\n    match c {\n        Color.Red => 1,\n        Color.Green => 2,\n        _ => 3,\n    }\n}\n",
+        );
+
+        let names: Vec<&str> = program
+            .globals
+            .iter()
+            .map(|global| global.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["Color_Red", "Color_Green", "Color_Blue"]);
+        assert!(
+            matches!(
+                program.globals[0].init_value,
+                Some(SirExpr::Literal(SirLiteral::Int(0)))
+            ),
+            "Red should be 0: {:?}",
+            program.globals[0]
+        );
+
+        let function = program
+            .functions
+            .iter()
+            .find(|function| function.name == "code")
+            .expect("code should be lowered");
+        let lowered = format!("{:?}", function.body);
+        assert!(
+            lowered.contains("Color_Red") && lowered.contains("Color_Green"),
+            "match should compare against the variant constants: {lowered}"
+        );
+    }
+
+    #[test]
+    fn array_literals_and_indexing_are_lowered() {
+        let program = lower(
+            "fn main() {\n    let numbers: Array = [5, 2, 8];\n    print(numbers[1]);\n    numbers[1] = 9;\n}\n",
+        );
+        let body = &program.functions[0].body;
+        assert!(
+            matches!(&body[0], SirStatement::Let { typ: Some(typ), value, .. }
+                if typ == "Array" && matches!(value, SirExpr::Typed { expr, .. } if matches!(**expr, SirExpr::Array(_)))),
+            "expected an array literal let, got {:?}",
+            body[0]
+        );
+        match &body[1] {
+            SirStatement::Expr(SirExpr::Call { args, .. }) => assert!(
+                matches!(&args[0], SirExpr::Typed { typ, expr } if typ == "int" && matches!(**expr, SirExpr::Index { .. })),
+                "expected a typed index read, got {:?}",
+                args[0]
+            ),
+            other => panic!("expected a print call, got {other:?}"),
+        }
+        assert!(
+            matches!(&body[2], SirStatement::Expr(SirExpr::IndexAssign { .. })),
+            "expected an index assignment, got {:?}",
+            body[2]
+        );
+    }
+
+    #[test]
+    fn struct_literals_and_field_access_are_lowered() {
+        let program = lower(
+            "struct Point {\n    x: int,\n    y: int,\n}\n\nfn main() {\n    let p = Point { x: 3, y: 4 };\n    print(p.x);\n}\n",
+        );
+        assert_eq!(program.structs.len(), 1);
+        assert_eq!(program.structs[0].name, "Point");
+        assert_eq!(program.structs[0].fields.len(), 2);
+
+        let main = program.functions.last().expect("main should be lowered");
+        match &main.body[0] {
+            SirStatement::Let {
+                typ: Some(declared),
+                value,
+                ..
+            } => {
+                assert_eq!(declared, "Point");
+                assert!(
+                    matches!(value, SirExpr::Typed { typ, .. } if typ == "Point"),
+                    "the struct literal should carry its struct type: {value:?}"
+                );
+            }
+            other => panic!("unexpected statement: {other:?}"),
+        }
+        match &main.body[1] {
+            SirStatement::Expr(SirExpr::Call { args, .. }) => assert!(
+                matches!(&args[0], SirExpr::Typed { typ, .. } if typ == "int"),
+                "a field access should carry the field's declared type: {:?}",
+                args[0]
+            ),
+            other => panic!("unexpected statement: {other:?}"),
         }
     }
 }

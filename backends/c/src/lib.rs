@@ -333,6 +333,12 @@ impl CGenerator {
                 self.write(&format!("{} = ", target));
                 self.generate_expr(value);
             }
+            SirExpr::FieldAssign { object, field, value } => {
+                self.write("(");
+                self.generate_expr(object);
+                self.write(&format!(").{} = ", field));
+                self.generate_expr(value);
+            }
             SirExpr::If { condition, then_expr, else_expr } => {
                 self.write("(");
                 self.generate_expr(condition);
@@ -345,6 +351,54 @@ impl CGenerator {
                     self.write(" : 0");
                 }
                 self.write(")");
+            }
+            // Type annotation is codegen metadata, not a value.
+            SirExpr::Typed { expr, .. } => self.generate_expr(expr),
+            SirExpr::StructLiteral { name, fields } => {
+                self.write(&format!("({}){{ ", name));
+                for (i, (field, value)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(&format!(".{} = ", field));
+                    self.generate_expr(value);
+                }
+                self.write(" }");
+            }
+            SirExpr::FieldAccess { object, field } => {
+                self.write("(");
+                self.generate_expr(object);
+                self.write(&format!(").{}", field));
+            }
+            SirExpr::AddressOf(inner) => {
+                self.write("&(");
+                self.generate_expr(inner);
+                self.write(")");
+            }
+            SirExpr::Array(items) => {
+                self.write("(int[]){ ");
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.generate_expr(item);
+                }
+                self.write(" }");
+            }
+            SirExpr::Index { array, index } => {
+                self.write("(");
+                self.generate_expr(array);
+                self.write(")[");
+                self.generate_expr(index);
+                self.write("]");
+            }
+            SirExpr::IndexAssign { array, index, value } => {
+                self.write("(");
+                self.generate_expr(array);
+                self.write(")[");
+                self.generate_expr(index);
+                self.write("] = ");
+                self.generate_expr(value);
             }
             SirExpr::Block(stmts, final_expr) => {
                 self.writeln("{");
@@ -444,6 +498,7 @@ mod tests {
                 span: Span::default(),
             }],
             globals: vec![],
+            structs: vec![],
         };
 
         let c_code = generator.generate(&program);

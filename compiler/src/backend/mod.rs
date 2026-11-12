@@ -6,24 +6,37 @@ use std::fmt::Write;
 /// C code generator backend
 pub struct CBackend {
     output: String,
+    /// Names of the program's struct types, so a struct-typed value is emitted
+    /// with the struct's own C type instead of the unknown-type fallback.
+    struct_names: Vec<String>,
 }
 
 impl CBackend {
     pub fn new() -> Self {
         Self {
             output: String::new(),
+            struct_names: Vec::new(),
         }
     }
 
     /// Generate C code from a SIR program
     pub fn generate(&mut self, program: &SirProgram) -> String {
         self.output.clear();
+        self.struct_names = program.structs.iter().map(|s| s.name.clone()).collect();
         
-        // Add includes
-        let _ = writeln!(self.output, "#include <stdio.h>");
-        let _ = writeln!(self.output, "#include <stdlib.h>");
-        let _ = writeln!(self.output, "#include <string.h>");
+        // Generated code talks to the NOVA runtime shim, not to libc directly.
+        let _ = writeln!(self.output, "#include \"nova_runtime.h\"");
         let _ = writeln!(self.output);
+
+        // Struct types first: functions refer to them by name.
+        for struct_def in &program.structs {
+            let _ = writeln!(self.output, "typedef struct {} {{", struct_def.name);
+            for field in &struct_def.fields {
+                let _ = writeln!(self.output, "    {} {};", self.c_type(&field.typ), field.name);
+            }
+            let _ = writeln!(self.output, "}} {};", struct_def.name);
+            let _ = writeln!(self.output);
+        }
         
         // Generate forward declarations for functions
         for func in &program.functions {
@@ -33,7 +46,7 @@ impl CBackend {
         
         // Generate global variables
         for global in &program.globals {
-            let typ_str = Self::type_to_c_str(&global.typ);
+            let typ_str = self.c_type(&global.typ);
             let _ = write!(self.output, "{} {}", typ_str, global.name);
             if let Some(init) = &global.init_value {
                 let _ = write!(self.output, " = {}", self.expr_to_c(init));
@@ -53,50 +66,121 @@ impl CBackend {
     }
 
     fn write_function_decl(&mut self, func: &SirFunction) {
-        let return_type = Self::type_to_c_str(func.return_type.as_deref().unwrap_or("void"));
+        // The entry function is emitted with the C entry-point signature below,
+        // so it gets no separate prototype.
+        if Self::is_entry(&func.name) {
+            return;
+        }
+        let return_type = self.c_type(func.return_type.as_deref().unwrap_or("void"));
         let _ = write!(self.output, "{} {}(", return_type, func.name);
         
         for (i, param) in func.params.iter().enumerate() {
             if i > 0 {
                 let _ = write!(self.output, ", ");
             }
-            let _ = write!(self.output, "{} {}", Self::type_to_c_str(&param.typ), param.name);
+            let _ = write!(self.output, "{} {}", self.c_type(&param.typ), param.name);
         }
         
         let _ = writeln!(self.output, ");");
     }
 
     fn write_function(&mut self, func: &SirFunction) {
-        let return_type = Self::type_to_c_str(func.return_type.as_deref().unwrap_or("void"));
-        let _ = write!(self.output, "{} {}(", return_type, func.name);
-        
-        for (i, param) in func.params.iter().enumerate() {
-            if i > 0 {
-                let _ = write!(self.output, ", ");
+        if Self::is_entry(&func.name) {
+            // C requires `int main`, whatever NOVA declared. The value the NOVA
+            // program returns (if any) is returned from here.
+            let _ = writeln!(self.output, "int main(void) {{");
+        } else {
+            let return_type = self.c_type(func.return_type.as_deref().unwrap_or("void"));
+            let _ = write!(self.output, "{} {}(", return_type, func.name);
+
+            for (i, param) in func.params.iter().enumerate() {
+                if i > 0 {
+                    let _ = write!(self.output, ", ");
+                }
+                let _ = write!(self.output, "{} {}", self.c_type(&param.typ), param.name);
             }
-            let _ = write!(self.output, "{} {}", Self::type_to_c_str(&param.typ), param.name);
+
+            let _ = writeln!(self.output, ") {{");
         }
-        
-        let _ = writeln!(self.output, ") {{");
         
         // Generate function body
         for stmt in &func.body {
             self.write_statement(stmt, 1);
+        }
+
+        // A `main` that falls off the end must still return an exit status.
+        if Self::is_entry(&func.name)
+            && !matches!(func.body.last(), Some(SirStatement::Return(_)))
+        {
+            let _ = writeln!(self.output, "    return 0;");
         }
         
         let _ = writeln!(self.output, "}}");
         let _ = writeln!(self.output);
     }
 
+    /// True for the function that becomes C's `main`: an explicit `fn main`, or
+    /// the synthetic `__main` the parser builds from top-level statements.
+    fn is_entry(name: &str) -> bool {
+        name == "main" || name == "__main"
+    }
+
+    /// The C spelling of a NOVA type: a struct's own name when it is one of the
+    /// program's structs, otherwise a scalar C type (unknown names become `int`).
+    fn c_type(&self, typ: &str) -> String {
+        // Arrays are pointer-to-element for now. `Array` is the example type;
+        // `[T]` is the slice spelling the parser accepts.
+        if typ.starts_with('[') || typ.eq_ignore_ascii_case("array") {
+            return "int*".to_string();
+        }
+        // A method's `self` is a pointer to the struct.
+        if let Some(base) = typ.strip_suffix('*') {
+            let base = base.trim();
+            if self.struct_names.iter().any(|name| name == base) {
+                return format!("{}*", base);
+            }
+        }
+        if self.struct_names.iter().any(|name| name == typ) {
+            return typ.to_string();
+        }
+        Self::type_to_c_str(typ).to_string()
+    }
+
+    /// True when the expression is the `self` of a lowered method, which C sees
+    /// as a pointer.
+    fn is_self(expr: &SirExpr) -> bool {
+        match expr {
+            SirExpr::Var(name) => name == "self",
+            SirExpr::Typed { expr, .. } => Self::is_self(expr),
+            _ => false,
+        }
+    }
+
     fn type_to_c_str(typ: &str) -> &'static str {
-        match typ {
-            "Int" => "int",
-            "Float" => "double",
-            "Bool" => "int",
-            "String" => "char*",
-            "Char" => "char",
+        match typ.to_lowercase().as_str() {
+            "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => "int",
+            "float" | "f32" | "f64" => "double",
+            "bool" => "int",
+            "string" | "str" => "char*",
+            "char" => "char",
             "void" => "void",
             _ => "int", // default to int for unknown types
+        }
+    }
+
+    /// The `nova_print_*` variant for a NOVA type name, when it is one the
+    /// runtime knows. Unknown types (arrays, structs) return `None` so the
+    /// caller can fall back to inferring from the expression.
+    fn print_kind_for_type(typ: &str) -> Option<&'static str> {
+        match typ.to_lowercase().as_str() {
+            "bool" => Some("bool"),
+            "float" | "f32" | "f64" => Some("float"),
+            "char" => Some("char"),
+            "string" | "str" => Some("str"),
+            "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => {
+                Some("int")
+            }
+            _ => None,
         }
     }
 
@@ -105,18 +189,32 @@ impl CBackend {
         
         match stmt {
             SirStatement::Let { name, typ, value } => {
-                let typ_str = typ.as_ref().map(|t| Self::type_to_c_str(t)).unwrap_or("int");
+                let typ_str = typ
+                    .as_ref()
+                    .map(|t| self.c_type(t))
+                    .unwrap_or_else(|| "int".to_string());
                 let _ = write!(self.output, "{}{} {} = ", indent_str, typ_str, name);
                 let _ = writeln!(self.output, "{};", self.expr_to_c(value));
             }
             SirStatement::Expr(expr) => {
-                // Check if it's a print call and convert to printf
+                // `print` and `println` are the language's only I/O; both write a line
+                // through the runtime, so generated C needs no stdio of its own.
                 if let SirExpr::Call { callee, args } = expr {
-                    if callee == "print" && args.len() == 1 {
-                        let arg = &args[0];
-                        // Determine format specifier based on expression type
-                        let fmt_specifier = self.infer_format_specifier(arg);
-                        let _ = writeln!(self.output, "{}printf(\"{}\\n\", {});", indent_str, fmt_specifier, self.expr_to_c(arg));
+                    if (callee == "print" || callee == "println") && !args.is_empty() {
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                let _ =
+                                    writeln!(self.output, "{}nova_print_str(\" \");", indent_str);
+                            }
+                            let _ = writeln!(
+                                self.output,
+                                "{}nova_print_{}({});",
+                                indent_str,
+                                self.print_kind(arg),
+                                self.expr_to_c(arg)
+                            );
+                        }
+                        let _ = writeln!(self.output, "{}nova_print_newline();", indent_str);
                         return;
                     }
                 }
@@ -153,49 +251,27 @@ impl CBackend {
                 let _ = writeln!(self.output, "{}}}", indent_str);
             }
             SirStatement::For { pattern, iterable, body } => {
-                // Generate C for loop from range expression
-                // Expected pattern: range(start, end) -> for (int pattern = start; pattern < end; pattern++)
-                let range_args = self.extract_range_args(iterable);
-                let start_var = format!("{}_start", pattern);
-                let end_var = format!("{}_end", pattern);
-                
-                // Declare and initialize start/end variables
-                let _ = writeln!(self.output, "{}int {} = {};", indent_str, start_var, range_args.0);
-                let _ = writeln!(self.output, "{}int {} = {};", indent_str, end_var, range_args.1);
-                
-                // Generate for loop
-                let _ = writeln!(self.output, "{}for (int {} = {}; {} < {}; {}++) {{", 
-                    indent_str, pattern, start_var, pattern, end_var, pattern);
-                for s in body {
-                    self.write_statement(s, indent + 1);
-                }
-                let _ = writeln!(self.output, "{}}}", indent_str);
-                // Generate C-style for loop for ranges (e.g., 0..5)
-                // Check if iterable is a range expression
-                let range_start = "0";
-                let range_end = match iterable {
-                    SirExpr::BinOp { left: _, op: SirBinOp::Range, right } => {
-                        self.expr_to_c(right)
+                // `for i in a..b` (a SIR range) and `for i in range(a, b)` both
+                // become one C loop; the start bound is the real one, not 0.
+                match self.range_bounds(iterable) {
+                    Some((start, end)) => {
+                        let _ = writeln!(
+                            self.output,
+                            "{}for (int {} = {}; {} < {}; {}++) {{",
+                            indent_str, pattern, start, pattern, end, pattern
+                        );
+                        for s in body {
+                            self.write_statement(s, indent + 1);
+                        }
+                        let _ = writeln!(self.output, "{}}}", indent_str);
                     }
-                    _ => {
-                        // For non-range iterables, just use the expression
-                        self.expr_to_c(iterable)
+                    None => {
+                        let _ = writeln!(
+                            self.output,
+                            "{}// unsupported for-loop iterable: only ranges are implemented",
+                            indent_str
+                        );
                     }
-                };
-                
-                // Check if it's actually a range
-                let is_range = matches!(iterable, SirExpr::BinOp { op: SirBinOp::Range, .. });
-                
-                if is_range {
-                    let _ = writeln!(self.output, "{}for (int {} = {}; {} < {}; {}++) {{", 
-                        indent_str, pattern, range_start, pattern, range_end, pattern);
-                    for s in body {
-                        self.write_statement(s, indent + 1);
-                    }
-                    let _ = writeln!(self.output, "{}}}", indent_str);
-                } else {
-                    // For arrays or other iterables (placeholder)
-                    let _ = writeln!(self.output, "{}// Error: Array/collection iteration not yet implemented", indent_str);
                 }
             }
             SirStatement::Block(stmts) => {
@@ -214,20 +290,19 @@ impl CBackend {
         }
     }
 
-    fn extract_range_args(&self, iterable: &SirExpr) -> (String, String) {
-        // Extract start and end from range call: range(start, end)
+    /// Lower a range iterable to its C `(start, end)` bounds, or `None` when the
+    /// iterable is not a range this backend can emit.
+    fn range_bounds(&self, iterable: &SirExpr) -> Option<(String, String)> {
         match iterable {
-            SirExpr::Call { callee, args } if callee == "range" => {
-                if args.len() >= 2 {
-                    (self.expr_to_c(&args[0]), self.expr_to_c(&args[1]))
-                } else if args.len() == 1 {
-                    // range(end) -> start from 0
-                    ("0".to_string(), self.expr_to_c(&args[0]))
-                } else {
-                    ("0".to_string(), "0".to_string())
-                }
+            SirExpr::BinOp { left, op: SirBinOp::Range, right } => {
+                Some((self.expr_to_c(left), self.expr_to_c(right)))
             }
-            _ => ("0".to_string(), "0".to_string()),
+            SirExpr::Call { callee, args } if callee == "range" => match args.len() {
+                1 => Some(("0".to_string(), self.expr_to_c(&args[0]))),
+                2.. => Some((self.expr_to_c(&args[0]), self.expr_to_c(&args[1]))),
+                _ => None,
+            },
+            _ => None,
         }
     }
 
@@ -275,6 +350,32 @@ impl CBackend {
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_c(value))
             }
+            SirExpr::FieldAssign { object, field, value } => {
+                if Self::is_self(object) {
+                    format!("(self)->{} = {}", field, self.expr_to_c(value))
+                } else {
+                    format!(
+                        "({}).{} = {}",
+                        self.expr_to_c(object),
+                        field,
+                        self.expr_to_c(value)
+                    )
+                }
+            }
+            SirExpr::AddressOf(inner) => format!("&({})", self.expr_to_c(inner)),
+            SirExpr::Array(items) => {
+                let values: Vec<String> = items.iter().map(|item| self.expr_to_c(item)).collect();
+                format!("(int[]){{ {} }}", values.join(", "))
+            }
+            SirExpr::Index { array, index } => {
+                format!("({})[{}]", self.expr_to_c(array), self.expr_to_c(index))
+            }
+            SirExpr::IndexAssign { array, index, value } => format!(
+                "({})[{}] = {}",
+                self.expr_to_c(array),
+                self.expr_to_c(index),
+                self.expr_to_c(value)
+            ),
             SirExpr::If { condition, then_expr, else_expr } => {
                 match else_expr {
                     Some(else_e) => format!(
@@ -286,53 +387,83 @@ impl CBackend {
                     None => format!("({} ? {} : 0)", self.expr_to_c(condition), self.expr_to_c(then_expr)),
                 }
             }
+            // The type annotation is codegen metadata, not a value.
+            SirExpr::Typed { expr, .. } => self.expr_to_c(expr),
+            SirExpr::StructLiteral { name, fields } => {
+                let initialisers: Vec<String> = fields
+                    .iter()
+                    .map(|(field, value)| format!(".{} = {}", field, self.expr_to_c(value)))
+                    .collect();
+                format!("({}){{ {} }}", name, initialisers.join(", "))
+            }
+            SirExpr::FieldAccess { object, field } => {
+                if Self::is_self(object) {
+                    format!("(self)->{}", field)
+                } else {
+                    format!("({}).{}", self.expr_to_c(object), field)
+                }
+            }
             SirExpr::Block(_, _) => {
                 "// block expr".to_string()
             }
         }
     }
 
-    fn infer_format_specifier(&self, expr: &SirExpr) -> &'static str {
+    /// Which `nova_print_*` runtime function takes this value.
+    ///
+    /// SIR does not carry static types, so this infers the way the old format
+    /// specifiers did: literals are exact, arithmetic follows its operands, and
+    /// comparisons and `!` are booleans.
+    fn print_kind(&self, expr: &SirExpr) -> &'static str {
         match expr {
             SirExpr::Literal(lit) => match lit {
-                SirLiteral::Int(_) => "%d",
-                SirLiteral::Float(_) => "%f",
-                SirLiteral::Bool(_) => "%d",
-                SirLiteral::String(_) => "%s",
-                SirLiteral::Char(_) => "%c",
-                SirLiteral::Unit => "",
+                SirLiteral::Int(_) => "int",
+                SirLiteral::Float(_) => "float",
+                SirLiteral::Bool(_) => "bool",
+                SirLiteral::String(_) => "str",
+                SirLiteral::Char(_) => "char",
+                SirLiteral::Unit => "int",
             },
-            SirExpr::Var(_) => "%d", // Default to int for variables
-            SirExpr::BinOp { op, left, right } => {
-                match op {
-                    SirBinOp::Add | SirBinOp::Sub | SirBinOp::Mul | SirBinOp::Div | SirBinOp::Mod => {
-                        // Arithmetic ops: check if either operand is float
-                        if matches!(left.as_ref(), SirExpr::Literal(SirLiteral::Float(_))) ||
-                           matches!(right.as_ref(), SirExpr::Literal(SirLiteral::Float(_))) {
-                            "%f"
-                        } else {
-                            "%d"
-                        }
+            // No type information on variables yet; int is the only usable guess.
+            SirExpr::Var(_) => "int",
+            SirExpr::BinOp { op, left, right } => match op {
+                SirBinOp::Add | SirBinOp::Sub | SirBinOp::Mul | SirBinOp::Div | SirBinOp::Mod => {
+                    if self.print_kind(left) == "float" || self.print_kind(right) == "float" {
+                        "float"
+                    } else {
+                        "int"
                     }
-                    SirBinOp::Eq | SirBinOp::Ne | SirBinOp::Lt | SirBinOp::Le | SirBinOp::Gt | SirBinOp::Ge => "%d",
-                    SirBinOp::And | SirBinOp::Or => "%d",
-                    SirBinOp::Range => "%d",
                 }
-            }
-            SirExpr::UnaryOp { op: _, operand } => self.infer_format_specifier(operand),
-            SirExpr::Call { callee, args: _ } => {
-                // Built-in functions return types
-                match callee.as_str() {
-                    "len" | "size" => "%d",
-                    _ => "%d", // Default
-                }
-            }
-            SirExpr::Assign { value, .. } => self.infer_format_specifier(value),
-            SirExpr::If { then_expr, else_expr, .. } => {
-                // Use then branch type, or default
-                self.infer_format_specifier(then_expr)
-            }
-            _ => "%d", // Default to int
+                SirBinOp::Eq
+                | SirBinOp::Ne
+                | SirBinOp::Lt
+                | SirBinOp::Le
+                | SirBinOp::Gt
+                | SirBinOp::Ge
+                | SirBinOp::And
+                | SirBinOp::Or => "bool",
+                SirBinOp::Range => "int",
+            },
+            SirExpr::UnaryOp { op, operand } => match op {
+                SirUnOp::Not => "bool",
+                SirUnOp::Neg => self.print_kind(operand),
+            },
+            SirExpr::Call { callee, .. } => match callee.as_str() {
+                "len" | "size" => "int",
+                _ => "int",
+            },
+            SirExpr::Assign { value, .. } => self.print_kind(value),
+            SirExpr::FieldAssign { value, .. } => self.print_kind(value),
+            SirExpr::AddressOf(_) => "int",
+            SirExpr::Array(_) | SirExpr::Index { .. } => "int",
+            SirExpr::IndexAssign { value, .. } => self.print_kind(value),
+            SirExpr::If { then_expr, .. } => self.print_kind(then_expr),
+            SirExpr::Typed { expr, typ } => Self::print_kind_for_type(typ)
+                .unwrap_or_else(|| self.print_kind(expr)),
+            // Printing a whole struct or an untyped field is not supported yet.
+            SirExpr::StructLiteral { .. } => "int",
+            SirExpr::FieldAccess { .. } => "int",
+            SirExpr::Block(_, _) => "int",
         }
     }
 }

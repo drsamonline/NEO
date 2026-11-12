@@ -81,10 +81,14 @@ See [Development Plan](DEV_PLAN.md) for detailed status.
 ## Quick Start
 
 ```bash
-# Compile a NOVA program to C
-cd compiler
-# (Rust toolchain required)
-cargo run -- ../examples/test_final.nova --target c
+# Build the compiler (Rust toolchain, plus a C compiler on PATH)
+cargo build --release
+
+# Compile and run a program
+./target/release/nova-compiler run examples/hello.nova
+
+# Build an executable
+./target/release/nova-compiler build examples/fibonacci.nova -o fibonacci
 ```
 
 ## Project Structure

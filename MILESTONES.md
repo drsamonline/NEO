@@ -203,6 +203,9 @@
 
 ---
 
-**Progress Summary**: 6/12 milestones complete (50%)  
-**Current Focus**: Starting Milestone 7 - Runtime System  
-**Next Review**: Begin Phase 2 planning
+**Progress Summary**: milestones 1-6 complete; 7-11 exist in scaffold/partial form  
+**Current Focus**: `DEV_PLAN.md` (the maintained plan) - milestone 6, spans on expressions  
+**Next Review**: after each milestone's acceptance check runs in CI  
+
+> This file records the original milestone narrative. `DEV_PLAN.md` is the source of
+> truth for current status, ordered milestones and acceptance checks.

@@ -1,124 +1,79 @@
-# NOVA Compiler v1.0 Development Plan
+# NOVA Development Plan
 
-## Vision
-A fully functional semantic programming language with compiler, runtime, package manager, language server, and debugger.
+**Status source of truth.** Every claim here is checked against the code and the test
+suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 2026-11-11.
 
-## Phase 1: Core Compiler Pipeline (Weeks 1-4) ✅ COMPLETE
+## Current status
 
-### 1.1 Lexer ✅ COMPLETE (309 lines)
-- [x] Basic tokenization
-- [x] Comprehensive test suite
-- [x] Unicode support
-- [x] Better error messages with spans
+| Component | State | Verified by |
+|---|---|---|
+| Lexer | ✅ complete | `compiler/src/lexer` tests |
+| Parser | ✅ complete for the supported grammar: generics, slices, references, struct literals, `match`, closures, casts, `static` | `grammar-check.py`, parser tests |
+| Semantic analyser | ✅ names, scopes, return-type checking, call arity/type checking | `compiler/src/sema` tests |
+| SIR | ✅ typed expressions (`SirExpr::Typed`) | lowerer tests |
+| Lowerer | ✅ AST → SIR for the supported subset, including structs, field assignment, `impl` methods, enums, `match`, arrays and generic instantiation | lowerer tests |
+| C backend | ✅ runnable output (`int main`), struct `typedef`s and compound literals, enum constants, array literals/indexing, runtime-shim calls | end-to-end tests |
+| C runtime shim | ✅ `nova_runtime.h/.c`, ABI v1 (print family) | runtime + end-to-end tests |
+| CLI | ✅ `emit` / `build` / `run`, `-o`, `--target c`, `--` args | end-to-end tests |
+| Package manager | ⚠️ real `init`/`build`/`run`; registry mocked; dependencies recorded but not built | `pkg` tests |
+| LSP | ⚠️ real compiler diagnostics; go-to-definition is a string search; `references` TODO | `lsp` tests |
+| Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
+| Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
+| JS / Rust / WASM backends | ⚠️ generators exist, no CLI reaches them | — |
+| Standard library | ⚠️ all four modules parse; `emit` still stops because `__builtin_*` functions are undeclared, payload enums (`Option<T>`) and closures are not lowered (generics are now monomorphised) | `compiler/tests/stdlib_parse.rs`, `nova-compiler emit stdlib/core/core.nova` |
+| Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
+| Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-### 1.2 Parser ✅ COMPLETE (907 lines)
-- [x] Recursive descent parser
-- [x] AST construction
-- [x] Error recovery
-- [x] Operator precedence
-- [x] Expression parsing
-- [x] Statement parsing
-- [x] Declaration parsing
+**Test suite:** 137 passing, 0 failing (`cargo test --workspace`).
 
-### 1.3 Semantic Analyzer ✅ COMPLETE (773 lines total)
-- [x] Symbol table population
-- [x] Type checking
-- [x] Scope resolution
-- [x] Name resolution
-- [x] Type inference (basic)
-- [x] Type system (types.rs - 96 lines)
-- [x] Type checker (checker.rs - 176 lines)
-- [x] Name resolver (resolver.rs - 130 lines)
+## Milestones, in order
 
-### 1.4 SIR (Semantic Intermediate Representation) ✅ COMPLETE (146 lines)
-- [x] SIR definition
-- [x] Lowering from AST
+Each milestone is done only when its acceptance check passes in CI.
 
-### 1.5 Lowerer ✅ COMPLETE (550 lines)
-- [x] AST to SIR conversion
+| # | Milestone | Acceptance | State |
+|---|---|---|---|
+| 1 | Run a program end to end | `run examples/hello.nova` prints its output | ✅ done |
+| 2 | Runtime shim linked by the compiler | emitted C compiles with `nova_runtime.c` alone | ✅ done |
+| 3 | Types on SIR, including call results | `print` uses declared types; bools print `true`/`false` | ✅ done |
+| 4 | Return-type checking | `fn f() -> bool { return 1; }` is `E0308` | ✅ done |
+| 5 | Call argument checking | wrong arity and wrong argument types are errors | ✅ done |
+| 6 | Spans on expressions | every type diagnostic points at the offending expression | ✅ done |
+| 7 | Make the standard library parse | all `stdlib/**/*.nova` emit C | 🚧 parses; emit blocked by lowering |
+| 8 | Resolve calls, `use`, `mod` across files | a two-file program builds and runs | ⬜ |
+| 9 | Enums + `match` end to end | a `match` program compiles to `switch` and runs | 🚧 runs; lowered to equality chains, not a C `switch` |
+| 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | 🚧 runs; no bounds checks |
+| 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ⬜ |
+| 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests (`integration_tests/` today imports APIs that do not exist) | ⬜ |
+| 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits and is tested | ⬜ |
+| 14 | LSP go-to-definition/references from the symbol table | editor navigation works | ⬜ |
+| 15 | Debugger reads DWARF (`gimli`) | breakpoints hit real lines with real variables | ⬜ |
+| 16 | Package manager builds dependencies; real or explicit local-only registry | `publish`/`search` stop being mocks | ⬜ |
+| 17 | Documentation generated from code and grammar | no status table drifts; `docs/language/*` filled | ⬜ |
+| 18 | VS Code extension ships the LSP client | installable extension | ⬜ |
 
-### 1.6 Backends ✅ COMPLETE (1,529 lines total)
-- [x] C backend (449 lines) - Fully functional
-- [x] JavaScript backend (343 lines) - Implemented
-- [x] Rust backend (352 lines) - Implemented
-- [x] WebAssembly backend (385 lines) - Implemented
+## Working rules
 
-## Phase 2: Runtime System (Weeks 5-6) 🚧 ACTIVE DEVELOPMENT
-- [x] Memory management foundation (192 lines)
-- [x] Runtime type system (260 lines) 
-- [x] Error handling system (297 lines)
-- [x] FFI support utilities (332 lines)
-- [x] Core runtime library (139 lines)
-- [x] I/O runtime support (535 lines) - File I/O, streams, directories
-- [x] Threading primitives (315 lines) - Mutexes, RW locks, condition variables
-- [x] Async runtime (111 lines) - Futures, channels, delay
-- **Status**: Phase 2 complete (2,881 lines total, 30+ tests)
+- Follow this order unless a user request says otherwise.
+- Do not claim a milestone done until its acceptance check runs and passes.
+- Keep `README.md`, `CHANGELOG.md`, `compiler/README.md` and this file consistent with code.
+- Every implemented feature gets a test at the layer it lives in.
 
-## Phase 3: Tooling (Weeks 7-8) 🚧 IN PROGRESS
-- [x] Package manager implementation (1,619 lines) - CLI, manifest, resolver, registry
-- [x] Language server protocol (523 lines) - LSP handlers, completions, diagnostics
-- [x] Debugger integration (1,123 lines) - REPL, breakpoints, session management
+## Known limitations (deliberate, documented)
 
-## Phase 4: Polish & Testing (Weeks 9-10) 🔄 NEXT
-- [ ] Documentation
-- [ ] Performance optimization
-- [ ] Example programs
-- [ ] Release preparation
-- **Status**: Tooling scaffolds complete, need compiler integration
-
-## Current Status (Updated: Real-time)
-
-| Component | Status | Lines of Code | Notes |
-|-----------|--------|---------------|-------|
-| Lexer | ✅ Complete | 309 | Production ready |
-| Parser | ✅ Complete | 907 | Production ready |
-| Semantic Analyzer | ✅ Complete | 773 | Full type checking |
-| SIR | ✅ Complete | 146 | IR defined |
-| Lowerer | ✅ Complete | 550 | AST→SIR working |
-| C Backend | ✅ Complete | 449 | Tested & working |
-| JavaScript Backend | ✅ Complete | 343 | Implemented |
-| Rust Backend | ✅ Complete | 352 | Implemented |
-| Wasm Backend | ✅ Complete | 385 | Implemented |
-| **Compiler Total** | **✅ PHASE 1 DONE** | **~3,500+** | **Ready for Phase 2** |
-| Runtime | ✅ PHASE 2 COMPLETE | 2,881 | All modules implemented |
-| Package Manager | ✅ IMPLEMENTED | 1,619 | CLI, manifest, resolver, registry |
-| Language Server | ✅ IMPLEMENTED | 523 | LSP handlers, completions, diagnostics |
-| Debugger | ✅ IMPLEMENTED | 1,123 | REPL, breakpoints, session management |
-
-## Immediate Next Steps (Phase 3 - Tooling)
-1. **Runtime System** - ✅ COMPLETE (2,881 lines, 30+ tests)
-   - [x] Memory management foundation
-   - [x] Runtime type system with registry
-   - [x] Error handling with backtraces
-   - [x] FFI utilities for C interop
-   - [x] Core runtime library integration
-   - [x] Garbage collection infrastructure
-   - [x] I/O runtime support (files, streams, directories)
-   - [x] Threading primitives (mutexes, RW locks, condition variables)
-   - [x] Async runtime (futures, channels, delay)
-
-2. **Tooling Implementation** - ✅ COMPLETE (3,265 lines)
-   - [x] Package manager with dependency resolution (1,619 lines)
-     - [x] CLI with 12 commands (init, add, remove, update, build, run, publish, search, info, tree, clean, outdated)
-     - [x] Nova.toml manifest parsing and validation
-     - [x] Semantic versioning resolver with conflict detection
-     - [x] Registry client with mock implementations
-   - [x] Language server protocol implementation (523 lines)
-     - [x] LSP protocol handlers (initialize, didOpen, didChange, didClose)
-     - [x] Completion provider with keywords and built-ins
-     - [x] Hover information and go-to-definition
-     - [x] Document symbols and diagnostics
-   - [x] Debugger with breakpoints and stepping (1,123 lines)
-     - [x] Interactive REPL with readline support
-     - [x] Breakpoint management (set, delete, conditions)
-     - [x] Debug session state machine
-     - [x] Target process control (load, attach, remote)
-     - [x] Stack inspection and variable evaluation
-
-3. **Next: Phase 4 - Polish & Integration**
-   - [ ] Connect LSP to actual compiler for real diagnostics
-   - [ ] Integrate debugger with compiled binaries
-   - [ ] Standard library - core types, I/O, collections
-   - [ ] Integration testing - end-to-end compiler tests
-   - [ ] Performance benchmarks - optimize critical paths
-   - [ ] Documentation - user guide, API reference
+- `int` → `float` is the only implicit conversion.
+- Expression spans are recorded for expressions the parser returns from `parse_expr`;
+  an operand inside a larger expression has no span of its own and falls back to the
+  enclosing expression's span.
+- Tuples and closures lower to unit, so the standard library parses but
+  `emit stdlib/...` stops in semantic analysis.
+- Generics are monomorphised from concrete call sites: only instantiated functions
+  are emitted, an unbound type parameter falls back to `int`, and generic structs or
+  generic methods are not supported.
+- `match` supports literals, `Enum.Variant` paths and the wildcard arm. Binding
+  patterns, string patterns and enum variants that carry data are not lowered.
+- Arrays are `int*` (an array literal becomes a C compound literal) with no bounds
+  checks and no element type other than `int`.
+- Assignment to an array element is not implemented; field assignment is.
+- Expression types that cannot be inferred are never guessed, so type checking is sound
+  but incomplete.
+- `--release` selects an output directory only; the compiler has no optimisation levels.

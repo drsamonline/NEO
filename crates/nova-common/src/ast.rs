@@ -137,6 +137,8 @@ pub enum Pattern {
     Tuple(Vec<Pattern>),
     Struct(String, Vec<(String, Pattern)>),
     EnumVariant(String, String, Option<Box<Pattern>>),
+    /// A qualified path such as `LogLevel.DEBUG` or `Option::None`.
+    Path(Vec<String>),
     Wildcard,
     Literal(Literal),
 }
@@ -158,6 +160,11 @@ impl AstNode for TypeExpr {
 /// Expression
 #[derive(Debug, Clone)]
 pub enum Expr {
+    /// An expression together with the source span it was parsed from. The
+    /// parser wraps every expression it returns from `parse_expr`; consumers
+    /// either recurse into it or call [`Expr::unspanned`] when they need to
+    /// match on the expression's shape.
+    Spanned(Box<Expr>, Span),
     Literal(Literal),
     Identifier(String),
     Binary(Box<Expr>, BinOp, Box<Expr>),
@@ -178,12 +185,36 @@ pub enum Expr {
     Assign(Box<Expr>, Box<Expr>),
     Cast(Box<Expr>, TypeExpr),
     Path(Vec<String>),
+    /// `Name { field, other: value }` - a struct literal. `None` means the
+    /// shorthand form, where the field value is the identifier of the same name.
+    StructLiteral(String, Vec<(String, Option<Expr>)>),
+    /// `(a, b)` - a tuple expression.
+    Tuple(Vec<Expr>),
+    /// `[a, b, c]` - an array literal.
+    Array(Vec<Expr>),
+    /// `|x, y| body` - a closure.
+    Closure(Vec<String>, Box<Expr>),
+}
+
+impl Expr {
+    /// Strip every [`Expr::Spanned`] wrapper.
+    pub fn unspanned(&self) -> &Expr {
+        let mut expr = self;
+        while let Expr::Spanned(inner, _) = expr {
+            expr = inner;
+        }
+        expr
+    }
 }
 
 impl AstNode for Expr {
     fn span(&self) -> Span {
-        // Simplified - would need proper span tracking in production
-        Span::zero()
+        match self {
+            Expr::Spanned(_, span) => *span,
+            // Sub-expressions are not individually spanned yet; callers fall
+            // back to the enclosing span when this is zero.
+            _ => Span::zero(),
+        }
     }
 }
 
@@ -276,6 +307,8 @@ pub struct ConstDef {
     pub typ: Option<TypeExpr>,
     pub value: Expr,
     pub is_pub: bool,
+    /// Parsed from `static NAME: T = value;` rather than `const`.
+    pub is_static: bool,
     pub span: Span,
 }
 

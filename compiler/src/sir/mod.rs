@@ -10,6 +10,22 @@ use nova_common::Span;
 pub struct SirProgram {
     pub functions: Vec<SirFunction>,
     pub globals: Vec<SirGlobal>,
+    /// User-defined struct types, emitted before the functions that use them.
+    pub structs: Vec<SirStruct>,
+}
+
+/// SIR struct type
+#[derive(Debug, Clone)]
+pub struct SirStruct {
+    pub name: String,
+    pub fields: Vec<SirStructField>,
+}
+
+/// SIR struct field
+#[derive(Debug, Clone)]
+pub struct SirStructField {
+    pub name: String,
+    pub typ: String,
 }
 
 /// SIR Function
@@ -92,6 +108,8 @@ pub enum SirExpr {
         op: SirUnOp,
         operand: Box<SirExpr>,
     },
+    /// Address of a value, used to pass a `&self` receiver to a method.
+    AddressOf(Box<SirExpr>),
     /// Function call
     Call {
         callee: String,
@@ -102,6 +120,25 @@ pub enum SirExpr {
         target: String,
         value: Box<SirExpr>,
     },
+    /// Field assignment: `object.field = value`.
+    FieldAssign {
+        object: Box<SirExpr>,
+        field: String,
+        value: Box<SirExpr>,
+    },
+    /// Array literal: `[a, b, c]`.
+    Array(Vec<SirExpr>),
+    /// Array element read: `array[index]`.
+    Index {
+        array: Box<SirExpr>,
+        index: Box<SirExpr>,
+    },
+    /// Array element write: `array[index] = value`.
+    IndexAssign {
+        array: Box<SirExpr>,
+        index: Box<SirExpr>,
+        value: Box<SirExpr>,
+    },
     /// If expression (returns a value)
     If {
         condition: Box<SirExpr>,
@@ -110,6 +147,24 @@ pub enum SirExpr {
     },
     /// Block expression (returns final value)
     Block(Vec<SirStatement>, Option<Box<SirExpr>>),
+    /// An expression whose static type the lowerer knows.
+    ///
+    /// Codegen needs this to choose the right runtime function for `print`, and
+    /// Bools in particular cannot be recovered from their C representation.
+    Typed {
+        expr: Box<SirExpr>,
+        typ: String,
+    },
+    /// Struct construction: `Name { field: value, ... }`.
+    StructLiteral {
+        name: String,
+        fields: Vec<(String, SirExpr)>,
+    },
+    /// Field access: `object.field`.
+    FieldAccess {
+        object: Box<SirExpr>,
+        field: String,
+    },
 }
 
 /// SIR Literal

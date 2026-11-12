@@ -67,32 +67,26 @@ python3 tools/example-check.py
 
 ### Prerequisites
 1. Install Rust toolchain: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-2. Build the compiler: `cargo build --release`
-3. Add to PATH: `export PATH="$PWD/target/release:$PATH"`
+2. A C compiler on `PATH` (`cc`, `gcc` or `clang`; override with `CC`)
+3. Build the compiler: `cargo build --release`
 
-### Compilation
+### Compilation and execution
 ```bash
-# Compile a NOVA file to native code
-nova compile examples/hello.nova
+# Compile and run in one step
+./target/release/nova-compiler run examples/hello.nova
 
-# Compile with optimization
-nova compile --optimize examples/fibonacci.nova
+# Build an executable (leaves fibonacci.c beside it for inspection)
+./target/release/nova-compiler build examples/fibonacci.nova -o fibonacci
+./fibonacci
 
-# Compile to different backends
-nova compile --target c examples/hello.nova
-nova compile --target javascript examples/hello.nova
-nova compile --target rust examples/hello.nova
-nova compile --target wasm examples/hello.nova
+# Only emit C: to stdout, or to a file
+./target/release/nova-compiler examples/hello.nova
+./target/release/nova-compiler emit examples/hello.nova -o hello.c
 ```
 
-### Execution
-```bash
-# Run compiled binary
-./hello
+Only the C target is wired into the CLI; `--target javascript|rust|wasm` is
+rejected rather than silently ignored. The four generators live in `backends/`.
 
-# Or use the run command
-nova run examples/hello.nova
-```
 
 ## Example Output
 

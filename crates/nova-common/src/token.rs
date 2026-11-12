@@ -18,7 +18,7 @@ pub enum TokenKind {
     // Keywords
     Fn, Let, Mut, If, Else, While, For, Return,
     True, False, Struct, Enum, Match, Use, Mod,
-    Pub, Const, Type, As, In, Loop, Break, Continue, Impl,
+    Pub, Const, Type, As, In, Loop, Break, Continue, Impl, Static,
     
     // Operators
     Plus, Minus, Star, Slash, Percent,
@@ -46,7 +46,8 @@ impl TokenKind {
             TokenKind::True | TokenKind::False | TokenKind::Struct | TokenKind::Enum |
             TokenKind::Match | TokenKind::Use | TokenKind::Mod | TokenKind::Pub |
             TokenKind::Const | TokenKind::Type | TokenKind::As | TokenKind::In |
-            TokenKind::Loop | TokenKind::Break | TokenKind::Continue | TokenKind::Impl
+            TokenKind::Loop | TokenKind::Break | TokenKind::Continue | TokenKind::Impl |
+            TokenKind::Static
         )
     }
 }
@@ -92,6 +93,7 @@ impl Token {
             TokenKind::Break => "break".to_string(),
             TokenKind::Continue => "continue".to_string(),
             TokenKind::Impl => "impl".to_string(),
+            TokenKind::Static => "static".to_string(),
             TokenKind::Plus => "+".to_string(),
             TokenKind::Minus => "-".to_string(),
             TokenKind::Star => "*".to_string(),

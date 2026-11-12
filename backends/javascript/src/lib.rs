@@ -207,6 +207,29 @@ impl JsBackend {
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_js(value))
             }
+            SirExpr::FieldAssign { object, field, value } => {
+                format!(
+                    "({}).{} = {}",
+                    self.expr_to_js(object),
+                    field,
+                    self.expr_to_js(value)
+                )
+            }
+            // Objects are references in JavaScript, so address-of is a no-op.
+            SirExpr::AddressOf(inner) => self.expr_to_js(inner),
+            SirExpr::Array(items) => {
+                let values: Vec<String> = items.iter().map(|item| self.expr_to_js(item)).collect();
+                format!("[{}]", values.join(", "))
+            }
+            SirExpr::Index { array, index } => {
+                format!("({})[{}]", self.expr_to_js(array), self.expr_to_js(index))
+            }
+            SirExpr::IndexAssign { array, index, value } => format!(
+                "({})[{}] = {}",
+                self.expr_to_js(array),
+                self.expr_to_js(index),
+                self.expr_to_js(value)
+            ),
             SirExpr::If { condition, then_expr, else_expr } => {
                 let cond_str = self.expr_to_js(condition);
                 let then_str = self.expr_to_js(then_expr);
@@ -216,6 +239,17 @@ impl JsBackend {
                 } else {
                     format!("({} ? {} : undefined)", cond_str, then_str)
                 }
+            }
+            SirExpr::Typed { expr, .. } => self.expr_to_js(expr),
+            SirExpr::StructLiteral { fields, .. } => {
+                let fields: Vec<String> = fields
+                    .iter()
+                    .map(|(field, value)| format!("{}: {}", field, self.expr_to_js(value)))
+                    .collect();
+                format!("{{ {} }}", fields.join(", "))
+            }
+            SirExpr::FieldAccess { object, field } => {
+                format!("({}).{}", self.expr_to_js(object), field)
             }
             SirExpr::Block(stmts, final_expr) => {
                 // Blocks in expressions are tricky in JS, we use IIFE
@@ -302,6 +336,7 @@ mod tests {
                 span: Span::default(),
             }],
             globals: vec![],
+            structs: vec![],
         };
 
         let mut backend = JsBackend::new();
@@ -336,6 +371,7 @@ mod tests {
                 span: Span::default(),
             }],
             globals: vec![],
+            structs: vec![],
         };
 
         let mut backend = JsBackend::new();

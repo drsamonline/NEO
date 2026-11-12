@@ -42,9 +42,11 @@ PRECEDENCE = [
     ("equality", "parse_equality"),
     ("comparison", "parse_comparison"),
     ("term", "parse_term"),
+    ("shift", "parse_shift"),
     ("range", "parse_range"),
     ("factor", "parse_factor"),
     ("unary", "parse_unary"),
+    ("cast", "parse_cast"),
     ("call", "parse_call"),
     ("primary", "parse_primary"),
 ]

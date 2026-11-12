@@ -7,7 +7,7 @@ use crate::resolver;
 use crate::registry;
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -59,9 +59,11 @@ pub fn init(name: &str, is_lib: bool) -> Result<(), CommandError> {
     // Create source file
     let source_path = project_dir.join("src").join(if is_lib { "lib.nova" } else { "main.nova" });
     let source_content = if is_lib {
+        // No `pub` here: the parser lexes it as a keyword but has no production for
+        // it yet, so a library scaffold that used it would not compile.
         format!(r#"// {} - A NOVA library
 
-pub fn hello() -> String {{
+fn hello() -> String {{
     return "Hello from {}!";
 }}
 "#, name, name)
@@ -235,7 +237,35 @@ pub fn update(name: Option<&str>, breaking: bool) -> Result<(), CommandError> {
     Ok(())
 }
 
-/// Build the project
+/// The NOVA compiler this package manager drives.
+///
+/// Set `NOVA_COMPILER` to an absolute path when the compiler is not on `PATH`.
+fn compiler_command() -> PathBuf {
+    std::env::var_os("NOVA_COMPILER")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("nova-compiler"))
+}
+
+/// Where a project's build output lands: `<out_dir or build/<profile>>/<name>`.
+fn output_path(manifest: &Manifest, release: bool, cwd: &Path) -> PathBuf {
+    let profile = if release { "release" } else { "debug" };
+    let out_dir = manifest
+        .build
+        .out_dir
+        .clone()
+        .unwrap_or_else(|| cwd.join("build").join(profile));
+    out_dir.join(manifest.package.name.replace('-', "_"))
+}
+
+/// A library entry (`src/lib.nova`) has no `main`, so it cannot be linked or run.
+fn is_library(manifest: &Manifest) -> bool {
+    Path::new(&manifest.build.entry)
+        .file_stem()
+        .map(|stem| stem == "lib")
+        .unwrap_or(false)
+}
+
+/// Build the project through the NOVA compiler CLI.
 pub fn build(release: bool, no_incremental: bool) -> Result<(), CommandError> {
     let cwd = std::env::current_dir()?;
     let manifest = manifest::load_manifest(&cwd)?;
@@ -244,60 +274,91 @@ pub fn build(release: bool, no_incremental: bool) -> Result<(), CommandError> {
     
     // First resolve dependencies
     resolve_dependencies()?;
-    
-    // Call the compiler
-    let nova_compiler = std::env::var("NOVA_COMPILER")
-        .unwrap_or_else(|_| "nova".to_string());
-    
-    let mut cmd = std::process::Command::new(&nova_compiler);
-    cmd.arg("build")
-       .arg("-i")
-       .arg(manifest.build.entry);
-    
-    if release {
-        cmd.arg("-r");
-    }
-    
+
     if no_incremental {
-        cmd.arg("--no-incremental");
+        println!("note: the NOVA compiler has no incremental mode; every build is a full build");
     }
-    
-    if let Some(out_dir) = &manifest.build.out_dir {
-        cmd.arg("-o").arg(out_dir);
+    if release {
+        println!("note: the compiler has no optimisation levels yet; --release only selects build/release");
     }
-    
-    let output = cmd.output()?;
-    
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CommandError::BuildFailed(stderr.to_string()));
+
+    let entry = cwd.join(&manifest.build.entry);
+    if !entry.exists() {
+        return Err(CommandError::BuildFailed(format!(
+            "entry point not found: {}",
+            entry.display()
+        )));
     }
-    
-    println!("✓ Build completed successfully");
-    
-    if let Ok(stdout) = String::from_utf8(output.stdout) {
-        if !stdout.is_empty() {
-            print!("{}", stdout);
-        }
+
+    let output = output_path(&manifest, release, &cwd);
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let library = is_library(&manifest);
+    let compiler = compiler_command();
+    let mut cmd = std::process::Command::new(&compiler);
+    if library {
+        // No separate compilation yet: a library is emitted as C, not linked.
+        cmd.arg("emit")
+            .arg(&entry)
+            .arg("-o")
+            .arg(output.with_extension("c"));
+    } else {
+        cmd.arg("build")
+            .arg(&entry)
+            .arg("-o")
+            .arg(&output);
+    }
+
+    let result = cmd.output().map_err(|e| {
+        CommandError::BuildFailed(format!(
+            "could not run the NOVA compiler `{}`: {e}\n\
+             build it with `cargo build --release`, or point NOVA_COMPILER at it",
+            compiler.display()
+        ))
+    })?;
+
+    // The compiler writes progress to stderr; keep that visible.
+    if !result.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&result.stderr));
+    }
+    if !result.stdout.is_empty() {
+        print!("{}", String::from_utf8_lossy(&result.stdout));
+    }
+
+    if !result.status.success() {
+        return Err(CommandError::BuildFailed(format!(
+            "the NOVA compiler failed on {}",
+            entry.display()
+        )));
+    }
+
+    if library {
+        println!("✓ Compiled library to {}", output.with_extension("c").display());
+    } else {
+        println!("✓ Build completed successfully: {}", output.display());
     }
     
     Ok(())
 }
 
-/// Run the project
+/// Run the project's built binary.
 pub fn run(args: &[String], release: bool) -> Result<(), CommandError> {
     let cwd = std::env::current_dir()?;
     let manifest = manifest::load_manifest(&cwd)?;
+
+    if is_library(&manifest) {
+        return Err(CommandError::BuildFailed(format!(
+            "`{}` is a library (entry {}): there is no binary to run",
+            manifest.package.name, manifest.build.entry
+        )));
+    }
     
     // Build first
     build(release, false)?;
     
-    // Determine output binary location
-    let bin_name = manifest.package.name.replace('-', "_");
-    let profile = if release { "release" } else { "debug" };
-    let out_dir = manifest.build.out_dir
-        .unwrap_or_else(|| cwd.join("build").join(profile));
-    let binary = out_dir.join(&bin_name);
+    let binary = output_path(&manifest, release, &cwd);
     
     if !binary.exists() {
         return Err(CommandError::BuildFailed(
@@ -632,4 +693,47 @@ fn create_package_archive(dir: &Path, _manifest: &Manifest) -> Result<Vec<u8>, C
         std::time::SystemTime::now()
     );
     Ok(content.into_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::create_manifest;
+
+    #[test]
+    fn output_path_uses_the_profile_directory_by_default() {
+        let manifest = create_manifest("my-app", false);
+        let cwd = Path::new("/tmp/project");
+        assert_eq!(
+            output_path(&manifest, false, cwd),
+            PathBuf::from("/tmp/project/build/debug/my_app")
+        );
+        assert_eq!(
+            output_path(&manifest, true, cwd),
+            PathBuf::from("/tmp/project/build/release/my_app")
+        );
+    }
+
+    #[test]
+    fn output_path_honours_the_manifest_out_dir() {
+        let mut manifest = create_manifest("app", false);
+        manifest.build.out_dir = Some(PathBuf::from("dist"));
+        assert_eq!(
+            output_path(&manifest, false, Path::new("/tmp/project")),
+            PathBuf::from("dist/app")
+        );
+    }
+
+    #[test]
+    fn library_entries_are_detected() {
+        assert!(is_library(&create_manifest("my-lib", true)));
+        assert!(!is_library(&create_manifest("my-bin", false)));
+    }
+
+    #[test]
+    fn compiler_command_defaults_to_the_compiler_on_path() {
+        // Only assert the shape: the environment may set NOVA_COMPILER.
+        let command = compiler_command();
+        assert!(!command.as_os_str().is_empty());
+    }
 }

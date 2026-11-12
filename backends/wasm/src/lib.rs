@@ -288,6 +288,10 @@ impl WasmBackend {
                 self.indent_level -= 1;
                 self.writeln(")");
             }
+            SirExpr::Typed { expr, .. } => self.generate_expr(expr),
+            // Structs have no WebAssembly representation yet.
+            SirExpr::StructLiteral { .. } => self.writeln("(i32.const 0) ;; struct literal"),
+            SirExpr::FieldAccess { .. } => self.writeln("(i32.const 0) ;; field access"),
             SirExpr::Block(stmts, final_expr) => {
                 // Generate block statements
                 for stmt in stmts {
@@ -301,6 +305,32 @@ impl WasmBackend {
             SirExpr::Assign { target, value } => {
                 self.generate_expr(value);
                 self.writeln(&format!("(local.set ${})", target));
+            }
+            SirExpr::FieldAssign { value, .. } => {
+                // Structs have no WebAssembly representation yet.
+                self.generate_expr(value);
+                self.writeln(";; field assignment");
+            }
+            SirExpr::AddressOf(inner) => {
+                self.generate_expr(inner);
+                self.writeln(";; address-of");
+            }
+            SirExpr::Array(items) => {
+                for item in items {
+                    self.generate_expr(item);
+                }
+                self.writeln(";; array literal");
+            }
+            SirExpr::Index { array, index } => {
+                self.generate_expr(array);
+                self.generate_expr(index);
+                self.writeln(";; index");
+            }
+            SirExpr::IndexAssign { array, index, value } => {
+                self.generate_expr(array);
+                self.generate_expr(index);
+                self.generate_expr(value);
+                self.writeln(";; index assignment");
             }
         }
     }
@@ -379,6 +409,7 @@ mod tests {
                 span: Span::default(),
             }],
             globals: vec![],
+            structs: vec![],
         };
 
         let mut backend = WasmBackend::new();
