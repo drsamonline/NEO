@@ -1,204 +1,61 @@
-# NOVA Runtime System - Phase 2 Progress
+# NOVA Runtime System — Progress
 
-## Overview
-Phase 2 focuses on implementing the NOVA runtime system, which provides essential support for compiled NOVA programs including memory management, type system, error handling, FFI, and garbage collection.
+**Last verified:** 2026-11-12 (`cargo test --workspace`).
 
-## Current Status: Active Development
+The runtime crate (`runtime/`) compiles and is covered by 33 unit tests. It is
+**not linked into generated NOVA programs yet**: generated C calls only the shim
+ABI declared in `compiler/src/runtime.rs` (`nova_print_*`, `nova_runtime_version`).
 
-### Completed Modules
+## Module status
 
-#### 1. Memory Management (`memory.rs`) - 195 lines
-- ✅ Initialization/shutdown system
-- ✅ `Allocatable` trait for heap allocation
-- ✅ Stack buffer utilities (`StackBuffer<T, N>`)
-- ✅ Memory copy/swap operations
-- ✅ Zero-initialization support
-- ✅ Comprehensive test suite (5 tests)
+### Memory (`memory.rs`, 195 lines, 5 tests) ✅
+- Allocation trait for primitive types, stack buffers with overflow checks,
+  copy/swap helpers, zero-initialisation.
 
-**Key Features:**
-- Type-safe allocation traits for all primitive types
-- Fixed-size stack buffers with overflow protection
-- Generic memory utilities
+### Types (`types.rs`, 276 lines, 3 tests) ✅
+- `NovaString` (concatenation, conversions), `NovaArray<T>` (bounds-checked
+  access), `NovaOption<T>` interoperating with Rust's `Option`.
 
-#### 2. Type System (`types.rs`) - 276 lines
-- ✅ `NovaString` - String wrapper with concatenation
-- ✅ `NovaArray<T>` - Dynamic array implementation
-- ✅ `NovaOption<T>` - Optional type (runtime-visible)
-- ✅ Full trait implementations (Clone, Debug, Display, etc.)
-- ✅ Conversion traits (From/Into)
-- ✅ Test coverage (3 tests)
+### Errors (`error.rs`, 232 lines, 6 tests) ✅
+- `NovaError` with 11 `ErrorKind` categories, source locations, custom handlers,
+  `NovaResult<T>`.
 
-**Key Features:**
-- Runtime string operations
-- Bounds-checked array access
-- Option type interoperability with Rust's Option
+### FFI (`ffi.rs`, 193 lines, 4 tests) ✅
+- C-compatible booleans, Rust ↔ C string conversion, nullable pointer helpers,
+  callback typedefs, malloc/free wrappers.
 
-#### 3. Error Handling (`error.rs`) - 224 lines
-- ✅ `NovaError` core error type
-- ✅ `ErrorKind` enumeration (11 error categories)
-- ✅ Location tracking for errors
-- ✅ Custom error handlers
-- ✅ `NovaResult<T>` type alias
-- ✅ Convenience constructors
-- ✅ Comprehensive tests (6 tests)
+### Garbage collection (`gc.rs`, 420 lines, 6 tests) ⚠️ reference counting
+- `GcPtr<T>` / `GcWeak<T>` over `Rc<RefCell<T>>`, statistics, collection at a
+  configurable heap threshold. There is no tracing collector, so reference cycles
+  leak; this is documented rather than hidden.
 
-**Error Categories:**
-- TypeError, IndexError, NullError
-- DivisionByZero, Overflow
-- OutOfMemory, IoError
-- ArgumentError, PermissionDenied, NotFound
-- Custom errors
+### I/O (`io/mod.rs`, 534 lines, 3 tests) ✅
+- File read/write, buffered readers/writers, seeking, directory helpers.
 
-#### 4. FFI (`ffi.rs`) - 193 lines
-- ✅ C-compatible types (`NovaBool`, constants)
-- ✅ String conversion (Rust ↔ C)
-- ✅ Pointer utilities (null checks, option conversion)
-- ✅ Callback type definitions
-- ✅ External function calling helpers
-- ✅ Memory interop (malloc/free wrappers)
-- ✅ Test suite (4 tests)
+### Threading (`threading/mod.rs`, 314 lines, 2 tests) ✅
+- Thread spawn/join, mutex, rwlock and condition-variable wrappers.
 
-**Key Features:**
-- Safe C string conversion with proper cleanup
-- Nullable pointer handling
-- Support for C callbacks
+### Async (`async_rt/mod.rs`, 114 lines, 2 tests) ⚠️ building blocks only
+- Future-like helpers, channels and delay; there is no executor or event loop.
 
-#### 5. Garbage Collection (`gc.rs`) - 420 lines ⭐ NEW
-- ✅ `GcStats` - GC statistics tracking
-- ✅ `GcManaged` trait for managed objects
-- ✅ `GcPtr<T>` - Reference-counted GC pointer
-- ✅ `GcWeak<T>` - Weak reference support
-- ✅ Automatic collection triggering
-- ✅ Heap limit configuration
-- ✅ Convenience macros (`gc_new!`, `gc_weak!`)
-- ✅ Comprehensive test suite (6 tests)
+## Remaining work
 
-**Key Features:**
-- Reference counting with Rc<RefCell<T>>
-- Automatic collection at threshold (75% of heap limit)
-- Weak references to prevent cycles
-- Statistics tracking (allocations, collections, peak memory)
-- Configurable heap limits
+- [ ] Define a C-facing runtime ABI for strings, arrays and allocation, then link
+      it into generated programs (today only printing crosses the boundary).
+- [ ] Decide the GC story: tracing collector or documented RC limitation.
+- [ ] Build an executor for `async_rt`.
+- [ ] Expand I/O and threading tests before relying on either.
+- [ ] Bounds-checked arrays in generated C (the compiler currently emits raw
+      `int*` indexing with no checks).
 
-## Runtime Architecture
+## Verification
 
-```
-┌─────────────────────────────────────────────────────┐
-│              NOVA Runtime System                     │
-├─────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
-│  │ Memory   │  │ Types    │  │ Error    │          │
-│  │ Manager  │  │ System   │  │ Handler  │          │
-│  └──────────┘  └──────────┘  └──────────┘          │
-│  ┌──────────┐  ┌──────────┐                         │
-│  │ FFI      │  │ Garbage  │                         │
-│  │ Layer    │  │ Collector│                         │
-│  └──────────┘  └──────────┘                         │
-└─────────────────────────────────────────────────────┘
-           ↓
-┌─────────────────────────────────────────────────────┐
-│         Compiled NOVA Programs                       │
-└─────────────────────────────────────────────────────┘
+```bash
+cargo test --workspace
 ```
 
-## Statistics
-
-| Module | Lines | Tests | Status |
-|--------|-------|-------|--------|
-| memory.rs | 195 | 5 | ✅ Complete |
-| types.rs | 276 | 3 | ✅ Complete |
-| error.rs | 224 | 6 | ✅ Complete |
-| ffi.rs | 193 | 4 | ✅ Complete |
-| gc.rs | 420 | 6 | ✅ Foundation |
-| lib.rs | 72 | 2 | ✅ Complete |
-| **Total** | **1,380** | **26** | **Phase 2 In Progress** |
-
-## Next Steps
-
-### Immediate (Phase 2a)
-- [ ] Add IO module for file/network operations
-- [ ] Implement threading primitives
-- [ ] Add synchronization primitives (Mutex, RwLock wrappers)
-- [ ] Create runtime initialization macro for NOVA programs
-
-### Short-term (Phase 2b)
-- [ ] Implement mark-and-sweep GC algorithm (upgrade from RC)
-- [ ] Add generational GC optimization
-- [ ] Create runtime profiling tools
-- [ ] Implement object finalization system
-
-### Medium-term (Phase 2c)
-- [ ] Add async runtime support
-- [ ] Implement channel-based concurrency
-- [ ] Create runtime configuration system
-- [ ] Add memory pooling for performance
-
-## Testing Strategy
-
-All modules include comprehensive unit tests:
-- Memory management: allocation, stack buffers, swaps
-- Types: string ops, array manipulation, option handling
-- Errors: creation, formatting, handlers
-- FFI: string conversion, pointer safety
-- GC: reference counting, weak refs, stats tracking
-
-**Test Coverage:** 26 tests across 5 modules
-
-## Integration Points
-
-The runtime integrates with:
-1. **C Backend** - Generated C code calls runtime functions
-2. **FFI** - External library integration
-3. **GC** - Automatic memory management for NOVA objects
-4. **Error System** - Runtime error reporting and handling
-
-## Usage Example
-
-```rust
-use nova_runtime::*;
-
-fn main() {
-    // Initialize runtime
-    init();
-    
-    // Use runtime types
-    let s = NovaString::new("Hello, NOVA!");
-    let mut arr = NovaArray::<i32>::new();
-    arr.push(42);
-    
-    // Use GC-managed objects
-    gc::Gc::init();
-    let gc_obj = gc_new!(MyObject::new());
-    
-    // Handle errors
-    let result: NovaResult<()> = Ok(());
-    if let Err(e) = result {
-        report_error(&e);
-    }
-    
-    // Cleanup
-    shutdown();
-}
-```
-
-## Performance Considerations
-
-- Reference counting overhead vs manual memory management
-- Stack buffers for small fixed-size collections
-- Zero-copy string conversions where possible
-- Lazy GC collection based on heap threshold
-
-## Future Enhancements
-
-1. **Concurrent GC** - Parallel marking and sweeping
-2. **Region-based Memory** - Arena allocation for specific use cases
-3. **Borrow Checker Integration** - Compile-time guarantees where possible
-4. **Runtime Profiling** - Built-in performance monitoring
-5. **Hot Reloading** - Dynamic code updates
-
----
-
-**Last Updated:** Phase 2 Active Development
-**Total Runtime LOC:** 1,380 lines
-**Test Count:** 26 tests
-**Modules Complete:** 5/8 (Core modules done, IO/Threading/Async pending)
+| Check | Result |
+|---|---|
+| Workspace tests | 139 passed, 0 failed |
+| Runtime tests | 33, all passing |
+| Generated C runtime | `nova_runtime.h/.c` ABI v1, print family only |

@@ -1,156 +1,51 @@
-# Phase 2: Runtime System - Implementation Summary
+# Phase 2: Runtime System — Status
 
-## Status: Core Modules Complete ✅
+**Last verified:** 2026-11-12 against the code and `cargo test --workspace`.
 
-### Overview
-Phase 2 of the NOVA project focuses on building a comprehensive runtime system to support the compiled language. The core foundation has been implemented with **1,220+ lines of Rust code** across 5 modules, featuring **20+ unit tests**.
+Phase 2 built the Rust runtime crate under `runtime/`. It compiles and its unit
+tests pass, but it is **not linked into generated NOVA programs**: the C backend
+targets the small C shim in `compiler/src/runtime.rs` instead. The crate is the
+foundation for a future richer runtime, not a description of what compiled NOVA
+programs currently use.
 
-## Implemented Modules
+## Modules
 
-### 1. Memory Management (`memory.rs` - 192 lines)
-**Purpose**: Efficient memory allocation and management for NOVA runtime objects.
+| Module | Lines | Tests | What it actually provides |
+|---|---|---|---|
+| `memory.rs` | 195 | 5 | Allocation traits, stack buffers, copy/swap helpers, zero-initialisation |
+| `types.rs` | 276 | 3 | `NovaString`, `NovaArray<T>`, `NovaOption<T>` and their traits |
+| `error.rs` | 232 | 6 | `NovaError`, `ErrorKind`, locations, custom handlers |
+| `ffi.rs` | 193 | 4 | C string conversion, nullable pointers, callbacks, malloc/free wrappers |
+| `gc.rs` | 420 | 6 | Reference counting (`GcPtr`/`GcWeak`), stats, threshold-triggered collection |
+| `lib.rs` | 81 | 2 | `init`/`shutdown`, unified exports, runtime stats |
+| `io/mod.rs` | 534 | 3 | File read/write, buffered streams, seeking, directory listing |
+| `threading/mod.rs` | 314 | 2 | Thread spawning, mutex, rwlock, condition-variable wrappers |
+| `async_rt/mod.rs` | 114 | 2 | Minimal future/channel/delay helpers |
+| **Total** | **2,359** | **33** | |
 
-**Key Features**:
-- `MemoryArena`: Arena-based allocator for fast bulk allocations
-- `GarbageCollector`: Foundation for mark-and-sweep GC (placeholder implementation)
-- `ManagedPtr<T>`: Safe wrapper for runtime-managed pointers
-- Global statistics tracking (allocated bytes, allocation count, GC runs)
-- Automatic memory alignment and layout management
+## What changed against the earlier draft of this file
 
-**API Example**:
-```rust
-let mut arena = MemoryArena::new(1024)?;
-let ptr = arena.allocate(42i32)?;
-unsafe { assert_eq!(*ptr, 42); }
-arena.reset(); // Mark all as free without deallocating
+- The per-module line and test counts were stale (they described an earlier
+  snapshot: 1,220 lines and 21 tests, with no I/O, threading or async module).
+- `gc.rs` is reference counting, not a mark-and-sweep collector.
+- I/O, threading and async helpers now exist; they were listed as "next steps".
+
+## Remaining Phase 2 work
+
+1. **Link the runtime to generated code.** The C backend only knows the print
+   ABI in `compiler/src/runtime.rs`; strings, arrays, bounds checks and allocation
+   would need a C-facing ABI first.
+2. **GC:** replace reference counting with a tracing collector, or document the
+   cycle limitation and keep RC.
+3. **Async:** the current `async_rt` helpers are building blocks, not an executor.
+4. **I/O and threading coverage:** both have three and two tests respectively;
+   grow them before treating either as production-ready.
+
+## Verification
+
+```bash
+cargo test --workspace   # includes the 33 runtime tests
 ```
 
-### 2. Type System (`types.rs` - 260 lines)
-**Purpose**: Runtime type information and dynamic type checking.
-
-**Key Features**:
-- `TypeId`: Hash-based type identifier
-- `TypeInfo`: Complete type metadata (name, size, align, kind, fields, variants)
-- `TypeRegistry`: Global type database with primitives pre-registered
-- `DynamicValue`: Type-erased value wrapper for runtime type checking
-- Support for structs, enums, arrays, pointers, functions, and generics
-
-**API Example**:
-```rust
-let registry = TypeRegistry::new();
-let point_type = TypeInfo::new("Point", TypeKind::Struct, 16, 8)
-    .with_fields(vec![/* field info */]);
-registry.register(point_type)?;
-```
-
-### 3. Error Handling (`error.rs` - 297 lines)
-**Purpose**: Comprehensive error reporting and panic handling.
-
-**Key Features**:
-- `RuntimeError`: 10 error categories (OutOfMemory, TypeMismatch, IndexOutOfBounds, etc.)
-- `RuntimeErrorWithTrace`: Errors with full backtrace information
-- Panic hook initialization with formatted output
-- `catch_unwind`: Convert panics to `RuntimeResult`
-- Error codes and categories for programmatic handling
-
-**API Example**:
-```rust
-init_runtime();
-let result = catch_unwind(|| dangerous_operation())?;
-// Or create custom errors
-let err = RuntimeError::type_mismatch("i32", "f64");
-```
-
-### 4. FFI Support (`ffi.rs` - 332 lines)
-**Purpose**: Safe interoperability with C and external libraries.
-
-**Key Features**:
-- `NovaValue`: C-compatible tagged union (int, float, bool, pointer)
-- `FfiString`: Bidirectional Rust ↔ C string conversion
-- `FfiArray<T>`: FFI-safe dynamic array with bounds checking
-- `FfiHandle`: Opaque resource handle management
-- `FfiFunction`: Wrapper for C-callable function pointers
-
-**API Example**:
-```rust
-let c_str = FfiString::to_c_string("Hello");
-unsafe {
-    let rust_str = FfiString::from_c_string(c_str)?;
-    FfiString::free(c_str);
-}
-```
-
-### 5. Core Library (`lib.rs` - 139 lines)
-**Purpose**: Runtime initialization and unified API surface.
-
-**Key Features**:
-- `init()`: Initialize all runtime subsystems
-- `get_stats()`: Runtime statistics (version, memory, types, panics)
-- Module exports and re-exports
-- Integration test suite
-
-**API Example**:
-```rust
-nova_runtime::init();
-let stats = nova_runtime::get_stats();
-println!("{}", stats);
-```
-
-## Test Coverage
-
-| Module | Tests | Coverage |
-|--------|-------|----------|
-| memory.rs | 2 | Arena allocation, reset |
-| types.rs | 3 | Registry, custom types, dynamic values |
-| error.rs | 4 | Error creation, categories, traces, catch_unwind |
-| ffi.rs | 6 | Values, strings, arrays, handles |
-| lib.rs | 6 | Init, stats, integration |
-| **Total** | **21** | **All core features** |
-
-## Next Steps (Remaining Phase 2)
-
-### High Priority
-1. **I/O Runtime Support** - File I/O, console I/O, streams
-2. **Threading Primitives** - Thread creation, synchronization, mutexes
-3. **Async Runtime** - Event loop, futures, async/await support
-
-### Medium Priority
-4. **Standard Library Integration** - Connect runtime to stdlib modules
-5. **GC Implementation** - Complete mark-and-sweep algorithm
-6. **Performance Optimization** - Benchmark and optimize hot paths
-
-## Metrics
-
-- **Total LOC**: 1,220+ lines
-- **Test Count**: 21 tests
-- **Modules**: 5 core modules + lib.rs
-- **Compilation**: Ready for Cargo build (Rust 2021 edition)
-- **Documentation**: Inline docs for all public APIs
-
-## Integration with Compiler
-
-The runtime system integrates with the compiler backends through:
-- FFI layer for C backend interop
-- Type registry for runtime type checks
-- Error handling for runtime exceptions
-- Memory arena for efficient object allocation
-
-## Files Created
-
-```
-src/runtime/
-├── Cargo.toml      # Package manifest
-├── lib.rs          # Core library (139 lines)
-├── memory.rs       # Memory management (192 lines)
-├── types.rs        # Type system (260 lines)
-├── error.rs        # Error handling (297 lines)
-└── ffi.rs          # FFI support (332 lines)
-```
-
-## Conclusion
-
-Phase 2 core runtime is production-ready with comprehensive error handling, type safety, memory management, and C interop. The foundation supports advanced features like garbage collection, async runtime, and threading which can be built on top of these primitives.
-
----
-*Last Updated: Current Session*
-*Status: Core Complete, Advanced Features Pending*
+The workspace total is 139 passing tests, 0 failing (compiler, runtime, tooling
+and end-to-end tests together).

@@ -238,6 +238,34 @@ impl CGenerator {
                 }
                 self.writeln("}");
             }
+            SirStatement::Switch { scrutinee, cases, default } => {
+                self.write("switch (");
+                self.generate_expr(scrutinee);
+                self.writeln(") {");
+                self.indent_level += 1;
+                for (constant, body) in cases {
+                    self.write("case ");
+                    self.generate_expr(constant);
+                    self.writeln(":");
+                    self.indent_level += 1;
+                    for stmt in body {
+                        self.generate_statement(stmt);
+                    }
+                    self.writeln("break;");
+                    self.indent_level -= 1;
+                }
+                if let Some(body) = default {
+                    self.writeln("default:");
+                    self.indent_level += 1;
+                    for stmt in body {
+                        self.generate_statement(stmt);
+                    }
+                    self.writeln("break;");
+                    self.indent_level -= 1;
+                }
+                self.indent_level -= 1;
+                self.writeln("}");
+            }
             SirStatement::While { condition, body } => {
                 self.write("while (");
                 self.generate_expr(condition);

@@ -24,7 +24,7 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 137 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 139 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 
@@ -40,7 +40,7 @@ Each milestone is done only when its acceptance check passes in CI.
 | 6 | Spans on expressions | every type diagnostic points at the offending expression | ✅ done |
 | 7 | Make the standard library parse | all `stdlib/**/*.nova` emit C | 🚧 parses; emit blocked by lowering |
 | 8 | Resolve calls, `use`, `mod` across files | a two-file program builds and runs | ⬜ |
-| 9 | Enums + `match` end to end | a `match` program compiles to `switch` and runs | 🚧 runs; lowered to equality chains, not a C `switch` |
+| 9 | Enums + `match` end to end | a `match` program compiles to `switch` and runs | ✅ done |
 | 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | 🚧 runs; no bounds checks |
 | 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ⬜ |
 | 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests (`integration_tests/` today imports APIs that do not exist) | ⬜ |
@@ -69,7 +69,8 @@ Each milestone is done only when its acceptance check passes in CI.
 - Generics are monomorphised from concrete call sites: only instantiated functions
   are emitted, an unbound type parameter falls back to `int`, and generic structs or
   generic methods are not supported.
-- `match` supports literals, `Enum.Variant` paths and the wildcard arm. Binding
+- `match` supports literals, `Enum.Variant` paths and the wildcard arm. A statement
+  `match` becomes a C `switch`; a value `match` stays a ternary chain. Binding
   patterns, string patterns and enum variants that carry data are not lowered.
 - Arrays are `int*` (an array literal becomes a C compound literal) with no bounds
   checks and no element type other than `int`.

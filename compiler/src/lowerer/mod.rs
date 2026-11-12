@@ -19,6 +19,8 @@ pub struct Lowerer {
     methods: HashMap<String, HashMap<String, MethodSig>>,
     /// Enum name -> variant names, in declaration order.
     enums: HashMap<String, Vec<String>>,
+    /// `Enum_Variant` -> ordinal, so a `match` arm can be a C `case` constant.
+    enum_ordinals: HashMap<String, i64>,
     /// Generic functions, keyed by name; lowered once per instantiation.
     generic_decls: HashMap<String, Function>,
     /// Instantiations that still need to be lowered.
@@ -27,6 +29,9 @@ pub struct Lowerer {
     instantiated: HashSet<String>,
     /// Generic parameter -> concrete type while an instantiation is lowered.
     substitutions: Vec<HashMap<String, String>>,
+    /// True while lowering a body that returns nothing, so a trailing `match`
+    /// can become a `switch` instead of a value-producing ternary chain.
+    discard_result: bool,
 }
 
 /// A generic function specialised for one set of concrete type arguments.
@@ -53,10 +58,12 @@ impl Lowerer {
             struct_types: HashMap::new(),
             methods: HashMap::new(),
             enums: HashMap::new(),
+            enum_ordinals: HashMap::new(),
             generic_decls: HashMap::new(),
             pending: Vec::new(),
             instantiated: HashSet::new(),
             substitutions: Vec::new(),
+            discard_result: false,
         }
     }
 
@@ -157,6 +164,14 @@ impl Lowerer {
                             .map(|variant| variant.name.clone())
                             .collect(),
                     );
+                    for (index, variant) in enum_def.variants.iter().enumerate() {
+                        if variant.fields.is_none() {
+                            self.enum_ordinals.insert(
+                                format!("{}_{}", enum_def.name, variant.name),
+                                index as i64,
+                            );
+                        }
+                    }
                 }
                 nova_common::Item::Impl(impl_block) => {
                     for method in &impl_block.methods {
@@ -221,6 +236,8 @@ impl Lowerer {
                         if variant.fields.is_some() {
                             continue;
                         }
+                        self.enum_ordinals
+                            .insert(format!("{}_{}", enum_def.name, variant.name), index as i64);
                         globals.push(SirGlobal {
                             name: format!("{}_{}", enum_def.name, variant.name),
                             typ: "int".to_string(),
@@ -272,16 +289,19 @@ impl Lowerer {
             });
         }
 
-        let body = match &instance.function.body {
-            Some(block) => self.lower_block(block),
-            None => Vec::new(),
-        };
         let return_type = instance
             .function
             .return_type
             .as_ref()
             .map(|typ| self.substitute(&typ.name));
+        let previous = self.discard_result;
+        self.discard_result = !Self::returns_value(&return_type);
+        let body = match &instance.function.body {
+            Some(block) => self.lower_block(block),
+            None => Vec::new(),
+        };
         let body = Self::finish_body(body, &return_type);
+        self.discard_result = previous;
 
         self.pop_scope();
         self.substitutions.pop();
@@ -379,14 +399,15 @@ impl Lowerer {
             self.declare(&param.name, Some(param.typ.name.clone()));
         }
 
+        let return_type = func.return_type.as_ref().map(|typ| typ.name.clone());
+        let previous = self.discard_result;
+        self.discard_result = !Self::returns_value(&return_type);
         let body_stmts = match &func.body {
             Some(block) => self.lower_block(block),
             None => Vec::new(),
         };
-        let body_stmts = Self::finish_body(
-            body_stmts,
-            &func.return_type.as_ref().map(|typ| typ.name.clone()),
-        );
+        let body_stmts = Self::finish_body(body_stmts, &return_type);
+        self.discard_result = previous;
         self.pop_scope();
 
         SirFunction {
@@ -429,14 +450,15 @@ impl Lowerer {
             }
         }
 
+        let return_type = method.return_type.as_ref().map(|typ| typ.name.clone());
+        let previous = self.discard_result;
+        self.discard_result = !Self::returns_value(&return_type);
         let body = match &method.body {
             Some(block) => self.lower_block(block),
             None => Vec::new(),
         };
-        let body = Self::finish_body(
-            body,
-            &method.return_type.as_ref().map(|typ| typ.name.clone()),
-        );
+        let body = Self::finish_body(body, &return_type);
+        self.discard_result = previous;
         self.pop_scope();
 
         SirFunction {
@@ -448,13 +470,18 @@ impl Lowerer {
         }
     }
 
+    /// Whether a declared return type produces a value.
+    fn returns_value(return_type: &Option<String>) -> bool {
+        return_type
+            .as_deref()
+            .map(|typ| !matches!(typ.to_lowercase().as_str(), "void" | "unit"))
+            .unwrap_or(false)
+    }
+
     /// A function that declares a value and ends in an expression returns that
     /// expression, rather than leaving it as a discarded statement.
     fn finish_body(mut body: Vec<SirStatement>, return_type: &Option<String>) -> Vec<SirStatement> {
-        let returns_value = return_type
-            .as_deref()
-            .map(|typ| !matches!(typ.to_lowercase().as_str(), "void" | "unit"))
-            .unwrap_or(false);
+        let returns_value = Self::returns_value(return_type);
         // Check before popping: a trailing `return` must not be dropped.
         if returns_value && matches!(body.last(), Some(SirStatement::Expr(_))) {
             if let Some(SirStatement::Expr(expr)) = body.pop() {
@@ -520,6 +547,14 @@ impl Lowerer {
                     }
                     Expr::For(pattern, iterable, body) => {
                         return vec![self.lower_for_statement(pattern, iterable, body)];
+                    }
+                    Expr::Match(scrutinee, arms) => {
+                        // A bare `match` statement compiles to a C `switch`;
+                        // patterns with no constant test fall through to the
+                        // ternary chain below.
+                        if let Some(statements) = self.lower_match_statement(scrutinee, arms) {
+                            return statements;
+                        }
                     }
                     Expr::Return(value) => {
                         return vec![SirStatement::Return(value.as_ref().map(|v| self.lower_expr(v)))];
@@ -656,6 +691,11 @@ impl Lowerer {
                 // an expression would lose its loop/if statements, so reuse the
                 // statement lowering that knows about them.
                 Expr::If(..) | Expr::While(..) | Expr::For(..) | Expr::Loop(..) | Expr::Block(..) => {
+                    stmts.extend(self.lower_statement(&Statement::Expr((**final_expr).clone())));
+                }
+                // In a function that returns nothing, a trailing `match` is a
+                // statement: keep it a `switch` instead of a discarded ternary.
+                Expr::Match(..) if self.discard_result => {
                     stmts.extend(self.lower_statement(&Statement::Expr((**final_expr).clone())));
                 }
                 _ => {
@@ -1086,6 +1126,71 @@ impl Lowerer {
         current_if.unwrap_or_else(|| SirExpr::Literal(SirLiteral::Unit))
     }
 
+    /// Lower a statement-position `match` to a C `switch`. Returns `None` when
+    /// an arm has no integer constant test (a string literal or a binding), so
+    /// the caller keeps the expression-form chain instead.
+    fn lower_match_statement(
+        &mut self,
+        scrutinee: &Expr,
+        arms: &[MatchArm],
+    ) -> Option<Vec<SirStatement>> {
+        let mut cases = Vec::new();
+        let mut default = None;
+
+        for arm in arms {
+            let constant = match &arm.pattern {
+                Pattern::Literal(Literal::Integer(n)) => {
+                    Some(SirExpr::Literal(SirLiteral::Int(*n)))
+                }
+                Pattern::Literal(Literal::Bool(b)) => {
+                    Some(SirExpr::Literal(SirLiteral::Bool(*b)))
+                }
+                Pattern::Literal(Literal::Char(c)) => {
+                    Some(SirExpr::Literal(SirLiteral::Char(*c)))
+                }
+                Pattern::Path(parts) if parts.len() == 2 => {
+                    let name = format!("{}_{}", parts[0], parts[1]);
+                    Some(SirExpr::Literal(SirLiteral::Int(
+                        *self.enum_ordinals.get(&name)?,
+                    )))
+                }
+                Pattern::Wildcard | Pattern::Identifier(_) => None,
+                _ => return None,
+            };
+
+            let body = self.lower_arm_body(&arm.body);
+            match constant {
+                Some(constant) => cases.push((constant, body)),
+                None => {
+                    if default.is_none() {
+                        default = Some(body);
+                    }
+                }
+            }
+        }
+
+        Some(vec![SirStatement::Switch {
+            scrutinee: self.lower_expr(scrutinee),
+            cases,
+            default,
+        }])
+    }
+
+    /// The statements of one `match` arm body: a block keeps its statements, a
+    /// bare `return` stays a return, anything else becomes an expression
+    /// statement.
+    fn lower_arm_body(&mut self, body: &Expr) -> Vec<SirStatement> {
+        match body.unspanned() {
+            Expr::Return(value) => {
+                vec![SirStatement::Return(
+                    value.as_ref().map(|v| self.lower_expr(v)),
+                )]
+            }
+            Expr::Block(block) => self.lower_block(block),
+            _ => vec![SirStatement::Expr(self.lower_expr(body))],
+        }
+    }
+
     /// `match` becomes a chain of equality tests (ternaries in C). Supported
     /// patterns: literals, `Enum.Variant` paths, and the wildcard arm.
     fn lower_match_chain(&mut self, scrutinee: &Expr, arms: &[MatchArm]) -> SirExpr {
@@ -1356,6 +1461,37 @@ mod tests {
             "the trailing expression should be returned: {:?}",
             function.body
         );
+    }
+
+    #[test]
+    fn statement_match_is_lowered_to_a_switch() {
+        let program = lower(
+            "enum Color {\n    Red,\n    Green,\n}\n\nfn main() {\n    let c = Color.Green;\n    match c {\n        Color.Red => { print(\"red\"); },\n        Color.Green => { print(\"green\"); },\n        _ => { print(\"other\"); },\n\n    }\n}\n",
+        );
+        let main = program
+            .functions
+            .iter()
+            .find(|function| function.name == "main")
+            .expect("main should be lowered");
+        let switch = main
+            .body
+            .iter()
+            .find(|statement| matches!(statement, SirStatement::Switch { .. }))
+            .expect("a statement match should become a Switch");
+
+        let SirStatement::Switch { cases, default, .. } = switch else {
+            unreachable!("just matched")
+        };
+        assert_eq!(cases.len(), 2, "one case per enum arm");
+        assert!(
+            matches!(&cases[0].0, SirExpr::Literal(SirLiteral::Int(0))),
+            "Color.Red is ordinal 0"
+        );
+        assert!(
+            matches!(&cases[1].0, SirExpr::Literal(SirLiteral::Int(1))),
+            "Color.Green is ordinal 1"
+        );
+        assert!(default.is_some(), "the wildcard arm becomes default");
     }
 
     #[test]

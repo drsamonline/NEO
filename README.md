@@ -32,8 +32,8 @@ Semantic Programming Platform
 [![Phase 2 Complete](https://img.shields.io/badge/Phase-2%20Complete-brightgreen)](DEV_PLAN.md)
 [![Phase 3 Complete](https://img.shields.io/badge/Phase-3%20Complete-brightgreen)](DEV_PLAN.md)
 [![Phase 4 Next](https://img.shields.io/badge/Phase-4%20Next-yellow)](DEV_PLAN.md)
-[![Compiler Core](https://img.shields.io/badge/Compiler-3500%2B%20LOC-blue)](compiler/)
-[![Runtime System](https://img.shields.io/badge/Runtime-2881%2B%20LOC-orange)](runtime/)
+[![Compiler Core](https://img.shields.io/badge/Compiler-6000%2B%20LOC-blue)](compiler/)
+[![Runtime System](https://img.shields.io/badge/Runtime-2359%20LOC-orange)](runtime/)
 [![Tooling](https://img.shields.io/badge/Tooling-3600%2B%20LOC-orange)](pkg/)
 [![Backends](https://img.shields.io/badge/Backends-4%20Targets-orange)](backends/)
 
@@ -96,32 +96,32 @@ cargo build --release
 ```
 /workspace
 ├── compiler/           # Main compiler (~3,500 LOC)
-│   ├── src/lexer/     # Tokenization (309 lines)
-│   ├── src/parser/    # Recursive descent parser (907 lines)
-│   ├── src/sema/      # Semantic analysis (773 lines)
-│   ├── src/sir/       # IR definition (146 lines)
-│   ├── src/lowerer/   # AST→SIR lowering (550 lines)
-│   └── src/backend/   # Backend interface (338 lines)
-├── backends/          # Target code generators (1,529 lines)
-│   ├── c/             # C backend (449 lines)
-│   ├── javascript/    # JavaScript backend (343 lines)
-│   ├── rust/          # Rust backend (352 lines)
-│   └── wasm/          # WebAssembly backend (385 lines)
-├── runtime/           # Runtime system (2,881 lines)
-│   ├── src/memory.rs  # Memory management (192 lines)
-│   ├── src/types.rs   # Type registry (260 lines)
-│   ├── src/error.rs   # Error handling (297 lines)
-│   ├── src/ffi.rs     # FFI support (332 lines)
-│   ├── src/gc.rs      # Garbage collection (315 lines)
-│   ├── src/lib.rs     # Core library (139 lines)
-│   ├── src/io/        # I/O runtime (535 lines)
+│   ├── src/lexer/     # Tokenization (340 lines)
+│   ├── src/parser/    # Recursive descent parser (1,435 lines)
+│   ├── src/sema/      # Semantic analysis (1,501 lines)
+│   ├── src/sir/       # IR definition (212 lines)
+│   ├── src/lowerer/   # AST→SIR lowering (1,619 lines)
+│   └── src/backend/   # C code generation (497 lines)
+├── backends/          # Standalone target generators (1,936 lines)
+│   ├── c/             # C backend (672 lines)
+│   ├── javascript/    # JavaScript backend (408 lines)
+│   ├── rust/          # Rust backend (411 lines)
+│   └── wasm/          # WebAssembly backend (445 lines)
+├── runtime/           # Runtime system (2,359 lines, 33 tests)
+│   ├── src/memory.rs  # Memory utilities (195 lines)
+│   ├── src/types.rs   # Runtime string/array/option types (276 lines)
+│   ├── src/error.rs   # Error handling (232 lines)
+│   ├── src/ffi.rs     # C interop (193 lines)
+│   ├── src/gc.rs      # Reference-counted GC (420 lines)
+│   ├── src/lib.rs     # Core library (81 lines)
+│   ├── src/io/        # File and stream I/O (534 lines)
 │   ├── src/threading/ # Threading primitives (314 lines)
-│   └── src/async_rt/  # Async runtime (114 lines)
-├── pkg/               # Package manager (1,674 lines)
+│   └── src/async_rt/  # Futures and delay (114 lines)
+├── pkg/               # Package manager (1,780 lines)
 │   └── src/           # CLI, manifest, resolver, registry
-├── lsp/               # Language server (522 lines)
+├── lsp/               # Language server (931 lines)
 │   └── src/main.rs    # LSP handlers, completions, diagnostics
-├── dbg/               # Debugger (1,405 lines)
+├── dbg/               # Debugger (1,733 lines)
 │   └── src/           # REPL, breakpoints, sessions, target control
 ├── crates/nova-common/ # Shared utilities
 ├── stdlib/            # Standard library (scaffolds)
@@ -132,21 +132,25 @@ cargo build --release
 ## Features
 
 ### Implemented ✅
-- **Lexical Analysis**: Complete tokenization with Unicode support
-- **Parsing**: Recursive descent with error recovery
-- **Semantic Analysis**: Type checking, scope resolution, name resolution
-- **Code Generation**: C, JavaScript, Rust, WebAssembly backends
-- **Type System**: Functions, structs, enums, control flow
-- **Runtime System**: Memory management, types, errors, FFI, GC foundation
+- **Lexical Analysis**: complete tokenization, `#`/`//` comments, escapes, `=>`
+- **Parsing**: recursive descent for the full grammar, including generics, slices,
+  struct literals, `match`, closures, casts and `static`
+- **Semantic Analysis**: scopes, name resolution, call arity/type checking with
+  expression spans, return checking, generic-call acceptance
+- **Lowering to SIR**: structs, field assignment, `impl` methods, enums, `match`,
+  arrays, generic instantiation
+- **C code generation**: runnable programs linked against the runtime shim;
+  statement `match` becomes a C `switch`
+- **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
+  GC, file I/O, threading, async helpers (not yet linked to generated C)
+- **Tooling**: package manager, language server and debugger crates with tests
 
 ### Coming Soon 🚧
-- I/O runtime support
-- Threading primitives
-- Async runtime
-- Standard library
-- Package manager
-- Language server (LSP)
-- Integrated debugger
+- Standard library emitting C (blocked on builtins, payload enums, closures)
+- Multi-file programs (`use`/`mod`)
+- Bounds-checked arrays and element types
+- `--target javascript|rust|wasm` wired into the CLI
+- LSP go-to-definition/references, DWARF debugger, real package registry
 
 ## Documentation
 

@@ -285,6 +285,56 @@ fn array_example_runs() {
 }
 
 #[test]
+fn match_statement_emits_a_c_switch_and_runs() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("switch");
+    let source = dir.join("switch.nova");
+    fs::write(
+        &source,
+        "enum Color {\n    Red,\n    Green,\n    Blue,\n}\n\nfn main() {\n    let c = Color.Green;\n    match c {\n        Color.Red => { print(\"red\"); },\n        Color.Green => { print(\"green\"); },\n        _ => { print(\"other\"); },\n\n    }\n}\n",
+    )
+    .expect("write source");
+
+    let c_file = dir.join("switch.c");
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("-o")
+        .arg(&c_file)
+        .output()
+        .expect("run nova-compiler emit");
+    assert!(
+        emit.status.success(),
+        "emit failed: {}",
+        String::from_utf8_lossy(&emit.stderr)
+    );
+
+    let c_code = fs::read_to_string(&c_file).expect("read generated C");
+    assert!(
+        c_code.contains("switch ("),
+        "statement match should emit a C switch:\n{c_code}"
+    );
+    assert!(c_code.contains("case 0:") && c_code.contains("case 1:"));
+    assert!(c_code.contains("default:"));
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "green\n");
+}
+
+#[test]
 fn generic_functions_compile_for_each_type() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

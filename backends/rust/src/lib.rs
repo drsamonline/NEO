@@ -120,6 +120,24 @@ impl RustBackend {
                 
                 self.writeln("}");
             }
+            SirStatement::Switch { scrutinee, cases, default } => {
+                // Rust has no C-style fallthrough; emit an if/else-if chain.
+                let mut fallback: Vec<SirStatement> = default.clone().unwrap_or_default();
+                for (constant, body) in cases.iter().rev() {
+                    fallback = vec![SirStatement::If {
+                        condition: SirExpr::BinOp {
+                            left: Box::new(scrutinee.clone()),
+                            op: SirBinOp::Eq,
+                            right: Box::new(constant.clone()),
+                        },
+                        then_block: body.clone(),
+                        else_block: Some(fallback),
+                    }];
+                }
+                for stmt in &fallback {
+                    self.generate_statement(stmt);
+                }
+            }
             SirStatement::While { condition, body } => {
                 let cond_str = self.expr_to_rust(condition);
                 self.writeln(&format!("while {} {{", cond_str));

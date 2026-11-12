@@ -85,6 +85,13 @@ pub enum SirStatement {
     },
     /// Block statement
     Block(Vec<SirStatement>),
+    /// Statement-position `match`: a C `switch` over integer case constants,
+    /// with the wildcard arm (if any) as `default`.
+    Switch {
+        scrutinee: SirExpr,
+        cases: Vec<(SirExpr, Vec<SirStatement>)>,
+        default: Option<Vec<SirStatement>>,
+    },
     /// Break statement
     Break,
     /// Continue statement

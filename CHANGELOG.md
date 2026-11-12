@@ -5,6 +5,21 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Statement `match` emits a C `switch` ⭐ NEW
+- **A `match` used as a statement now compiles to a real C `switch`.** Each literal
+  and `Enum.Variant` arm becomes a `case` with the variant's ordinal as the constant;
+  the wildcard arm becomes `default`.
+- **A `match` used as a value keeps the ternary chain**, since C cannot express a
+  value-producing `switch` without a temporary. Trailing matches in functions that
+  return nothing are treated as statements, so `fn main() { match x { … } }` gets the
+  `switch`.
+- **Enum ordinals are collected before any body is lowered**, so a `match` may appear
+  before the `enum` it tests.
+- **Tests:** a lowerer test checks the `Switch` node, ordinal case constants and the
+  default arm; `match_statement_emits_a_c_switch_and_runs` asserts the emitted C
+  contains `switch (`, `case 0:`, `case 1:` and `default:`, then builds and runs the
+  program.
+
 #### Generic functions are monomorphised ⭐ NEW
 - **A generic function is emitted once per concrete call site.** `fn id<T>(x: T) -> T { x }`
   called with `7` and `"hi"` produces `id_int` and `id_string`; `T` is substituted

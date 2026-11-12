@@ -243,6 +243,34 @@ impl CBackend {
                 }
                 let _ = writeln!(self.output, "{}}}", indent_str);
             }
+            SirStatement::Switch { scrutinee, cases, default } => {
+                let _ = writeln!(
+                    self.output,
+                    "{}switch ({}) {{",
+                    indent_str,
+                    self.expr_to_c(scrutinee)
+                );
+                for (constant, body) in cases {
+                    let _ = writeln!(
+                        self.output,
+                        "{}case {}:",
+                        indent_str,
+                        self.expr_to_c(constant)
+                    );
+                    for statement in body {
+                        self.write_statement(statement, indent + 1);
+                    }
+                    let _ = writeln!(self.output, "{}    break;", indent_str);
+                }
+                if let Some(body) = default {
+                    let _ = writeln!(self.output, "{}default:", indent_str);
+                    for statement in body {
+                        self.write_statement(statement, indent + 1);
+                    }
+                    let _ = writeln!(self.output, "{}    break;", indent_str);
+                }
+                let _ = writeln!(self.output, "{}}}", indent_str);
+            }
             SirStatement::While { condition, body } => {
                 let _ = writeln!(self.output, "{}while ({}) {{", indent_str, self.expr_to_c(condition));
                 for s in body {

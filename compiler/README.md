@@ -74,10 +74,12 @@ literals, field access, field assignment, `impl` methods with `&self`/`&mut self
 `enum` declarations with `match`, array literals with indexing, generic functions,
 and `print`/`println` with `int`, `float`, `bool`, `char` and string arguments.
 
-A payload-less enum variant is an integer constant (`Color.Red` → `Color_Red`), and
-`match` becomes a chain of equality tests against literals and variant constants,
-with the wildcard as the final else. Arrays are `int*`: a literal becomes a C
-compound literal and indexing is unchecked.
+A payload-less enum variant is an integer constant (`Color.Red` → `Color_Red`). A
+`match` in statement position becomes a real C `switch`: each literal or variant arm
+is a `case` (the variant's ordinal is the constant) and the wildcard is `default`.
+A `match` whose value is used stays a chain of equality tests, which C renders as
+ternaries. Arrays are `int*`: a literal becomes a C compound literal and indexing is
+unchecked.
 
 A generic function is emitted once per concrete call: `fn id<T>(x: T) -> T` called
 with an `int` and a `string` becomes `id_int` and `id_string`, with `T` substituted
@@ -115,8 +117,10 @@ arbitrary calls) are never guessed at, so this cannot produce a false error.
 
 Parsed but not lowered yet: closures, slices, references, tuples, `use`/`mod`,
 enum variants that carry data, `match` binding or string patterns, and generic
-structs or generic methods.
-The parser accepts them so the standard library can be checked; SIR and the C backend
-still cover only the subset above, and tuples and closures lower to unit. Assignment
-Arrays are `int*` with no bounds checks and no element type other than `int`. The JavaScript, Rust and WebAssembly generators
-exist as separate crates (`backends/`) but no CLI writes their output yet.
+structs or generic methods. The parser accepts them so the standard library can be
+checked; SIR and the C backend still cover only the subset above, and tuples and
+closures lower to unit.
+
+Arrays are `int*` with no bounds checks and no element type other than `int`. The
+JavaScript, Rust and WebAssembly generators exist as separate crates (`backends/`)
+but no CLI writes their output yet.

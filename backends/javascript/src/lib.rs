@@ -112,6 +112,32 @@ impl JsBackend {
                 
                 self.writeln("}");
             }
+            SirStatement::Switch { scrutinee, cases, default } => {
+                // JavaScript keeps the statement as a native `switch`.
+                let scrutinee_str = self.expr_to_js(scrutinee);
+                self.writeln(&format!("switch ({}) {{", scrutinee_str));
+                self.indent_level += 1;
+                for (constant, body) in cases {
+                    self.writeln(&format!("case {}:", self.expr_to_js(constant)));
+                    self.indent_level += 1;
+                    for stmt in body {
+                        self.generate_statement(stmt);
+                    }
+                    self.writeln("break;");
+                    self.indent_level -= 1;
+                }
+                if let Some(body) = default {
+                    self.writeln("default:");
+                    self.indent_level += 1;
+                    for stmt in body {
+                        self.generate_statement(stmt);
+                    }
+                    self.writeln("break;");
+                    self.indent_level -= 1;
+                }
+                self.indent_level -= 1;
+                self.writeln("}");
+            }
             SirStatement::While { condition, body } => {
                 let cond_str = self.expr_to_js(condition);
                 self.writeln(&format!("while ({}) {{", cond_str));
