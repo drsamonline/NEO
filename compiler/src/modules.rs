@@ -43,14 +43,16 @@ struct ModuleLoader {
 impl ModuleLoader {
     fn collect_uses(&mut self, program: &Program, source: &Path) -> Result<(), String> {
         for item in &program.items {
-            let Item::Use(use_decl) = item else {
-                continue;
+            let name = match item {
+                Item::Use(use_decl) => use_decl.path.first().cloned(),
+                // `mod name;` loads the same file a `use name;` would.
+                Item::Mod(module) => Some(module.name.clone()),
+                _ => None,
             };
-            let Some(name) = use_decl.path.first() else {
-                continue;
-            };
-            if let Some(path) = find_module(source, name) {
-                self.load(&path)?;
+            if let Some(name) = name {
+                if let Some(path) = find_module(source, &name) {
+                    self.load(&path)?;
+                }
             }
         }
         Ok(())

@@ -72,8 +72,8 @@ structs) are printed as `int`.
 
 ## Scope
 
-Module loading lives in `compiler/src/modules.rs`: `use` is resolved at compile time
-and the imported items are merged ahead of the program's own.
+Module loading lives in `compiler/src/modules.rs`: `use` and `mod name;` are resolved
+at compile time and the imported items are merged ahead of the program's own.
 
 Implemented and exercised by `compiler/tests/end_to_end.rs`: literals, `let`,
 arithmetic and comparisons, `if`/`else`, `while`, `for i in a..b`, `return`,
@@ -97,6 +97,16 @@ the local array through `nova_array_push`/`nova_array_pop`.
 `__builtin_strlen`, `__builtin_strcat`, `__builtin_strcmp`, `__builtin_substr`,
 `__builtin_array_len`, `__builtin_panic` and `__builtin_exit` lower to the shim.
 Other builtins resolve but trap with `nova_unsupported` until they are implemented.
+
+An array parameter declared `&mut [T]` is passed by address: C sees `NovaArray*`,
+the call site passes `&array`, and indexing dereferences it, so a push inside the
+callee updates the caller's header. Other reference positions still erase to their
+base value.
+
+Generic structs are monomorphised from the binding's annotation: `Box<int>` emits
+`Box_int` with `T` replaced in the field types (`Pair<A, B>` → `Pair_int_float`).
+An unannotated struct literal keeps the erased generic type. Generic methods are
+not supported.
 
 `Option<T>` is built in: `Some(value)` and `None` resolve without declarations, are
 stored as a tagged struct, and `Some(v)`/`None` patterns in a statement `match`
@@ -138,8 +148,8 @@ return type is rejected, and a non-unit function with no `return` and no tail
 expression is rejected. Expression types it cannot infer (identifiers, field access,
 arbitrary calls) are never guessed at, so this cannot produce a false error.
 
-Parsed but not lowered yet: closures, slices, references, tuples, `mod` declarations
-(`use` is resolved), string patterns, and generic structs or generic methods. The parser accepts them so the standard library can be
+Parsed but not lowered yet: closures, slices, general references (only `&mut` array
+parameters are lowered), tuples, string patterns, and generic methods. The parser accepts them so the standard library can be
 checked; SIR and the C backend still cover only the subset above, and tuples and
 closures lower to unit.
 

@@ -115,8 +115,11 @@ pub enum SirExpr {
         op: SirUnOp,
         operand: Box<SirExpr>,
     },
-    /// Address of a value, used to pass a `&self` receiver to a method.
+    /// Address of a value, used to pass a `&self` receiver to a method or a
+    /// `&mut` parameter to a callee.
     AddressOf(Box<SirExpr>),
+    /// Dereference a pointer, used when a `&mut` array parameter is indexed.
+    Deref(Box<SirExpr>),
     /// Function call
     Call {
         callee: String,

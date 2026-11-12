@@ -675,6 +675,25 @@ impl Parser {
             return Err(());
         };
         
+        // Generic parameters: `struct Box<T>`.
+        let mut generics = Vec::new();
+        if self.match_token(TokenKind::Less) {
+            if !self.check(TokenKind::Greater) {
+                loop {
+                    if self.check(TokenKind::Identifier(String::new())) {
+                        generics.push(self.advance().lexeme.clone());
+                    } else {
+                        self.error_at_current("Expected type parameter name");
+                        return Err(());
+                    }
+                    if !self.match_token(TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::Greater, "Expected '>' after type parameters")?;
+        }
+
         self.expect(TokenKind::LBrace, "Expected '{' after struct name")?;
         
         let mut fields = Vec::new();
@@ -707,7 +726,7 @@ impl Parser {
         
         Ok(StructDef {
             name: name.lexeme.clone(),
-            generics: Vec::new(),
+            generics,
             fields,
             is_pub: false,
             span: Span::new(struct_token.span.start, self.peek().span.end),
@@ -817,6 +836,9 @@ impl Parser {
             return Err(());
         };
         
+        // `mod name;` — the loader resolves the same file `use name;` would.
+        self.match_token(TokenKind::Semicolon);
+
         Ok(ModuleDecl {
             name: name.lexeme.clone(),
             is_pub: false,

@@ -242,6 +242,7 @@ impl JsBackend {
                 )
             }
             // Objects are references in JavaScript, so address-of is a no-op.
+            SirExpr::Deref(inner) => format!("(*{})", self.expr_to_js(inner)),
             SirExpr::AddressOf(inner) => self.expr_to_js(inner),
             SirExpr::Array(items) => {
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_js(item)).collect();

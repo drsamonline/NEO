@@ -329,6 +329,10 @@ impl WasmBackend {
                 self.generate_expr(value);
                 self.writeln(";; field assignment");
             }
+            SirExpr::Deref(inner) => {
+                self.generate_expr(inner);
+                self.writeln("(i32.load)");
+            }
             SirExpr::AddressOf(inner) => {
                 self.generate_expr(inner);
                 self.writeln(";; address-of");

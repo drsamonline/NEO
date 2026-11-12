@@ -140,8 +140,10 @@ cargo build --release
 - **Lowering to SIR**: structs, field assignment, `impl` methods, enums, `match`,
   arrays, generic instantiation
 - **C code generation**: runnable programs linked against the runtime shim (ABI v2);
-  statement `match` becomes a C `switch`, arrays are bounds-checked and
-  payload-carrying enums/`Option<T>` are tagged structs
+  statement `match` becomes a C `switch`, arrays are bounds-checked and growable,
+  payload-carrying enums/`Option<T>` are tagged structs, generic structs are
+  monomorphised
+- **Modules**: `use` and `mod` load sibling and standard-library files
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -149,7 +151,7 @@ cargo build --release
 - **Tooling**: package manager, language server and debugger crates with tests
 
 ### Coming Soon 🚧
-- `mod` declarations (only `use` is resolved)
+- Generic methods and general (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
 - Generic structs and generic methods
 - `--target javascript|rust|wasm` wired into the CLI

@@ -288,6 +288,7 @@ impl RustBackend {
                     self.expr_to_rust(value)
                 )
             }
+            SirExpr::Deref(inner) => format!("(*{})", self.expr_to_rust(inner)),
             SirExpr::AddressOf(inner) => format!("&({})", self.expr_to_rust(inner)),
             SirExpr::Array(items) => {
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_rust(item)).collect();

@@ -285,6 +285,95 @@ fn array_example_runs() {
 }
 
 #[test]
+fn mod_declaration_loads_a_module_file() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("mod-declaration");
+    let source = dir.join("main.nova");
+    fs::write(&source, "mod helper;\n\nfn main() {\n    print(triple(14));\n}\n")
+        .expect("write main");
+    fs::write(
+        dir.join("helper.nova"),
+        "fn triple(value: int) -> int {\n    value * 3\n}\n",
+    )
+    .expect("write helper");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "42\n");
+}
+
+#[test]
+fn reference_array_parameters_share_the_header() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("array-reference");
+    let source = dir.join("array_ref.nova");
+    fs::write(
+        &source,
+        "fn append(values: &mut [int], value: int) {\n    __builtin_array_push(values, value);\n}\n\nfn main() {\n    let numbers: Array = [1, 2];\n    append(numbers, 3);\n    print(__builtin_array_len(numbers));\n    numbers[0] = 9;\n    print(numbers[0]);\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "3\n9\n");
+}
+
+#[test]
+fn generic_structs_are_monomorphised() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("generic-struct");
+    let source = dir.join("generic_struct.nova");
+    fs::write(
+        &source,
+        "struct Box<T> {\n    value: T,\n}\n\nstruct Pair<A, B> {\n    first: A,\n    second: B,\n}\n\nfn main() {\n    let boxed: Box<int> = Box { value: 7 };\n    print(boxed.value);\n    let pair: Pair<int, float> = Pair { first: 3, second: 2.5 };\n    print(pair.first);\n    print(pair.second);\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "7\n3\n2.5\n");
+}
+
+#[test]
 fn use_pulls_in_a_sibling_module() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

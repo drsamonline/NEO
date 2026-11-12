@@ -24,7 +24,7 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 153 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 156 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 
@@ -39,7 +39,7 @@ Each milestone is done only when its acceptance check passes in CI.
 | 5 | Call argument checking | wrong arity and wrong argument types are errors | ✅ done |
 | 6 | Spans on expressions | every type diagnostic points at the offending expression | ✅ done |
 | 7 | Make the standard library parse | all `stdlib/**/*.nova` emit C | ✅ done |
-| 8 | Resolve calls, `use`, `mod` across files | a two-file program builds and runs | 🚧 `use` merges modules and a two-file program runs; `mod` declarations are not loaded |
+| 8 | Resolve calls, `use`, `mod` across files | a two-file program builds and runs | ✅ done |
 | 9 | Enums + `match` end to end | a `match` program compiles to `switch` and runs | ✅ done |
 | 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | ✅ done |
 | 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ⬜ |
@@ -74,9 +74,11 @@ Each milestone is done only when its acceptance check passes in CI.
   patterns, string patterns and enum variants that carry data are not lowered.
 - Arrays are `NovaArray` (a heap buffer, length and capacity) with `int` elements;
   reads and writes are bounds-checked at runtime and abort with
-  `array index out of bounds`. Push/pop grow and shrink a local array; passing an
-  array by value copies the header, so a push inside a callee does not update the
-  caller's length.
+  `array index out of bounds`. Push/pop grow and shrink a local array; a `&mut [T]`
+  parameter passes the header by address, so pushes in the callee are visible.
+- Generic structs are monomorphised from the binding's annotation (`Pair<int, float>`
+  becomes `Pair_int_float`); an unannotated literal keeps the erased type. Generic
+  methods are not supported, and references are only lowered for array parameters.
 - Payload enums store one scalar payload (`int`, `float` or `string`) in a fixed
   tagged struct; `Option<T>` is a built-in of the same shape and other generic enums
   substitute their payload types from the matched type. Variants with more than one

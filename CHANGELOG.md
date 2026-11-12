@@ -5,6 +5,22 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### `mod` loading, array references and generic structs ⭐ NEW
+- **`mod name;` loads a module file.** It resolves through the same search as
+  `use` (beside the file, then `stdlib/<name>/<name>.nova` in an ancestor) and the
+  parser now consumes the declaration's semicolon.
+- **`&mut [T]` parameters are passed by address.** An array parameter declared with
+  a reference becomes `NovaArray*` in C, the call site passes `&array`, indexing
+  dereferences the pointer, and push/pop operate on the caller's header. Verified:
+  pushing inside a callee grows the caller's array (length 3 after a push to `[1, 2]`).
+- **Generic structs are monomorphised.** `struct Pair<A, B>` with
+  `let pair: Pair<int, float> = Pair { … }` emits `Pair_int_float` with concrete
+  field types, so `2.5` prints as `2.5` rather than truncating. Field access types
+  are substituted from the annotation's type arguments.
+- **Tests:** `mod_declaration_loads_a_module_file`,
+  `reference_array_parameters_share_the_header` (prints `3`, `9`) and
+  `generic_structs_are_monomorphised` (prints `7`, `3`, `2.5`).
+
 #### Modules, growable arrays and generic enums ⭐ NEW
 - **`use name;` / `use name.*;` load modules.** The loader looks beside the
   importing file (`name.nova`, `name/mod.nova`, `name/name.nova`), then in

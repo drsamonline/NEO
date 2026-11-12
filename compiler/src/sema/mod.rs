@@ -676,6 +676,15 @@ impl SemanticAnalyzer {
     /// Types are compatible when they match structurally or the found type may
     /// be coerced (the only coercion today is `int` -> `float`).
     fn types_compatible(&self, found: &Type, expected: &Type) -> bool {
+        // A reference parameter accepts its target type; mutability is not
+        // enforced yet. Array-ish spellings (`Array`, `[T]`, `&mut [T]`) are one
+        // family, because arrays carry their own runtime representation.
+        if let Type::Ref { target, .. } = expected {
+            return self.types_compatible(found, target);
+        }
+        if is_array_like(found) && is_array_like(expected) {
+            return true;
+        }
         let checker = checker::TypeChecker::new();
         checker.structural_eq(found, expected) || checker.can_coerce(found, expected)
     }
@@ -822,6 +831,19 @@ impl SemanticAnalyzer {
 /// `Struct(name)`, so two mentions of the same name still compare equal.
 /// Return type of a compiler-declared `__builtin_*` function, when it is one.
 /// `None` also covers builtins whose result type depends on the argument.
+/// True for the spellings that name an array: `Array`, `[T]` and references to
+/// either.
+fn is_array_like(typ: &Type) -> bool {
+    match typ {
+        Type::Array(_) | Type::Slice(_) => true,
+        Type::Ref { target, .. } => is_array_like(target),
+        Type::Struct(name) => {
+            name.eq_ignore_ascii_case("array") || name.contains('[') || name.starts_with("Array")
+        }
+        _ => false,
+    }
+}
+
 fn builtin_return_type(name: &str) -> Option<Type> {
     Some(match name {
         "__builtin_panic" | "__builtin_exit" => Type::Never,

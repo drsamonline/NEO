@@ -398,6 +398,11 @@ impl CGenerator {
                 self.generate_expr(object);
                 self.write(&format!(").{}", field));
             }
+            SirExpr::Deref(inner) => {
+                self.write("(*");
+                self.generate_expr(inner);
+                self.write(")");
+            }
             SirExpr::AddressOf(inner) => {
                 self.write("&(");
                 self.generate_expr(inner);

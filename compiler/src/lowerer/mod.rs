@@ -25,6 +25,16 @@ pub struct Lowerer {
     enum_payloads: HashMap<String, HashMap<String, String>>,
     /// Enum name -> its generic parameters, so payload types can be substituted.
     enum_generics: HashMap<String, Vec<String>>,
+    /// Function name -> declared parameter types, so `&mut` arguments can be
+    /// passed by address.
+    param_types: HashMap<String, Vec<String>>,
+    /// Struct name -> its generic parameters.
+    struct_generics: HashMap<String, Vec<String>>,
+    /// Concrete instantiations of generic structs, one per type-argument list.
+    pending_structs: Vec<SirStruct>,
+    /// The type a `let` or parameter expects, so a struct literal can pick its
+    /// instantiation instead of the erased generic name.
+    expected_type: Option<String>,
     /// True once `Some`/`None` are lowered, so the `Option` struct is emitted.
     uses_option: bool,
     /// Generic functions, keyed by name; lowered once per instantiation.
@@ -67,6 +77,10 @@ impl Lowerer {
             enum_ordinals: HashMap::new(),
             enum_payloads: HashMap::new(),
             enum_generics: HashMap::new(),
+            param_types: HashMap::new(),
+            struct_generics: HashMap::new(),
+            pending_structs: Vec::new(),
+            expected_type: None,
             uses_option: false,
             generic_decls: HashMap::new(),
             pending: Vec::new(),
@@ -124,10 +138,15 @@ impl Lowerer {
             Expr::Array(_) => Some("Array".to_string()),
             Expr::Index(_, _) => Some("int".to_string()),
             Expr::Field(object, field) => {
-                let struct_name = self.expr_type(object)?;
-                self.struct_types
-                    .get(&struct_name)
-                    .and_then(|fields| fields.get(field).cloned())
+                let object_type = self.expr_type(object)?;
+                let base = object_type.split('<').next().unwrap_or(&object_type).to_string();
+                let declared = self.struct_types.get(&base)?.get(field)?.clone();
+                Some(substitute_generic_payload(
+                    &declared,
+                    &base,
+                    Some(&object_type),
+                    self.struct_generics.get(&base),
+                ))
             }
             Expr::Call(callee, args) => match callee.unspanned() {
                 Expr::Identifier(name) if name == "Some" => {
@@ -169,6 +188,13 @@ impl Lowerer {
                     self.signatures.insert(
                         func.name.clone(),
                         func.return_type.as_ref().map(|t| t.name.clone()),
+                    );
+                    self.param_types.insert(
+                        func.name.clone(),
+                        func.params
+                            .iter()
+                            .map(|param| type_display(&param.typ))
+                            .collect(),
                     );
                 }
                 nova_common::Item::Enum(enum_def) => {
@@ -220,6 +246,8 @@ impl Lowerer {
                     }
                 }
                 nova_common::Item::Struct(struct_def) => {
+                    self.struct_generics
+                        .insert(struct_def.name.clone(), struct_def.generics.clone());
                     self.struct_types.insert(
                         struct_def.name.clone(),
                         struct_def
@@ -295,6 +323,8 @@ impl Lowerer {
             index += 1;
             functions.push(self.lower_instance(&instance));
         }
+
+        structs.extend(self.pending_structs.drain(..));
 
         if self.uses_option && !structs.iter().any(|struct_def| struct_def.name == "Option") {
             structs.push(SirStruct {
@@ -528,6 +558,90 @@ impl Lowerer {
         body
     }
 
+    /// Emit one concrete C struct for `Box<int>`, substituting the declaration's
+    /// generic parameters into its field types. Returns the C type name.
+    fn instantiate_struct(&mut self, base: &str, object_type: &str) -> Option<String> {
+        let generics = self.struct_generics.get(base)?.clone();
+        let arguments = generic_arguments(object_type)?;
+        let name = format!(
+            "{}_{}",
+            base,
+            arguments
+                .iter()
+                .map(|argument| mangle_type(argument))
+                .collect::<Vec<_>>()
+                .join("_")
+        );
+        if self.pending_structs.iter().any(|struct_def| struct_def.name == name) {
+            return Some(name);
+        }
+        let fields = self
+            .struct_types
+            .get(base)?
+            .iter()
+            .map(|(field, typ)| {
+                let substituted = generics
+                    .iter()
+                    .position(|generic| generic == typ)
+                    .and_then(|index| arguments.get(index).cloned())
+                    .unwrap_or_else(|| typ.clone());
+                SirStructField {
+                    name: field.clone(),
+                    typ: substituted,
+                }
+            })
+            .collect();
+        self.pending_structs.push(SirStruct {
+            name: name.clone(),
+            fields,
+        });
+        Some(name)
+    }
+
+    /// Lower call arguments, taking a `&`/`&mut` parameter by address unless the
+    /// argument is already a reference.
+    fn lower_call_args(&mut self, name: &str, args: &[Expr]) -> Vec<SirExpr> {
+        let params = self.param_types.get(name).cloned().unwrap_or_default();
+        args.iter()
+            .enumerate()
+            .map(|(index, arg)| {
+                let lowered = self.lower_expr(arg);
+                let wants_reference = params
+                    .get(index)
+                    .is_some_and(|typ| typ.trim_start().starts_with('&'));
+                let is_reference = self
+                    .expr_type(arg)
+                    .is_some_and(|typ| typ.trim_start().starts_with('&'));
+                if wants_reference && !is_reference {
+                    SirExpr::AddressOf(Box::new(lowered))
+                } else {
+                    lowered
+                }
+            })
+            .collect()
+    }
+
+    /// An array value for a runtime call: a `&mut` parameter is dereferenced.
+    fn lower_array_value(&mut self, expr: &Expr) -> SirExpr {
+        let lowered = self.lower_expr(expr);
+        if self
+            .expr_type(expr)
+            .is_some_and(|typ| typ.trim_start().starts_with('&'))
+        {
+            SirExpr::Deref(Box::new(lowered))
+        } else {
+            lowered
+        }
+    }
+
+    /// An array header for a mutating call, and whether it is already a pointer.
+    fn lower_array_handle(&mut self, expr: &Expr) -> (SirExpr, bool) {
+        let is_reference = self
+            .expr_type(expr)
+            .is_some_and(|typ| typ.trim_start().starts_with('&'));
+        (self.lower_expr(expr), is_reference)
+    }
+
     /// Map a `__builtin_*` call onto the runtime shim. Builtins the shim does not
     /// implement yet become `nova_unsupported`, which reports the name and exits
     /// rather than silently doing nothing.
@@ -576,16 +690,30 @@ impl Lowerer {
             "__builtin_strcmp" => Some(typed("nova_strcmp", lowered(self), "int")),
             "__builtin_strcat" => Some(typed("nova_strcat", lowered(self), "string")),
             "__builtin_substr" => Some(typed("nova_substr", lowered(self), "string")),
-            "__builtin_array_len" => Some(typed("nova_array_len", lowered(self), "int")),
+            "__builtin_array_len" => Some(typed(
+                "nova_array_len",
+                vec![self.lower_array_value(args.first()?)],
+                "int",
+            )),
             // Push and pop mutate the header (length, capacity), so they take
-            // the array by address.
+            // the array by address unless it is already a `&mut` reference.
             "__builtin_array_push" => {
-                let array = SirExpr::AddressOf(Box::new(self.lower_expr(args.first()?)));
+                let (array, is_reference) = self.lower_array_handle(args.first()?);
+                let array = if is_reference {
+                    array
+                } else {
+                    SirExpr::AddressOf(Box::new(array))
+                };
                 let value = self.lower_expr(args.get(1)?);
                 Some(typed("nova_array_push", vec![array, value], "void"))
             }
-            "__builtin_array_pop" => {
-                let array = SirExpr::AddressOf(Box::new(self.lower_expr(args.first()?)));
+            "__builtin_array_pop" | "__builtin_array_pop_ref" => {
+                let (array, is_reference) = self.lower_array_handle(args.first()?);
+                let array = if is_reference {
+                    array
+                } else {
+                    SirExpr::AddressOf(Box::new(array))
+                };
                 Some(typed("nova_array_pop", vec![array], "int"))
             }
             "__builtin_panic" => Some(typed("nova_panic", lowered(self), "void")),
@@ -648,9 +776,19 @@ impl Lowerer {
                     .typ
                     .as_ref()
                     .map(|typ| self.substitute(&type_display(typ)));
+                // Tell a struct literal which instantiation the binding expects.
+                let previous = self.expected_type.take();
+                if let Some(typ) = &declared {
+                    if let Some((base, _)) = typ.split_once('<') {
+                        if self.struct_generics.contains_key(base) {
+                            self.expected_type = Some(typ.clone());
+                        }
+                    }
+                }
                 let value = let_stmt.init.as_ref()
                     .map(|e| self.lower_expr(e))
                     .unwrap_or_else(|| SirExpr::Literal(SirLiteral::Int(0)));
+                self.expected_type = previous;
                 // An annotation wins; otherwise a literal initialiser tells the type.
                 let typ = declared.or_else(|| let_stmt.init.as_ref().and_then(|init| self.expr_type(init)));
                 if name != "_" {
@@ -835,6 +973,20 @@ impl Lowerer {
         match expr {
             Expr::Spanned(inner, _) => self.lower_expr(inner),
             Expr::StructLiteral(name, fields) => {
+                // `Box<int> { … }` is emitted as `Box_int`, so the C struct's
+                // field types are concrete.
+                let expected = self.expected_type.clone();
+                let concrete = match expected.as_deref() {
+                    Some(expected)
+                        if expected
+                            .split_once('<')
+                            .is_some_and(|(base, _)| base == name) =>
+                    {
+                        self.instantiate_struct(name, expected)
+                            .unwrap_or_else(|| name.clone())
+                    }
+                    _ => name.clone(),
+                };
                 let fields = fields
                     .iter()
                     .map(|(field, value)| {
@@ -848,10 +1000,10 @@ impl Lowerer {
                     .collect();
                 SirExpr::Typed {
                     expr: Box::new(SirExpr::StructLiteral {
-                        name: name.clone(),
+                        name: concrete.clone(),
                         fields,
                     }),
-                    typ: self.substitute(name),
+                    typ: concrete,
                 }
             }
             Expr::Tuple(_) | Expr::Closure(_, _) => {
@@ -993,7 +1145,7 @@ impl Lowerer {
                     {
                         let call = SirExpr::Call {
                             callee: concrete_name,
-                            args: args.iter().map(|arg| self.lower_expr(arg)).collect(),
+                            args: self.lower_call_args(name, args),
                         };
                         return match return_type {
                             Some(typ) => SirExpr::Typed {
@@ -1010,7 +1162,10 @@ impl Lowerer {
                 };
                 let call = SirExpr::Call {
                     callee: callee_name.clone().unwrap_or_else(|| "unknown".to_string()),
-                    args: args.iter().map(|a| self.lower_expr(a)).collect(),
+                    args: callee_name
+                        .as_deref()
+                        .map(|name| self.lower_call_args(name, args))
+                        .unwrap_or_else(|| args.iter().map(|arg| self.lower_expr(arg)).collect()),
                 };
                 // A declared return type rides along, so printing `f()` uses the
                 // same runtime function as printing a variable of that type.
@@ -1031,7 +1186,7 @@ impl Lowerer {
                     value: Box::new(self.lower_expr(value)),
                 },
                 Expr::Index(array, index) => SirExpr::IndexAssign {
-                    array: Box::new(self.lower_expr(array)),
+                    array: Box::new(self.lower_array_value(array)),
                     index: Box::new(self.lower_expr(index)),
                     value: Box::new(self.lower_expr(value)),
                 },
@@ -1218,7 +1373,7 @@ impl Lowerer {
             }
             Expr::Index(obj, index) => {
                 let access = SirExpr::Index {
-                    array: Box::new(self.lower_expr(obj)),
+                    array: Box::new(self.lower_array_value(obj)),
                     index: Box::new(self.lower_expr(index)),
                 };
                 // Elements are typed `int` for now, so `print(arr[i])` works.

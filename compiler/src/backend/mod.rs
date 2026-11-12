@@ -9,6 +9,9 @@ pub struct CBackend {
     /// Names of the program's struct types, so a struct-typed value is emitted
     /// with the struct's own C type instead of the unknown-type fallback.
     struct_names: Vec<String>,
+    /// Structs that are really tagged enums (they have a `tag` field). Generic
+    /// enums share one C type; generic structs are monomorphised per arguments.
+    tagged: Vec<String>,
 }
 
 impl CBackend {
@@ -16,6 +19,7 @@ impl CBackend {
         Self {
             output: String::new(),
             struct_names: Vec::new(),
+            tagged: Vec::new(),
         }
     }
 
@@ -23,6 +27,12 @@ impl CBackend {
     pub fn generate(&mut self, program: &SirProgram) -> String {
         self.output.clear();
         self.struct_names = program.structs.iter().map(|s| s.name.clone()).collect();
+        self.tagged = program
+            .structs
+            .iter()
+            .filter(|s| s.fields.iter().any(|field| field.name == "tag"))
+            .map(|s| s.name.clone())
+            .collect();
         
         // Generated code talks to the NOVA runtime shim, not to libc directly.
         let _ = writeln!(self.output, "#include \"nova_runtime.h\"");
@@ -128,17 +138,36 @@ impl CBackend {
     /// The C spelling of a NOVA type: a struct's own name when it is one of the
     /// program's structs, otherwise a scalar C type (unknown names become `int`).
     fn c_type(&self, typ: &str) -> String {
-        // A generic enum or struct is one C type: `Result<int, String>` -> `Result`.
-        if let Some((base, _)) = typ.split_once('<') {
+        // A generic struct is monomorphised: `Box<int>` -> `Box_int`. A generic
+        // enum uses one tagged struct: `Result<int, String>` -> `Result`.
+        if let Some((base, arguments)) = typ.split_once('<') {
             if self.struct_names.iter().any(|name| name == base) {
-                return base.to_string();
+                if self.tagged.iter().any(|name| name == base) {
+                    return base.to_string();
+                }
+                let mangled: Vec<String> = arguments
+                    .trim_end_matches('>')
+                    .split(',')
+                    .map(|argument| Self::mangle_type(argument.trim()))
+                    .collect();
+                return format!("{}_{}", base, mangled.join("_"));
             }
         }
         // Arrays carry their length, so indexing can be bounds-checked wherever
         // the array is passed. `Array` is the example type; `[T]` is the slice
-        // spelling the parser accepts, with or without a reference prefix.
-        if typ.contains('[') || typ.eq_ignore_ascii_case("array") {
-            return "NovaArray".to_string();
+        // spelling the parser accepts. A `&`/`&mut` array is a pointer to the
+        // header, so a push inside the callee is visible to the caller.
+        let by_reference = typ.trim_start().starts_with('&');
+        let base = typ
+            .trim_start_matches('&')
+            .trim_start_matches("mut ")
+            .trim_start();
+        if base.contains('[') || base.eq_ignore_ascii_case("array") {
+            return if by_reference {
+                "NovaArray*".to_string()
+            } else {
+                "NovaArray".to_string()
+            };
         }
         // A method's `self` is a pointer to the struct.
         if let Some(base) = typ.strip_suffix('*') {
@@ -161,6 +190,14 @@ impl CBackend {
             SirExpr::Typed { expr, .. } => Self::is_self(expr),
             _ => false,
         }
+    }
+
+    fn mangle_type(typ: &str) -> String {
+        typ.chars()
+            .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
+            .collect::<String>()
+            .trim_matches('_')
+            .to_string()
     }
 
     fn type_to_c_str(typ: &str) -> &'static str {
@@ -398,6 +435,7 @@ impl CBackend {
                 }
             }
             SirExpr::AddressOf(inner) => format!("&({})", self.expr_to_c(inner)),
+            SirExpr::Deref(inner) => format!("(*{})", self.expr_to_c(inner)),
             SirExpr::Array(items) => {
                 if items.is_empty() {
                     return "nova_array_from(0, 0)".to_string();
@@ -499,7 +537,7 @@ impl CBackend {
             },
             SirExpr::Assign { value, .. } => self.print_kind(value),
             SirExpr::FieldAssign { value, .. } => self.print_kind(value),
-            SirExpr::AddressOf(_) => "int",
+            SirExpr::AddressOf(_) | SirExpr::Deref(_) => "int",
             SirExpr::Array(_) | SirExpr::Index { .. } => "int",
             SirExpr::IndexAssign { value, .. } => self.print_kind(value),
             SirExpr::If { then_expr, .. } => self.print_kind(then_expr),
