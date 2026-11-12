@@ -2,7 +2,7 @@
 //! 
 //! This module converts SIR (Semantic Intermediate Representation) to WebAssembly Text Format (WAT).
 
-use nova_compiler::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
+use nova_common::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
 
 pub struct WasmBackend {
     output: String,
@@ -307,6 +307,26 @@ impl WasmBackend {
                 self.writeln(")");
             }
             SirExpr::Typed { expr, .. } => self.generate_expr(expr),
+            SirExpr::Closure { .. } | SirExpr::EnvAccess { .. } => {
+                // Closures are not represented in this experimental emitter yet.
+                self.writeln("i64.const 0");
+            }
+            SirExpr::SizeOf(_) => self.writeln("i64.const 0"),
+            SirExpr::Cast { value, .. } => self.generate_expr(value),
+            SirExpr::CallValue { args, .. } => {
+                for arg in args {
+                    self.generate_expr(arg);
+                    self.writeln("drop");
+                }
+                self.writeln("i64.const 0");
+            }
+            SirExpr::Tuple { items, .. } => {
+                // Tuples are not represented in this experimental emitter yet.
+                for item in items {
+                    self.generate_expr(item);
+                    self.writeln("drop");
+                }
+            }
             // Structs have no WebAssembly representation yet.
             SirExpr::StructLiteral { .. } => self.writeln("(i32.const 0) ;; struct literal"),
             SirExpr::FieldAccess { .. } => self.writeln("(i32.const 0) ;; field access"),
@@ -415,7 +435,7 @@ impl WasmBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nova_compiler::sir::*;
+    use nova_common::sir::*;
     use nova_common::Span;
 
     #[test]
@@ -436,6 +456,7 @@ mod tests {
                     })),
                 ],
                 span: Span::default(),
+                env_type: None,
             }],
             globals: vec![],
             structs: vec![],

@@ -41,7 +41,7 @@ ABI declared in `compiler/src/runtime.rs` (`nova_print_*`, `nova_runtime_version
 ## Remaining work
 
 - [x] Define a C-facing runtime ABI for strings and arrays and link it into
-      generated programs (`nova_runtime.h` ABI v2: print, strings, bounds-checked
+      generated programs (`nova_runtime.h` ABI v3: print, strings, bounds-checked
       `NovaArray` access, panic/exit).
 - [ ] Decide the GC story: tracing collector or documented RC limitation.
 - [ ] Build an executor for `async_rt`.
@@ -60,4 +60,4 @@ cargo test --workspace
 |---|---|
 | Workspace tests | 139 passed, 0 failed |
 | Runtime tests | 33, all passing |
-| Generated C runtime | `nova_runtime.h/.c` ABI v2: print, strings, bounds-checked arrays, panic/exit |
+| Generated C runtime | `nova_runtime.h/.c` ABI v3: print, strings, bounds-checked arrays, closures, panic/exit |

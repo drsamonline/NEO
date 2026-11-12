@@ -2,7 +2,7 @@
 //! 
 //! This module converts SIR (Semantic Intermediate Representation) to Rust code.
 
-use nova_compiler::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp, SirParam};
+use nova_common::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp, SirParam};
 
 pub struct RustBackend {
     output: String,
@@ -245,6 +245,20 @@ impl RustBackend {
                 }
             }
             SirExpr::Typed { expr, .. } => self.expr_to_rust(expr),
+            SirExpr::Closure { name, .. } => name.clone(),
+            SirExpr::EnvAccess { field, .. } => format!("__env.{}", field),
+            SirExpr::SizeOf(_) => "0".to_string(),
+            SirExpr::Cast { value, typ } => {
+                format!("({} as {})", self.expr_to_rust(value), self.type_to_rust(typ))
+            }
+            SirExpr::CallValue { callee, args, .. } => {
+                let values: Vec<String> = args.iter().map(|arg| self.expr_to_rust(arg)).collect();
+                format!("{}({})", self.expr_to_rust(callee), values.join(", "))
+            }
+            SirExpr::Tuple { items, .. } => {
+                let values: Vec<String> = items.iter().map(|item| self.expr_to_rust(item)).collect();
+                format!("({})", values.join(", "))
+            }
             SirExpr::StructLiteral { name, fields } => {
                 let fields: Vec<String> = fields
                     .iter()
@@ -351,7 +365,7 @@ impl RustBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nova_compiler::sir::*;
+    use nova_common::sir::*;
     use nova_common::Span;
 
     #[test]
@@ -372,6 +386,7 @@ mod tests {
                     })),
                 ],
                 span: Span::default(),
+                env_type: None,
             }],
             globals: vec![],
             structs: vec![],
@@ -405,6 +420,7 @@ mod tests {
                     },
                 ],
                 span: Span::default(),
+                env_type: None,
             }],
             globals: vec![],
             structs: vec![],

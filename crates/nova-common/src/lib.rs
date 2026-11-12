@@ -6,6 +6,7 @@ pub mod ast;
 pub mod types;
 pub mod diagnostics;
 pub mod symbol_table;
+pub mod sir;
 
 pub use span::{Span, Position};
 pub use token::{Token, TokenKind};

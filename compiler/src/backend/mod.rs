@@ -83,12 +83,19 @@ impl CBackend {
         }
         let return_type = self.c_type(func.return_type.as_deref().unwrap_or("void"));
         let _ = write!(self.output, "{} {}(", return_type, func.name);
-        
-        for (i, param) in func.params.iter().enumerate() {
-            if i > 0 {
+
+        // A lifted closure receives its environment before its own parameters.
+        let mut written = 0;
+        if func.env_type.is_some() {
+            let _ = write!(self.output, "void *__env");
+            written += 1;
+        }
+        for param in func.params.iter() {
+            if written > 0 {
                 let _ = write!(self.output, ", ");
             }
             let _ = write!(self.output, "{} {}", self.c_type(&param.typ), param.name);
+            written += 1;
         }
         
         let _ = writeln!(self.output, ");");
@@ -103,11 +110,17 @@ impl CBackend {
             let return_type = self.c_type(func.return_type.as_deref().unwrap_or("void"));
             let _ = write!(self.output, "{} {}(", return_type, func.name);
 
-            for (i, param) in func.params.iter().enumerate() {
-                if i > 0 {
+            let mut written = 0;
+            if func.env_type.is_some() {
+                let _ = write!(self.output, "void *__env");
+                written += 1;
+            }
+            for param in func.params.iter() {
+                if written > 0 {
                     let _ = write!(self.output, ", ");
                 }
                 let _ = write!(self.output, "{} {}", self.c_type(&param.typ), param.name);
+                written += 1;
             }
 
             let _ = writeln!(self.output, ") {{");
@@ -138,6 +151,19 @@ impl CBackend {
     /// The C spelling of a NOVA type: a struct's own name when it is one of the
     /// program's structs, otherwise a scalar C type (unknown names become `int`).
     fn c_type(&self, typ: &str) -> String {
+        // Function-typed values are closure pointers, not C function pointers.
+        if typ.trim_start().starts_with("fn(") {
+            return "NovaClosure*".to_string();
+        }
+        if typ.trim() == "void*" {
+            return "void*".to_string();
+        }
+        // A tuple type is stored as a generated struct named after its elements.
+        if let Some(elements) = tuple_element_types(typ) {
+            if !elements.is_empty() {
+                return tuple_struct_name(&elements);
+            }
+        }
         // A generic struct is monomorphised: `Box<int>` -> `Box_int`. A generic
         // enum uses one tagged struct: `Result<int, String>` -> `Result`.
         if let Some((base, arguments)) = typ.split_once('<') {
@@ -479,6 +505,47 @@ impl CBackend {
             }
             // The type annotation is codegen metadata, not a value.
             SirExpr::Typed { expr, .. } => self.expr_to_c(expr),
+            SirExpr::Closure { name, env } => {
+                let env = env
+                    .as_ref()
+                    .map(|env| self.expr_to_c(env))
+                    .unwrap_or_else(|| "(void*)0".to_string());
+                format!("nova_closure_new((void*)&{}, {})", name, env)
+            }
+            SirExpr::EnvAccess { env_type, field } => {
+                format!("(({}*)__env)->{}", env_type, field)
+            }
+            SirExpr::Cast { value, typ } => {
+                format!("(({})({}))", self.c_type(typ), self.expr_to_c(value))
+            }
+            SirExpr::SizeOf(typ) => format!("sizeof({})", self.c_type(typ)),
+            SirExpr::CallValue { callee, args, return_type, params } => {
+                let mut signature = String::from("void*");
+                for param in params {
+                    signature.push_str(", ");
+                    signature.push_str(&self.c_type(param));
+                }
+                let mut values = vec![format!(
+                    "(void*)nova_closure_env({})",
+                    self.expr_to_c(callee)
+                )];
+                values.extend(args.iter().map(|arg| self.expr_to_c(arg)));
+                format!(
+                    "(({} (*)({}))nova_closure_fn({}))({})",
+                    self.c_type(return_type),
+                    signature,
+                    self.expr_to_c(callee),
+                    values.join(", ")
+                )
+            }
+            SirExpr::Tuple { name, items } => {
+                let initialisers: Vec<String> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| format!("._{} = {}", index, self.expr_to_c(item)))
+                    .collect();
+                format!("({}){{ {} }}", name, initialisers.join(", "))
+            }
             SirExpr::StructLiteral { name, fields } => {
                 let initialisers: Vec<String> = fields
                     .iter()
@@ -545,7 +612,9 @@ impl CBackend {
             SirExpr::Assign { value, .. } => self.print_kind(value),
             SirExpr::FieldAssign { value, .. } => self.print_kind(value),
             SirExpr::AddressOf(_) | SirExpr::Deref(_) => "int",
-            SirExpr::Array(_) | SirExpr::Index { .. } => "int",
+            SirExpr::Array(_) | SirExpr::Index { .. } | SirExpr::Tuple { .. } => "int",
+            SirExpr::Closure { .. } | SirExpr::EnvAccess { .. } | SirExpr::CallValue { .. }
+            | SirExpr::Cast { .. } | SirExpr::SizeOf(_) => "int",
             SirExpr::StringSlice { .. } => "str",
             SirExpr::IndexAssign { value, .. } => self.print_kind(value),
             SirExpr::If { then_expr, .. } => self.print_kind(then_expr),

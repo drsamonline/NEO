@@ -1,7 +1,7 @@
 # NOVA Development Plan
 
 **Status source of truth.** Every claim here is checked against the code and the test
-suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 2026-11-11.
+suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 2026-11-12.
 
 ## Current status
 
@@ -13,18 +13,18 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | SIR | ✅ typed expressions (`SirExpr::Typed`) | lowerer tests |
 | Lowerer | ✅ AST → SIR for the supported subset, including structs, field assignment, `impl` methods, enums, `match`, arrays and generic instantiation | lowerer tests |
 | C backend | ✅ runnable output (`int main`), struct `typedef`s and compound literals, enum constants, tagged payload-enum structs, bounds-checked array values, runtime-shim calls | end-to-end tests |
-| C runtime shim | ✅ `nova_runtime.h/.c`, ABI v2 (print, strings, bounds-checked growable arrays, panic/exit, unsupported-builtin trap) | runtime + end-to-end tests |
-| CLI | ✅ `emit` / `build` / `run`, `-o`, `--target c`, `--` args | end-to-end tests |
+| C runtime shim | ✅ `nova_runtime.h/.c`, ABI v3 (print, strings, bounds-checked growable arrays, closures, panic/exit, unsupported-builtin trap) | runtime + end-to-end tests |
+| CLI | ✅ `emit` / `build` / `run`, `-o`, `--target c|js|rust`, `--` args; build/run are C-only | end-to-end tests |
 | Package manager | ⚠️ real `init`/`build`/`run`; registry mocked; dependencies recorded but not built | `pkg` tests |
 | LSP | ⚠️ real compiler diagnostics; go-to-definition is a string search; `references` TODO | `lsp` tests |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
 | Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
-| JS / Rust / WASM backends | ⚠️ generators exist, no CLI reaches them | — |
+| JS / Rust / WASM backends | ⚠️ JS and Rust emit through `--target`; WASM generator exists but is not wired in | end-to-end tests (JS/Rust) |
 | Standard library | ✅ all four modules parse and emit C (`use` merges `core` and `io`) | `compiler/tests/stdlib_parse.rs`, `nova-compiler emit stdlib/*/*.nova` |
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 158 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 161 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 
@@ -44,7 +44,7 @@ Each milestone is done only when its acceptance check passes in CI.
 | 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | ✅ done |
 | 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ⬜ |
 | 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests (`integration_tests/` today imports APIs that do not exist) | ⬜ |
-| 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits and is tested | ⬜ |
+| 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits and is tested (JS/Rust done and tested; WASM still refused) | ⬜ |
 | 14 | LSP go-to-definition/references from the symbol table | editor navigation works | ⬜ |
 | 15 | Debugger reads DWARF (`gimli`) | breakpoints hit real lines with real variables | ⬜ |
 | 16 | Package manager builds dependencies; real or explicit local-only registry | `publish`/`search` stop being mocks | ⬜ |
@@ -64,11 +64,14 @@ Each milestone is done only when its acceptance check passes in CI.
 - Expression spans are recorded for expressions the parser returns from `parse_expr`;
   an operand inside a larger expression has no span of its own and falls back to the
   enclosing expression's span.
-- Tuples and closures lower to unit. Closures are the remaining gap for fully
-  functional standard-library helpers such as `compose` and `map`.
+- Tuples lower to generated `NovaTuple_*` structs (`_0`, `_1`, …) and destructure
+  with `let (a, b) = pair;`. Closures are lifted functions plus a heap
+  environment: captures are copied by value at creation, closure parameters are
+  typed `int` (the syntax has no annotation), and a function type is a
+  `NovaClosure*`.
 - Generics are monomorphised from concrete call sites: only instantiated functions
-  are emitted, an unbound type parameter falls back to `int`, and generic structs or
-  generic methods are not supported.
+  are emitted, and an unbound type parameter falls back to `int`. Generic functions,
+  structs, enums and impl methods are supported.
 - `match` supports literals, `Enum.Variant` paths and the wildcard arm. A statement
   `match` becomes a C `switch`; a value `match` stays a ternary chain. Binding
   patterns, string patterns and enum variants that carry data are not lowered.
@@ -80,8 +83,7 @@ Each milestone is done only when its acceptance check passes in CI.
   type (`Pair<int, float>` becomes `Pair_int_float`); an unannotated literal keeps
   the erased type. References are only lowered for array parameters.
 - String slices (`text[a..b]`) lower to `nova_substr`; string literals match through
-  `nova_strcmp`. Closures still lower to unit: capturing closures need a
-  function-pointer plus environment ABI.
+  `nova_strcmp`.
 - Payload enums store one scalar payload (`int`, `float` or `string`) in a fixed
   tagged struct; `Option<T>` is a built-in of the same shape and other generic enums
   substitute their payload types from the matched type. Variants with more than one

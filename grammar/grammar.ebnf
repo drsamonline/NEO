@@ -58,7 +58,7 @@ statement      = let_stmt
                | block
                | expr_stmt ;
 
-let_stmt       = "let" [ "mut" ] identifier [ ":" type_expr ] [ "=" expr ] ";" ;
+let_stmt       = "let" [ "mut" ] ( identifier | tuple_pattern ) [ ":" type_expr ] [ "=" expr ] ";" ;
 if_stmt        = if_expr ;
 while_stmt     = "while" expr block ;
 for_stmt       = "for" identifier "in" expr block ;
@@ -133,7 +133,9 @@ pattern        = [ "mut" ] ( integer
                            | char
                            | "true"
                            | "false"
+                           | tuple_pattern
                            | identifier [ "(" pattern ")" ] [ "." identifier ] ) ;
+tuple_pattern  = "(" pattern { "," pattern } ")" ;
 closure        = ( "|" | "||" ) [ identifier { "," identifier } ] ( "|" | "||" ) expr ;
 
 identifier     = ? identifier token ? ;

@@ -57,6 +57,22 @@ pub struct Lowerer {
     /// True while lowering a body that returns nothing, so a trailing `match`
     /// can become a `switch` instead of a value-producing ternary chain.
     discard_result: bool,
+    /// Tuple layouts already emitted, keyed by generated struct name.
+    emitted_tuples: HashSet<String>,
+    /// Counter for temporaries introduced by tuple destructuring.
+    temp_counter: usize,
+    /// Functions lifted from closure expressions, emitted with the program.
+    lifted_closures: Vec<SirFunction>,
+    /// Counter for naming lifted closures and their environments.
+    closure_counter: usize,
+    /// Environments of the closures currently being lowered, innermost last.
+    env_stack: Vec<EnvContext>,
+}
+
+/// One closure's captured variables and the struct that holds them.
+struct EnvContext {
+    struct_name: String,
+    captures: HashMap<String, String>,
 }
 
 /// A generic function specialised for one set of concrete type arguments.
@@ -114,6 +130,11 @@ impl Lowerer {
             instantiated: HashSet::new(),
             substitutions: Vec::new(),
             discard_result: false,
+            emitted_tuples: HashSet::new(),
+            temp_counter: 0,
+            lifted_closures: Vec::new(),
+            closure_counter: 0,
+            env_stack: Vec::new(),
         }
     }
 
@@ -160,8 +181,18 @@ impl Lowerer {
         match expr.unspanned() {
             Expr::Literal(_) => Self::literal_type(expr),
             Expr::Identifier(name) if name == "None" => Some("Option<int>".to_string()),
-            Expr::Identifier(name) => self.lookup(name),
+            // A captured value's type lives in its closure environment.
+            Expr::Identifier(name) => self
+                .lookup(name)
+                .or_else(|| self.captured_type(name).map(|(_, typ)| typ)),
             Expr::StructLiteral(name, _) => Some(name.clone()),
+            Expr::Tuple(items) => {
+                let types: Vec<String> = items
+                    .iter()
+                    .map(|item| self.expr_type(item).unwrap_or_else(|| "int".to_string()))
+                    .collect();
+                Some(format!("({})", types.join(", ")))
+            }
             Expr::Array(_) => Some("Array".to_string()),
             Expr::Index(_, _) => Some("int".to_string()),
             Expr::Field(object, field) => {
@@ -368,6 +399,7 @@ impl Lowerer {
             functions.push(self.lower_method_instance(&method));
         }
 
+        functions.extend(self.lifted_closures.drain(..));
         structs.extend(self.pending_structs.drain(..));
 
         if self.uses_option && !structs.iter().any(|struct_def| struct_def.name == "Option") {
@@ -423,6 +455,7 @@ impl Lowerer {
             return_type,
             body,
             span: instance.function.span.clone(),
+            env_type: None,
         }
     }
 
@@ -530,6 +563,7 @@ impl Lowerer {
             return_type: func.return_type.as_ref().map(|t| t.name.clone()),
             body: body_stmts,
             span: func.span.clone(),
+            env_type: None,
         }
     }
 
@@ -578,6 +612,7 @@ impl Lowerer {
             return_type: method.return_type.as_ref().map(|typ| typ.name.clone()),
             body,
             span: method.span.clone(),
+            env_type: None,
         }
     }
 
@@ -642,6 +677,7 @@ impl Lowerer {
             return_type,
             body,
             span: instance.method.span.clone(),
+            env_type: None,
         }
     }
 
@@ -935,6 +971,10 @@ impl Lowerer {
                     value: self.lower_expr(&const_def.value),
                 }]
             }
+            // `let (a, b) = pair;` binds each element of a tuple temporary.
+            Statement::Let(let_stmt) if matches!(let_stmt.pattern, Pattern::Tuple(_)) => {
+                return self.lower_tuple_let(let_stmt);
+            }
             Statement::Let(let_stmt) => {
                 let name = match &let_stmt.pattern {
                     Pattern::Identifier(n) => n.clone(),
@@ -957,8 +997,14 @@ impl Lowerer {
                     .map(|e| self.lower_expr(e))
                     .unwrap_or_else(|| SirExpr::Literal(SirLiteral::Int(0)));
                 self.expected_type = previous;
-                // An annotation wins; otherwise a literal initialiser tells the type.
-                let typ = declared.or_else(|| let_stmt.init.as_ref().and_then(|init| self.expr_type(init)));
+                // An annotation wins; otherwise the initialiser's type tells.
+                // A closure reports its signature only once lowered.
+                let typ = declared
+                    .or_else(|| let_stmt.init.as_ref().and_then(|init| self.expr_type(init)))
+                    .or_else(|| match &value {
+                        SirExpr::Typed { typ, .. } => Some(typ.clone()),
+                        _ => None,
+                    });
                 if name != "_" {
                     self.declare(&name, typ.clone());
                 }
@@ -1110,6 +1156,272 @@ impl Lowerer {
         }
     }
 
+
+    /// Emit (once) and return the struct name for a tuple of `types`.
+    fn tuple_struct(&mut self, types: &[String]) -> String {
+        let name = tuple_struct_name(types);
+        if self.emitted_tuples.insert(name.clone()) {
+            let fields = types
+                .iter()
+                .enumerate()
+                .map(|(index, typ)| SirStructField {
+                    name: format!("_{index}"),
+                    typ: typ.clone(),
+                })
+                .collect();
+            self.pending_structs.push(SirStruct {
+                name: name.clone(),
+                fields,
+            });
+        }
+        name
+    }
+
+    /// A variable reference: a local, a captured value, or a plain name.
+    fn lower_variable(&mut self, name: &str) -> SirExpr {
+        match self.lookup(name) {
+            // A known type rides along so codegen can print the value correctly.
+            Some(typ) => SirExpr::Typed {
+                expr: Box::new(SirExpr::Var(name.to_string())),
+                typ: self.substitute(&typ),
+            },
+            None => match self.captured_type(name) {
+                Some((env_type, typ)) => SirExpr::Typed {
+                    expr: Box::new(SirExpr::EnvAccess {
+                        env_type,
+                        field: name.to_string(),
+                    }),
+                    typ,
+                },
+                None => SirExpr::Var(name.to_string()),
+            },
+        }
+    }
+
+    /// A captured variable's environment struct and type, searching outwards.
+    fn captured_type(&self, name: &str) -> Option<(String, String)> {
+        self.env_stack.iter().rev().find_map(|env| {
+            env.captures
+                .get(name)
+                .map(|typ| (env.struct_name.clone(), typ.clone()))
+        })
+    }
+
+    /// Lift a closure to a top-level function plus an environment.
+    fn lower_closure(&mut self, params: &[String], body: &Expr) -> SirExpr {
+        self.closure_counter += 1;
+        let id = self.closure_counter;
+        let env_name = format!("__Env_{id}");
+        let function_name = format!("__closure_{id}");
+
+        // Capture the free variables that resolve to locals or outer captures.
+        let mut bound: HashSet<String> = params.iter().cloned().collect();
+        let mut referenced = Vec::new();
+        collect_names_expr(body, &mut bound, &mut referenced);
+        let mut seen = HashSet::new();
+        let mut captures: Vec<(String, String)> = Vec::new();
+        for name in referenced {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            if let Some(typ) = self.lookup(&name) {
+                captures.push((name, typ));
+            } else if let Some((_, typ)) = self.captured_type(&name) {
+                captures.push((name, typ));
+            }
+        }
+
+        // Lower the capture expressions in the enclosing environment first.
+        let capture_args: Vec<SirExpr> = captures
+            .iter()
+            .map(|(name, _)| self.lower_variable(name))
+            .collect();
+
+        // Sort out the body's type with the parameters and captures in scope.
+        self.push_scope();
+        for param in params {
+            self.declare(param, Some("int".to_string()));
+        }
+        for (name, typ) in &captures {
+            self.declare(name, Some(typ.clone()));
+        }
+        let return_type = self
+            .expr_type(body)
+            .filter(|typ| !matches!(typ.as_str(), "()" | "void"))
+            .unwrap_or_else(|| "int".to_string());
+        self.pop_scope();
+
+        // The environment struct and its constructor.
+        let env_expr = if captures.is_empty() {
+            None
+        } else {
+            let fields = captures
+                .iter()
+                .map(|(name, typ)| SirStructField {
+                    name: name.clone(),
+                    typ: typ.clone(),
+                })
+                .collect();
+            self.pending_structs.push(SirStruct {
+                name: env_name.clone(),
+                fields,
+            });
+
+            let constructor = SirFunction {
+                name: format!("__env_{id}"),
+                params: captures
+                    .iter()
+                    .map(|(name, typ)| SirParam {
+                        name: name.clone(),
+                        typ: typ.clone(),
+                    })
+                    .collect(),
+                return_type: Some("void*".to_string()),
+                body: vec![
+                    SirStatement::Let {
+                        name: "__env_value".to_string(),
+                        typ: Some(env_name.clone()),
+                        value: SirExpr::StructLiteral {
+                            name: env_name.clone(),
+                            fields: captures
+                                .iter()
+                                .map(|(name, _)| (name.clone(), SirExpr::Var(name.clone())))
+                                .collect(),
+                        },
+                    },
+                    SirStatement::Return(Some(SirExpr::Typed {
+                        expr: Box::new(SirExpr::Cast {
+                            value: Box::new(SirExpr::Call {
+                                callee: "nova_env_new".to_string(),
+                                args: vec![
+                                    SirExpr::AddressOf(Box::new(SirExpr::Var(
+                                        "__env_value".to_string(),
+                                    ))),
+                                    SirExpr::SizeOf(env_name.clone()),
+                                ],
+                            }),
+                            typ: "void*".to_string(),
+                        }),
+                        typ: "void*".to_string(),
+                    })),
+                ],
+                span: nova_common::Span::default(),
+                env_type: None,
+            };
+            self.lifted_closures.push(constructor);
+
+            Some(Box::new(SirExpr::Typed {
+                expr: Box::new(SirExpr::Call {
+                    callee: format!("__env_{id}"),
+                    args: capture_args,
+                }),
+                typ: "void*".to_string(),
+            }))
+        };
+
+        // Lower the body in isolation from the enclosing function's locals: a
+        // capture must become an environment read, not the outer C variable.
+        let outer_scopes = std::mem::take(&mut self.scopes);
+        self.env_stack.push(EnvContext {
+            struct_name: env_name.clone(),
+            captures: captures.iter().cloned().collect(),
+        });
+        self.push_scope();
+        for param in params {
+            self.declare(param, Some("int".to_string()));
+        }
+        let body_expr = match body.unspanned() {
+            Expr::Block(block) => self.lower_block_as_expr(block),
+            _ => self.lower_expr(body),
+        };
+        self.pop_scope();
+        self.env_stack.pop();
+        self.scopes = outer_scopes;
+
+        let signature = format!(
+            "fn({}) -> {}",
+            vec!["int".to_string(); params.len()].join(", "),
+            return_type
+        );
+        self.lifted_closures.push(SirFunction {
+            name: function_name.clone(),
+            params: params
+                .iter()
+                .map(|param| SirParam {
+                    name: param.clone(),
+                    typ: "int".to_string(),
+                })
+                .collect(),
+            return_type: Some(return_type),
+            body: vec![SirStatement::Return(Some(body_expr))],
+            span: nova_common::Span::default(),
+            // Every lifted closure takes the environment parameter, even when it
+            // captures nothing, so call sites need no special case.
+            env_type: Some(env_name),
+        });
+
+        SirExpr::Typed {
+            expr: Box::new(SirExpr::Closure {
+                name: function_name,
+                env: env_expr,
+            }),
+            typ: signature,
+        }
+    }
+
+    /// `let (a, b) = pair;` becomes a tuple temporary plus one `let` per field.
+    fn lower_tuple_let(&mut self, let_stmt: &nova_common::LetStmt) -> Vec<SirStatement> {
+        let Pattern::Tuple(patterns) = &let_stmt.pattern else {
+            return Vec::new();
+        };
+        let Some(init) = &let_stmt.init else {
+            return Vec::new();
+        };
+        let element_types = self
+            .expr_type(init)
+            .as_deref()
+            .and_then(tuple_element_types)
+            .unwrap_or_default();
+        let name = self.tuple_struct(&element_types);
+
+        self.temp_counter += 1;
+        let temporary = format!("__tuple{}", self.temp_counter);
+        let mut statements = vec![SirStatement::Let {
+            name: temporary.clone(),
+            typ: Some(name.clone()),
+            value: self.lower_expr(init),
+        }];
+
+        for (index, pattern) in patterns.iter().enumerate() {
+            let Pattern::Identifier(binding) = pattern else {
+                // Wildcards and nested patterns keep their value unbound.
+                continue;
+            };
+            if binding == "_" {
+                continue;
+            }
+            let element_type = element_types
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| "int".to_string());
+            let access = SirExpr::Typed {
+                expr: Box::new(SirExpr::FieldAccess {
+                    object: Box::new(SirExpr::Var(temporary.clone())),
+                    field: format!("_{index}"),
+                }),
+                typ: element_type.clone(),
+            };
+            self.declare(binding, Some(element_type.clone()));
+            statements.push(SirStatement::Let {
+                name: binding.clone(),
+                typ: Some(element_type),
+                value: access,
+            });
+        }
+
+        statements
+    }
+
     fn lower_block(&mut self, block: &nova_common::Block) -> Vec<SirStatement> {
         self.push_scope();
         let mut stmts = Vec::new();
@@ -1179,11 +1491,21 @@ impl Lowerer {
                     typ: concrete,
                 }
             }
-            Expr::Tuple(_) | Expr::Closure(_, _) => {
-                // Tuples and closures have no representation in SIR yet; they
-                // parse and are checked as unknown-typed.
-                SirExpr::Literal(SirLiteral::Unit)
+            Expr::Tuple(items) => {
+                let types: Vec<String> = items
+                    .iter()
+                    .map(|item| self.expr_type(item).unwrap_or_else(|| "int".to_string()))
+                    .collect();
+                let name = self.tuple_struct(&types);
+                SirExpr::Typed {
+                    expr: Box::new(SirExpr::Tuple {
+                        name: name.clone(),
+                        items: items.iter().map(|item| self.lower_expr(item)).collect(),
+                    }),
+                    typ: name,
+                }
             }
+            Expr::Closure(params, body) => self.lower_closure(params, body),
             Expr::Array(items) => SirExpr::Typed {
                 expr: Box::new(SirExpr::Array(
                     items.iter().map(|item| self.lower_expr(item)).collect(),
@@ -1213,17 +1535,7 @@ impl Lowerer {
                     typ: "Option<int>".to_string(),
                 }
             }
-            Expr::Identifier(name) => {
-                let var = SirExpr::Var(name.clone());
-                match self.lookup(name) {
-                    // A known type rides along so codegen can print the value correctly.
-                    Some(typ) => SirExpr::Typed {
-                        expr: Box::new(var),
-                        typ: self.substitute(&typ),
-                    },
-                    None => var,
-                }
-            }
+            Expr::Identifier(name) => self.lower_variable(name),
             Expr::Binary(left, op, right) => {
                 let expr = SirExpr::BinOp {
                     left: Box::new(self.lower_expr(left)),
@@ -1256,6 +1568,24 @@ impl Lowerer {
                 }
             }
             Expr::Call(callee, args) => {
+                // Calling a function-typed value goes through the closure ABI.
+                if let Some(typ) = self.expr_type(callee) {
+                    if typ.starts_with("fn(") {
+                        if let Some((params, return_type)) = parse_function_type(&typ) {
+                            let callee = self.lower_expr(callee);
+                            let args = args.iter().map(|arg| self.lower_expr(arg)).collect();
+                            return SirExpr::Typed {
+                                expr: Box::new(SirExpr::CallValue {
+                                    callee: Box::new(callee),
+                                    args,
+                                    return_type: return_type.clone(),
+                                    params,
+                                }),
+                                typ: return_type,
+                            };
+                        }
+                    }
+                }
                 // `Some(value)` and `Enum.Variant(value)` build tagged structs.
                 if let Expr::Identifier(name) = callee.unspanned() {
                     if name == "Some" {
@@ -1998,6 +2328,150 @@ impl Lowerer {
 
 /// The struct fields that hold an enum payload: the discriminant plus one slot
 /// per scalar payload type.
+/// Parse a function type such as `fn(int, string) -> bool`.
+fn parse_function_type(typ: &str) -> Option<(Vec<String>, String)> {
+    let rest = typ.strip_prefix("fn(")?;
+    let (params, return_type) = rest.split_once(") -> ")?;
+    let params = if params.trim().is_empty() {
+        Vec::new()
+    } else {
+        params.split(',').map(|param| param.trim().to_string()).collect()
+    };
+    Some((params, return_type.trim().to_string()))
+}
+
+/// Names bound by a pattern.
+fn pattern_binding_names(pattern: &Pattern, bound: &mut HashSet<String>) {
+    match pattern {
+        Pattern::Identifier(name) => {
+            bound.insert(name.clone());
+        }
+        Pattern::Tuple(patterns) => {
+            for pattern in patterns {
+                pattern_binding_names(pattern, bound);
+            }
+        }
+        Pattern::Struct(_, fields) => {
+            for (_, pattern) in fields {
+                pattern_binding_names(pattern, bound);
+            }
+        }
+        Pattern::EnumVariant(_, _, Some(pattern)) => pattern_binding_names(pattern, bound),
+        _ => {}
+    }
+}
+
+/// Collect identifiers used by an expression that are not locally bound.
+fn collect_names_expr(expr: &Expr, bound: &mut HashSet<String>, out: &mut Vec<String>) {
+    match expr.unspanned() {
+        Expr::Identifier(name) => {
+            if !bound.contains(name) {
+                out.push(name.clone());
+            }
+        }
+        Expr::Binary(left, _, right) => {
+            collect_names_expr(left, bound, out);
+            collect_names_expr(right, bound, out);
+        }
+        Expr::Unary(_, inner) | Expr::Cast(inner, _) => collect_names_expr(inner, bound, out),
+        Expr::Call(callee, args) => {
+            collect_names_expr(callee, bound, out);
+            for arg in args {
+                collect_names_expr(arg, bound, out);
+            }
+        }
+        Expr::Field(object, _) => collect_names_expr(object, bound, out),
+        Expr::Index(object, index) => {
+            collect_names_expr(object, bound, out);
+            collect_names_expr(index, bound, out);
+        }
+        Expr::Range(start, end) => {
+            collect_names_expr(start, bound, out);
+            collect_names_expr(end, bound, out);
+        }
+        Expr::If(condition, then_block, else_block) => {
+            collect_names_expr(condition, bound, out);
+            collect_names_block(then_block, bound, out);
+            if let Some(else_block) = else_block {
+                collect_names_block(else_block, bound, out);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_names_expr(scrutinee, bound, out);
+            for arm in arms {
+                collect_names_expr(&arm.body, bound, out);
+                if let Some(guard) = &arm.guard {
+                    collect_names_expr(guard, bound, out);
+                }
+            }
+        }
+        Expr::While(condition, body) => {
+            collect_names_expr(condition, bound, out);
+            collect_names_block(body, bound, out);
+        }
+        Expr::For(pattern, iterable, body) => {
+            collect_names_expr(iterable, bound, out);
+            pattern_binding_names(pattern, bound);
+            collect_names_block(body, bound, out);
+        }
+        Expr::Loop(body) | Expr::Block(body) => collect_names_block(body, bound, out),
+        Expr::Return(value) => {
+            if let Some(value) = value {
+                collect_names_expr(value, bound, out);
+            }
+        }
+        Expr::Assign(target, value) => {
+            collect_names_expr(target, bound, out);
+            collect_names_expr(value, bound, out);
+        }
+        Expr::StructLiteral(_, fields) => {
+            for (field, value) in fields {
+                match value {
+                    Some(value) => collect_names_expr(value, bound, out),
+                    None => {
+                        if !bound.contains(field) {
+                            out.push(field.clone());
+                        }
+                    }
+                }
+            }
+        }
+        Expr::Tuple(items) | Expr::Array(items) => {
+            for item in items {
+                collect_names_expr(item, bound, out);
+            }
+        }
+        Expr::Closure(params, body) => {
+            let mut inner = bound.clone();
+            inner.extend(params.iter().cloned());
+            collect_names_expr(body, &mut inner, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_names_block(
+    block: &nova_common::Block,
+    bound: &mut HashSet<String>,
+    out: &mut Vec<String>,
+) {
+    for statement in &block.statements {
+        match statement {
+            Statement::Let(let_stmt) => {
+                if let Some(init) = &let_stmt.init {
+                    collect_names_expr(init, bound, out);
+                }
+                pattern_binding_names(&let_stmt.pattern, bound);
+            }
+            Statement::Expr(expr) => collect_names_expr(expr, bound, out),
+            Statement::Item(_) => {}
+        }
+    }
+    if let Some(final_expr) = &block.final_expr {
+        collect_names_expr(final_expr, bound, out);
+    }
+}
+
 fn payload_struct_fields() -> Vec<SirStructField> {
     vec![
         SirStructField {

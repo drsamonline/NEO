@@ -84,8 +84,9 @@ python3 tools/example-check.py
 ./target/release/nova-compiler emit examples/hello.nova -o hello.c
 ```
 
-Only the C target is wired into the CLI; `--target javascript|rust|wasm` is
-rejected rather than silently ignored. The four generators live in `backends/`.
+`--target js` and `--target rust` emit those generators' output; `--target wasm` is
+rejected rather than silently ignored, and `build`/`run` link C only. The four
+generators live in `backends/`.
 
 
 ## Example Output

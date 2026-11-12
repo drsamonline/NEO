@@ -29,7 +29,8 @@ Then, from the repository root:
 ./target/release/nova-compiler emit examples/hello.nova -o /tmp/hello.c
 ```
 
-Options: `-o/--output <path>`, `--target <name>` (only `c` is implemented), `-h/--help`.
+Options: `-o/--output <path>`, `--target c|js|rust` (`c` is the default and the only
+one `build`/`run` link), `-h/--help`.
 `run` passes everything after `--` to the program and exits with the program's status.
 
 `CC` selects the C compiler used by `build` and `run` (default `cc`). `build`
@@ -38,7 +39,7 @@ in a per-process temporary directory.
 
 ## Runtime shim
 
-Generated C does not call libc directly. It includes `nova_runtime.h` (ABI v2) and
+Generated C does not call libc directly. It includes `nova_runtime.h` (ABI v3) and
 calls the print family (`nova_print_int`, `nova_print_float`, `nova_print_bool`,
 `nova_print_char`, `nova_print_str`, `nova_print_newline`), the string helpers
 (`nova_strlen`, `nova_strdup`, `nova_strcat`, `nova_strcmp`, `nova_substr`,
@@ -153,12 +154,17 @@ return type is rejected, and a non-unit function with no `return` and no tail
 expression is rejected. Expression types it cannot infer (identifiers, field access,
 arbitrary calls) are never guessed at, so this cannot produce a false error.
 
-Parsed but not lowered yet: closures (they lower to unit; capturing closures need a
-function-pointer plus environment ABI), general slices and references (only `&mut`
-array parameters and string range indexes are lowered), and tuples. The parser accepts them so the standard library can be
-checked; SIR and the C backend still cover only the subset above, and tuples and
-closures lower to unit.
+Closures lower to a lifted top-level function plus a heap environment: a closure
+value is a `NovaClosure*`, its captures are copied into a generated `__Env_N`
+struct, the lifted body reads them through `__env`, and every lifted function takes
+`void *__env` first. Closure parameters are typed `int`, since closure syntax has no
+parameter annotations. Tuples lower to generated `NovaTuple_*` structs with `_0`,
+`_1`, … fields and destructure with `let (a, b) = pair;`.
 
-Arrays are `int*` with no bounds checks and no element type other than `int`. The
-JavaScript, Rust and WebAssembly generators exist as separate crates (`backends/`)
-but no CLI writes their output yet.
+Parsed but not lowered yet: general slices and references (only `&mut` array
+parameters and string range indexes are lowered).
+
+Arrays are `NovaArray` (heap buffer, length and capacity) with `int` elements.
+The JavaScript, Rust and WebAssembly generators live in `backends/` and consume the
+SIR from `nova-common`; `emit --target js` and `emit --target rust` select them, while
+build/run remain C-only.

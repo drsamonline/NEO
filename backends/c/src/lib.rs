@@ -429,6 +429,38 @@ impl CGenerator {
                 self.generate_expr(start);
                 self.write("))");
             }
+            SirExpr::Closure { name, .. } => self.write(name),
+            SirExpr::EnvAccess { env_type, field } => {
+                self.write(&format!("(({env_type}*)__env)->{field}"))
+            }
+            SirExpr::SizeOf(typ) => self.write(&format!("sizeof({typ})")),
+            SirExpr::Cast { value, typ } => {
+                self.write(&format!("(({typ})("));
+                self.generate_expr(value);
+                self.write("))");
+            }
+            SirExpr::CallValue { callee, args, .. } => {
+                self.generate_expr(callee);
+                self.write("(");
+                for (index, arg) in args.iter().enumerate() {
+                    if index > 0 {
+                        self.write(", ");
+                    }
+                    self.generate_expr(arg);
+                }
+                self.write(")");
+            }
+            SirExpr::Tuple { name, items } => {
+                self.write(&format!("({}){{ ", name));
+                for (index, item) in items.iter().enumerate() {
+                    if index > 0 {
+                        self.write(", ");
+                    }
+                    self.write(&format!("._{} = ", index));
+                    self.generate_expr(item);
+                }
+                self.write(" }");
+            }
             SirExpr::Index { array, index } => {
                 self.write("(");
                 self.generate_expr(array);
@@ -540,6 +572,7 @@ mod tests {
                     SirStatement::Return(Some(SirExpr::Literal(SirLiteral::Int(0)))),
                 ],
                 span: Span::default(),
+                env_type: None,
             }],
             globals: vec![],
             structs: vec![],

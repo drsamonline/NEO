@@ -3,7 +3,7 @@
 //! SIR is a lowered representation of the AST that's closer to machine code
 //! and easier to translate to backend languages like C.
 
-use nova_common::Span;
+use crate::Span;
 
 /// SIR Program - the root of the SIR tree
 #[derive(Debug, Clone)]
@@ -36,6 +36,9 @@ pub struct SirFunction {
     pub return_type: Option<String>,
     pub body: Vec<SirStatement>,
     pub span: Span,
+    /// Set for a lifted closure: the generated environment struct. The C
+    /// function then takes an extra leading `void *__env` parameter.
+    pub env_type: Option<String>,
 }
 
 /// SIR Function Parameter
@@ -171,6 +174,36 @@ pub enum SirExpr {
         expr: Box<SirExpr>,
         typ: String,
     },
+    /// Tuple construction: `(a, b)`. `name` is the generated struct type.
+    Tuple {
+        name: String,
+        items: Vec<SirExpr>,
+    },
+    /// A closure value: the lifted function plus its heap environment
+    /// (`None` when it captures nothing).
+    Closure {
+        name: String,
+        env: Option<Box<SirExpr>>,
+    },
+    /// Read a captured variable out of a closure's environment.
+    EnvAccess {
+        env_type: String,
+        field: String,
+    },
+    /// Call a closure value.
+    CallValue {
+        callee: Box<SirExpr>,
+        args: Vec<SirExpr>,
+        return_type: String,
+        params: Vec<String>,
+    },
+    /// `sizeof(Type)`, needed to copy a closure environment onto the heap.
+    SizeOf(String),
+    /// Explicit conversion, needed to pass an environment struct as `void *`.
+    Cast {
+        value: Box<SirExpr>,
+        typ: String,
+    },
     /// Struct construction: `Name { field: value, ... }`.
     StructLiteral {
         name: String,
@@ -181,6 +214,47 @@ pub enum SirExpr {
         object: Box<SirExpr>,
         field: String,
     },
+}
+
+/// The C struct name for a tuple of `types`, e.g. `NovaTuple_int_string`.
+pub fn tuple_struct_name(types: &[String]) -> String {
+    let mangled: Vec<String> = types
+        .iter()
+        .map(|typ| {
+            typ.chars()
+                .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
+                .collect::<String>()
+                .trim_matches('_')
+                .to_string()
+        })
+        .collect();
+    format!("NovaTuple_{}", mangled.join("_"))
+}
+
+/// Split a tuple type `(A, B)` into its top-level element types.
+pub fn tuple_element_types(typ: &str) -> Option<Vec<String>> {
+    let inner = typ.trim().strip_prefix('(')?.strip_suffix(')')?;
+    if inner.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    let mut elements = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for ch in inner.chars() {
+        match ch {
+            '(' | '<' | '[' => depth += 1,
+            ')' | '>' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                elements.push(current.trim().to_string());
+                current.clear();
+                continue;
+            }
+            _ => {}
+        }
+        current.push(ch);
+    }
+    elements.push(current.trim().to_string());
+    Some(elements)
 }
 
 /// SIR Literal

@@ -2,8 +2,8 @@
 //! 
 //! This module converts SIR (Semantic Intermediate Representation) to JavaScript code.
 
-use nova_compiler::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
-use nova_compiler::sir::SirBinOp::*;
+use nova_common::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
+use nova_common::sir::SirBinOp::*;
 
 pub struct JsBackend {
     output: String,
@@ -274,6 +274,18 @@ impl JsBackend {
                 }
             }
             SirExpr::Typed { expr, .. } => self.expr_to_js(expr),
+            SirExpr::Closure { name, .. } => name.clone(),
+            SirExpr::EnvAccess { field, .. } => format!("__env.{}", field),
+            SirExpr::SizeOf(_) => "0".to_string(),
+            SirExpr::Cast { value, .. } => self.expr_to_js(value),
+            SirExpr::CallValue { callee, args, .. } => {
+                let values: Vec<String> = args.iter().map(|arg| self.expr_to_js(arg)).collect();
+                format!("{}({})", self.expr_to_js(callee), values.join(", "))
+            }
+            SirExpr::Tuple { items, .. } => {
+                let values: Vec<String> = items.iter().map(|item| self.expr_to_js(item)).collect();
+                format!("[{}]", values.join(", "))
+            }
             SirExpr::StructLiteral { fields, .. } => {
                 let fields: Vec<String> = fields
                     .iter()
@@ -346,7 +358,7 @@ impl JsBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nova_compiler::sir::*;
+    use nova_common::sir::*;
     use nova_common::Span;
 
     #[test]
@@ -367,6 +379,7 @@ mod tests {
                     })),
                 ],
                 span: Span::default(),
+                env_type: None,
             }],
             globals: vec![],
             structs: vec![],
@@ -402,6 +415,7 @@ mod tests {
                     },
                 ],
                 span: Span::default(),
+                env_type: None,
             }],
             globals: vec![],
             structs: vec![],

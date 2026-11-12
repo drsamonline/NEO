@@ -6,4 +6,3 @@ description = "Rust backend for the Nova compiler"
 
 [dependencies]
 nova-common = { path = "../../crates/nova-common" }
-nova-compiler = { path = "../../compiler" }

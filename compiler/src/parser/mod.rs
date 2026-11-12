@@ -490,9 +490,13 @@ impl Parser {
         
         let is_mut = self.match_token(TokenKind::Mut);
         
+        // Tuples destructure with `let (a, b) = pair;`; a plain name stays a
+        // simple identifier binding.
         let pattern = if self.check(TokenKind::Identifier(String::new())) {
             let name = self.advance();
             Pattern::Identifier(name.lexeme.clone())
+        } else if self.check(TokenKind::LParen) {
+            self.parse_pattern()?
         } else {
             self.error_at_current("Expected variable name");
             return Err(());
@@ -1323,8 +1327,15 @@ impl Parser {
             return Ok(Expr::Block(self.parse_block()?));
         }
 
-        // `|x| body` and `|| body`.
-        if self.check(TokenKind::Pipe) || self.check(TokenKind::Or) {
+        // `|| body` is a zero-parameter closure: the lexer sees one `Or` token.
+        if self.check(TokenKind::Or) {
+            self.advance();
+            let body = self.parse_expr()?;
+            return Ok(Expr::Closure(Vec::new(), Box::new(body)));
+        }
+
+        // `|x| body`.
+        if self.check(TokenKind::Pipe) {
             self.advance();
             let mut params = Vec::new();
             if !self.check(TokenKind::Pipe) && !self.check(TokenKind::Or) {

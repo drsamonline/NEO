@@ -725,8 +725,105 @@ fn unsupported_target_is_refused() {
     assert!(!build.status.success());
     let stderr = String::from_utf8_lossy(&build.stderr);
     assert!(
-        stderr.contains("not implemented"),
+        stderr.contains("unknown target"),
         "unexpected stderr: {stderr}"
+    );
+
+    // `build` only links C, even when a target is a known emitter.
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&source)
+        .arg("--target")
+        .arg("js")
+        .output()
+        .expect("run nova-compiler build");
+    assert!(!build.status.success());
+    let stderr = String::from_utf8_lossy(&build.stderr);
+    assert!(
+        stderr.contains("only supports `--target c`"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn javascript_and_rust_targets_emit_source() {
+    let source = std::env::temp_dir().join("nova-target-emit.nova");
+    fs::write(&source, "fn main() {\n    let x = 1;\n    println(x);\n}\n").expect("write source");
+
+    let js = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("--target")
+        .arg("js")
+        .output()
+        .expect("emit js");
+    assert!(js.status.success());
+    let js_source = String::from_utf8_lossy(&js.stdout);
+    assert!(js_source.contains("'use strict'"), "unexpected JS: {js_source}");
+
+    let rust = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("--target")
+        .arg("rust")
+        .output()
+        .expect("emit rust");
+    assert!(rust.status.success());
+    let rust_source = String::from_utf8_lossy(&rust.stdout);
+    assert!(
+        rust_source.contains("fn main"),
+        "unexpected Rust: {rust_source}"
+    );
+}
+
+#[test]
+fn tuples_destructure_into_bindings() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("tuples");
+    let source = dir.join("tuples.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let pair = (3, 4);\n    let (a, b) = pair;\n    println(a + b);\n\n    let (name, score) = (\"nova\", 9);\n    println(name);\n    println(score);\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler");
+    assert!(run.status.success());
+    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), "7\nnova\n9");
+}
+
+#[test]
+fn closures_capture_and_pass_as_values() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("closures");
+    let source = dir.join("closures.nova");
+    fs::write(
+        &source,
+        "fn apply(f: fn(int) -> int, x: int) -> int {\n    f(x)\n}\n\nfn apply_twice(f: fn(int) -> int, x: int) -> int {\n    let g = |y| f(y) + 1;\n    g(x)\n}\n\nfn make_adder(base: int) -> fn(int) -> int {\n    |x| x + base\n}\n\nfn main() {\n    let add = |x| x + 1;\n    println(add(4));\n\n    let base = 10;\n    let add_base = |x| x + base;\n    println(add_base(5));\n\n    println(apply(|n| n * 2, 21));\n\n    let add5 = make_adder(5);\n    println(add5(3));\n\n    let greeting = \"hi\";\n    let say = || greeting;\n    println(say());\n\n    println(apply_twice(|n| n * 3, 2));\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler");
+    assert!(run.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout).trim(),
+        "5\n15\n42\n8\nhi\n7"
     );
 }
 

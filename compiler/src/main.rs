@@ -3,6 +3,8 @@
 //! The compiler lowers NOVA source to C and can hand that C to the system C
 //! compiler to produce a runnable executable.
 
+use nova_backend_js::JsBackend;
+use nova_backend_rust::RustBackend;
 use nova_compiler::runtime;
 use nova_compiler::{CBackend, Lexer, Lowerer, Parser, SemanticAnalyzer};
 use std::env;
@@ -21,11 +23,13 @@ USAGE:
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
-        --target <name>   backend to use; only `c` is implemented
+        --target <name>   backend to emit: c (default), js, or rust
     -h, --help            show this help
 
 Generated C calls the NOVA runtime (`nova_runtime.h` / `nova_runtime.c`).
 `emit -o` writes those beside the C; `build` and `run` link them in.
+`--target js` and `--target rust` emit source for those languages; only the C
+backend has a build/run path.
 ";
 
 fn main() {
@@ -38,32 +42,64 @@ fn main() {
         }
         Some("-h") | Some("--help") | Some("help") => print!("{USAGE}"),
         Some("emit") => {
-            let (input, output, rest) = parse_args(&args[1..]);
+            let (input, output, target, rest) = parse_args(&args[1..]);
             reject_extra_args(&rest, "emit");
-            emit(&input, output.as_deref());
+            emit(&input, output.as_deref(), target);
         }
         Some("build") => {
-            let (input, output, rest) = parse_args(&args[1..]);
+            let (input, output, target, rest) = parse_args(&args[1..]);
             reject_extra_args(&rest, "build");
+            require_c(target, "build");
             build(&input, output.as_deref());
         }
         Some("run") => {
-            let (input, output, rest) = parse_args(&args[1..]);
+            let (input, output, target, rest) = parse_args(&args[1..]);
+            require_c(target, "run");
             run(&input, output.as_deref(), &rest);
         }
         Some(flag) if flag.starts_with('-') => die(&format!("unknown option `{flag}`")),
         // Bare path: keep the original behaviour of printing the generated C.
         Some(_) => {
-            let (input, output, _) = parse_args(&args);
-            emit(&input, output.as_deref());
+            let (input, output, target, _) = parse_args(&args);
+            emit(&input, output.as_deref(), target);
         }
     }
 }
 
-/// Parse `<source> [-o PATH] [--target c] [-- args...]`.
-fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Vec<String>) {
+/// A backend the CLI can emit from SIR.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Target {
+    C,
+    JavaScript,
+    Rust,
+}
+
+impl Target {
+    fn name(self) -> &'static str {
+        match self {
+            Target::C => "c",
+            Target::JavaScript => "js",
+            Target::Rust => "rust",
+        }
+    }
+}
+
+/// `build` and `run` compile C; other targets only emit source.
+fn require_c(target: Target, command: &str) {
+    if target != Target::C {
+        die(&format!(
+            "`{command}` only supports `--target c`; use `emit --target {}` for {} source",
+            target.name(),
+            target.name()
+        ));
+    }
+}
+
+/// Parse `<source> [-o PATH] [--target c|js|rust] [-- args...]`.
+fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Target, Vec<String>) {
     let mut input: Option<PathBuf> = None;
     let mut output: Option<PathBuf> = None;
+    let mut target = Target::C;
     let mut rest: Vec<String> = Vec::new();
     let mut i = 0;
 
@@ -79,10 +115,11 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Vec<String>) {
             "--target" => {
                 i += 1;
                 match args.get(i).map(String::as_str) {
-                    Some("c") => {}
+                    Some("c") => target = Target::C,
+                    Some("js") | Some("javascript") => target = Target::JavaScript,
+                    Some("rust") => target = Target::Rust,
                     Some(other) => die(&format!(
-                        "target `{other}` is not implemented: this CLI only emits C \
-                         (the JavaScript, Rust and WebAssembly backends are not wired in)"
+                        "unknown target `{other}`: expected `c`, `js`, or `rust`"
                     )),
                     None => die("`--target` needs a name"),
                 }
@@ -110,7 +147,7 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Vec<String>) {
     }
 
     match input {
-        Some(input) => (input, output, rest),
+        Some(input) => (input, output, target, rest),
         None => {
             eprintln!("error: no source file given\n");
             print!("{USAGE}");
@@ -125,8 +162,12 @@ fn reject_extra_args(rest: &[String], command: &str) {
     }
 }
 
-/// Run the whole pipeline and return the generated C.
+/// Run the whole pipeline and return the generated source for `target`.
 fn compile_to_c(input: &Path) -> String {
+    compile_to(input, Target::C)
+}
+
+fn compile_to(input: &Path, target: Target) -> String {
     let source = fs::read_to_string(input)
         .unwrap_or_else(|e| die(&format!("cannot read {}: {e}", input.display())));
     let name = input.display();
@@ -170,13 +211,16 @@ fn compile_to_c(input: &Path) -> String {
 
     let mut lowerer = Lowerer::new();
     let sir = lowerer.lower_program(&program);
-    let mut backend = CBackend::new();
-    backend.generate(&sir)
+    match target {
+        Target::C => CBackend::new().generate(&sir),
+        Target::JavaScript => JsBackend::new().generate(&sir),
+        Target::Rust => RustBackend::new().generate(&sir),
+    }
 }
 
-/// `emit`: print the C, or write it to `-o`.
-fn emit(input: &Path, output: Option<&Path>) {
-    let c_code = compile_to_c(input);
+/// `emit`: print the generated source, or write it to `-o`.
+fn emit(input: &Path, output: Option<&Path>, target: Target) {
+    let c_code = compile_to(input, target);
     match output {
         Some(path) => {
             if let Some(parent) = path.parent() {
@@ -187,17 +231,21 @@ fn emit(input: &Path, output: Option<&Path>) {
             }
             fs::write(path, &c_code)
                 .unwrap_or_else(|e| die(&format!("cannot write {}: {e}", path.display())));
-            write_runtime_for(path);
+            if target == Target::C {
+                write_runtime_for(path);
+            }
             eprintln!("✓ wrote {}", path.display());
         }
         None => {
             print!("{c_code}");
-            eprintln!(
-                "note: the generated C calls the NOVA runtime; \
-                 `emit -o <file.c>` writes {} and {} beside it, and `build` links them",
-                runtime::HEADER_FILE,
-                runtime::SOURCE_FILE
-            );
+            if target == Target::C {
+                eprintln!(
+                    "note: the generated C calls the NOVA runtime; \
+                     `emit -o <file.c>` writes {} and {} beside it, and `build` links them",
+                    runtime::HEADER_FILE,
+                    runtime::SOURCE_FILE
+                );
+            }
         }
     }
 }

@@ -5,6 +5,30 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Closures, tuples and selectable backend targets ⭐ NEW
+- **Closures are lowered with a real calling convention.** A closure is a
+  `NovaClosure*` (a lifted function plus a heap environment): capturing closures
+  copy their captures into a generated environment struct, the lifted body reads
+  them as `((__Env_N*)__env)->field`, and calls go through
+  `nova_closure_fn`/`nova_closure_env` with `__env` as the first argument. This
+  covers non-capturing closures, capturing closures, closures returned from
+  functions, zero-parameter `||` closures, and closures passed to a
+  `fn(A) -> B` parameter. The runtime ABI is now **v3**
+  (`nova_closure_new`, `nova_closure_fn`, `nova_closure_env`, `nova_env_new`).
+  Limitation: closure parameters are typed `int` (the syntax has no annotation),
+  and captures are copied by value when the closure is created.
+- **Tuples have a representation.** A tuple lowers to a generated struct
+  (`NovaTuple_int_string`) with `_0`, `_1`, … fields, so tuples can be printed
+  field-by-field, returned from functions (`-> (int, int)`) and destructured with
+  `let (a, b) = pair;`, including the element types of the bound names.
+- **`--target js` and `--target rust` work.** The SIR types moved into
+  `nova-common`, so the JavaScript and Rust generators no longer depend on the
+  compiler crate and the CLI can call them. `emit` accepts `c` (default), `js`
+  and `rust`; `build`/`run` still link C only and say so.
+- **Tests:** `tuples_destructure_into_bindings` (`7`, `nova`, `9`),
+  `closures_capture_and_pass_as_values` (`5`, `15`, `42`, `8`, `hi`) and
+  `javascript_and_rust_targets_emit_source`.
+
 #### Generic methods, string slices and string patterns ⭐ NEW
 - **Generic methods are monomorphised.** `impl Box<T> { fn get(&self) -> T }` emits
   `Box_int_get` and `Box_float_get`, with `self` typed as `Box<int>`/`Box<float>`
@@ -21,9 +45,6 @@ All notable changes to the NOVA project will be documented in this file.
 - **Tests:** `generic_methods_are_monomorphised` (prints `7`, `2.5`) and
   `string_slices_and_match_patterns_run` (prints `hello`, `world`, `matched`,
   `fallback`).
-- **Not done:** closures. They still lower to unit; capturing closures need a
-  closure/environment ABI (a value with a function pointer plus an environment),
-  which is a separate design, not a small lowering change.
 
 #### `mod` loading, array references and generic structs ⭐ NEW
 - **`mod name;` loads a module file.** It resolves through the same search as

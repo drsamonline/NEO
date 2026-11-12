@@ -139,13 +139,16 @@ cargo build --release
   expression spans, return checking, generic-call acceptance
 - **Lowering to SIR**: structs, field assignment, `impl` methods, enums, `match`,
   arrays, generic instantiation
-- **C code generation**: runnable programs linked against the runtime shim (ABI v2);
+- **C code generation**: runnable programs linked against the runtime shim (ABI v3);
   statement `match` becomes a C `switch`, arrays are bounds-checked and growable,
   payload-carrying enums/`Option<T>` are tagged structs, generic structs are
   monomorphised
 - **Modules**: `use` and `mod` load sibling and standard-library files
 - **Strings**: slicing (`text[a..b]`) and string-literal `match` arms
 - **Generics**: functions, enums, structs and impl methods are monomorphised
+- **Closures and tuples**: lifted closures with heap environments and `fn(A) -> B`
+  values; `NovaTuple_*` structs with `let (a, b) = pair;` destructuring
+- **Backends**: `emit --target c|js|rust` selects a generator; build/run link C
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -153,10 +156,9 @@ cargo build --release
 - **Tooling**: package manager, language server and debugger crates with tests
 
 ### Coming Soon 🚧
-- Closures and general (non-array) reference lowering
+- General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
-- Generic structs and generic methods
-- `--target javascript|rust|wasm` wired into the CLI
+- A build/run path for the JavaScript and Rust targets, and `--target wasm`
 - LSP go-to-definition/references, DWARF debugger, real package registry
 
 ## Documentation

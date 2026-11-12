@@ -847,7 +847,6 @@ name = "nova-backend-js"
 version = "0.1.0"
 dependencies = [
  "nova-common",
- "nova-compiler",
 ]
 
 [[package]]
@@ -855,7 +854,6 @@ name = "nova-backend-rust"
 version = "0.1.0"
 dependencies = [
  "nova-common",
- "nova-compiler",
 ]
 
 [[package]]
@@ -863,7 +861,6 @@ name = "nova-backend-wasm"
 version = "0.1.0"
 dependencies = [
  "nova-common",
- "nova-compiler",
 ]
 
 [[package]]
@@ -874,6 +871,8 @@ version = "0.6.0"
 name = "nova-compiler"
 version = "0.6.0"
 dependencies = [
+ "nova-backend-js",
+ "nova-backend-rust",
  "nova-common",
 ]
 

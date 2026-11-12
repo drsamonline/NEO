@@ -254,8 +254,10 @@ impl SemanticAnalyzer {
                 self.check_expr(&const_def.value);
             }
             nova_common::Statement::Let(let_stmt) => {
-                // Add variable to symbol table
-                if let nova_common::Pattern::Identifier(ident_name) = &let_stmt.pattern {
+                // Add every name the pattern binds to the symbol table.
+                let mut names = Vec::new();
+                collect_pattern_names(&let_stmt.pattern, &mut names);
+                for ident_name in &names {
                     let symbol = Symbol::new(ident_name.clone(), SymbolKind::Variable, let_stmt.span);
                     let _ = self.symbol_table.insert(symbol);
                 }
@@ -266,17 +268,37 @@ impl SemanticAnalyzer {
                 }
 
                 // Record the binding's type so later expressions can be inferred.
-                if let nova_common::Pattern::Identifier(ident_name) = &let_stmt.pattern {
-                    let declared = let_stmt.typ.as_ref().map(|t| type_from_name(&t.name));
-                    let binding = declared.or_else(|| {
-                        let_stmt
-                            .init
-                            .as_ref()
-                            .and_then(|expr| self.infer_expr_type(expr))
-                    });
-                    if let (Some(scope), Some(typ)) = (self.type_scopes.last_mut(), binding) {
-                        scope.insert(ident_name.clone(), typ);
+                let declared = let_stmt.typ.as_ref().map(|t| type_from_name(&t.name));
+                let binding = declared.or_else(|| {
+                    let_stmt
+                        .init
+                        .as_ref()
+                        .and_then(|expr| self.infer_expr_type(expr))
+                });
+                match &let_stmt.pattern {
+                    nova_common::Pattern::Tuple(patterns) => {
+                        // Element types come from the initialiser's tuple type.
+                        let element_types = match &binding {
+                            Some(Type::Tuple(types)) => types.clone(),
+                            _ => Vec::new(),
+                        };
+                        for (index, pattern) in patterns.iter().enumerate() {
+                            let nova_common::Pattern::Identifier(ident_name) = pattern else {
+                                continue;
+                            };
+                            if let (Some(scope), Some(typ)) =
+                                (self.type_scopes.last_mut(), element_types.get(index).cloned())
+                            {
+                                scope.insert(ident_name.clone(), typ);
+                            }
+                        }
                     }
+                    nova_common::Pattern::Identifier(ident_name) => {
+                        if let (Some(scope), Some(typ)) = (self.type_scopes.last_mut(), binding) {
+                            scope.insert(ident_name.clone(), typ);
+                        }
+                    }
+                    _ => {}
                 }
             }
             nova_common::Statement::Expr(expr) => {
@@ -738,6 +760,11 @@ impl SemanticAnalyzer {
                 }
                 _ => None,
             },
+            Expr::Tuple(items) => {
+                let types: Option<Vec<Type>> =
+                    items.iter().map(|item| self.infer_expr_type(item)).collect();
+                types.map(Type::Tuple)
+            }
             Expr::If(_, then_block, _else_block) => then_block
                 .final_expr
                 .as_ref()
@@ -833,6 +860,19 @@ impl SemanticAnalyzer {
 /// `None` also covers builtins whose result type depends on the argument.
 /// True for the spellings that name an array: `Array`, `[T]` and references to
 /// either.
+/// Names bound by a pattern, including tuple elements.
+fn collect_pattern_names(pattern: &nova_common::Pattern, names: &mut Vec<String>) {
+    match pattern {
+        nova_common::Pattern::Identifier(name) if name != "_" => names.push(name.clone()),
+        nova_common::Pattern::Tuple(patterns) => {
+            for pattern in patterns {
+                collect_pattern_names(pattern, names);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn is_array_like(typ: &Type) -> bool {
     match typ {
         Type::Array(_) | Type::Slice(_) => true,
@@ -857,8 +897,30 @@ fn builtin_return_type(name: &str) -> Option<Type> {
 }
 
 fn type_from_name(name: &str) -> Type {
+    let name = name.trim();
     if name == "!" {
         return Type::Never;
+    }
+    // `(A, B)` is a tuple type, not a struct whose name happens to start with `(`.
+    if let Some(elements) = nova_common::sir::tuple_element_types(name) {
+        if elements.is_empty() {
+            return Type::Unit;
+        }
+        return Type::Tuple(elements.iter().map(|element| type_from_name(element)).collect());
+    }
+    // `fn(A, B) -> C` is a function type.
+    if let Some(rest) = name.strip_prefix("fn(") {
+        if let Some((params, return_type)) = rest.split_once(") -> ") {
+            let params = if params.trim().is_empty() {
+                Vec::new()
+            } else {
+                params.split(',').map(|param| type_from_name(param)).collect()
+            };
+            return Type::Function {
+                params,
+                return_type: Box::new(type_from_name(return_type)),
+            };
+        }
     }
     match name.to_lowercase().as_str() {
         "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => Type::Int,
