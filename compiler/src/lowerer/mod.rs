@@ -21,6 +21,10 @@ pub struct Lowerer {
     enums: HashMap<String, Vec<String>>,
     /// `Enum_Variant` -> ordinal, so a `match` arm can be a C `case` constant.
     enum_ordinals: HashMap<String, i64>,
+    /// Enum name -> variant name -> payload type, for variants that carry data.
+    enum_payloads: HashMap<String, HashMap<String, String>>,
+    /// True once `Some`/`None` are lowered, so the `Option` struct is emitted.
+    uses_option: bool,
     /// Generic functions, keyed by name; lowered once per instantiation.
     generic_decls: HashMap<String, Function>,
     /// Instantiations that still need to be lowered.
@@ -59,6 +63,8 @@ impl Lowerer {
             methods: HashMap::new(),
             enums: HashMap::new(),
             enum_ordinals: HashMap::new(),
+            enum_payloads: HashMap::new(),
+            uses_option: false,
             generic_decls: HashMap::new(),
             pending: Vec::new(),
             instantiated: HashSet::new(),
@@ -109,6 +115,7 @@ impl Lowerer {
     fn expr_type_raw(&self, expr: &Expr) -> Option<String> {
         match expr.unspanned() {
             Expr::Literal(_) => Self::literal_type(expr),
+            Expr::Identifier(name) if name == "None" => Some("Option<int>".to_string()),
             Expr::Identifier(name) => self.lookup(name),
             Expr::StructLiteral(name, _) => Some(name.clone()),
             Expr::Array(_) => Some("Array".to_string()),
@@ -120,6 +127,13 @@ impl Lowerer {
                     .and_then(|fields| fields.get(field).cloned())
             }
             Expr::Call(callee, args) => match callee.unspanned() {
+                Expr::Identifier(name) if name == "Some" => {
+                    let payload = args
+                        .first()
+                        .and_then(|arg| self.expr_type_raw(arg))
+                        .unwrap_or_else(|| "int".to_string());
+                    Some(format!("Option<{}>", payload))
+                }
                 Expr::Identifier(name) => {
                     if let Some((declaration, bindings)) = self.generic_bindings(name, args) {
                         declaration
@@ -164,14 +178,25 @@ impl Lowerer {
                             .map(|variant| variant.name.clone())
                             .collect(),
                     );
+                    let mut payloads = HashMap::new();
                     for (index, variant) in enum_def.variants.iter().enumerate() {
-                        if variant.fields.is_none() {
-                            self.enum_ordinals.insert(
-                                format!("{}_{}", enum_def.name, variant.name),
-                                index as i64,
-                            );
+                        self.enum_ordinals.insert(
+                            format!("{}_{}", enum_def.name, variant.name),
+                            index as i64,
+                        );
+                        if let Some(fields) = &variant.fields {
+                            if let Some(first) = fields.first() {
+                                payloads.insert(variant.name.clone(), first.name.clone());
+                            }
                         }
                     }
+                    if !payloads.is_empty() {
+                        structs.push(SirStruct {
+                            name: enum_def.name.clone(),
+                            fields: payload_struct_fields(),
+                        });
+                    }
+                    self.enum_payloads.insert(enum_def.name.clone(), payloads);
                 }
                 nova_common::Item::Impl(impl_block) => {
                     for method in &impl_block.methods {
@@ -233,11 +258,11 @@ impl Lowerer {
                     // Payload-less variants become integer constants, so a match
                     // against `Color.Red` is an ordinary integer comparison.
                     for (index, variant) in enum_def.variants.iter().enumerate() {
+                        self.enum_ordinals
+                            .insert(format!("{}_{}", enum_def.name, variant.name), index as i64);
                         if variant.fields.is_some() {
                             continue;
                         }
-                        self.enum_ordinals
-                            .insert(format!("{}_{}", enum_def.name, variant.name), index as i64);
                         globals.push(SirGlobal {
                             name: format!("{}_{}", enum_def.name, variant.name),
                             typ: "int".to_string(),
@@ -264,6 +289,13 @@ impl Lowerer {
             let instance = self.pending[index].clone();
             index += 1;
             functions.push(self.lower_instance(&instance));
+        }
+
+        if self.uses_option && !structs.iter().any(|struct_def| struct_def.name == "Option") {
+            structs.push(SirStruct {
+                name: "Option".to_string(),
+                fields: payload_struct_fields(),
+            });
         }
 
         SirProgram {
@@ -489,6 +521,65 @@ impl Lowerer {
             }
         }
         body
+    }
+
+    /// Map a `__builtin_*` call onto the runtime shim. Builtins the shim does not
+    /// implement yet become `nova_unsupported`, which reports the name and exits
+    /// rather than silently doing nothing.
+    fn lower_builtin_call(&mut self, name: &str, args: &[Expr]) -> Option<SirExpr> {
+        let lowered = |lowerer: &mut Self| -> Vec<SirExpr> {
+            args.iter().map(|arg| lowerer.lower_expr(arg)).collect()
+        };
+        let typed = |callee: &str, args: Vec<SirExpr>, typ: &str| SirExpr::Typed {
+            expr: Box::new(SirExpr::Call {
+                callee: callee.to_string(),
+                args,
+            }),
+            typ: typ.to_string(),
+        };
+
+        match name {
+            "__builtin_print" => Some(SirExpr::Call {
+                callee: "print".to_string(),
+                args: lowered(self),
+            }),
+            "__builtin_println" => Some(SirExpr::Call {
+                callee: "println".to_string(),
+                args: lowered(self),
+            }),
+            // `typeof` is static: the answer is the argument's type name.
+            "__builtin_typeof" => {
+                let typ = args
+                    .first()
+                    .and_then(|arg| self.expr_type(arg))
+                    .unwrap_or_else(|| "unknown".to_string());
+                Some(SirExpr::Literal(SirLiteral::String(typ)))
+            }
+            "__builtin_tostring" => {
+                let typ = args
+                    .first()
+                    .and_then(|arg| self.expr_type(arg))
+                    .unwrap_or_else(|| "int".to_string());
+                let callee = match typ.as_str() {
+                    "string" | "str" => "nova_strdup",
+                    "bool" => "nova_tostring_bool",
+                    _ => "nova_tostring_int",
+                };
+                Some(typed(callee, lowered(self), "string"))
+            }
+            "__builtin_strlen" => Some(typed("nova_strlen", lowered(self), "int")),
+            "__builtin_strcmp" => Some(typed("nova_strcmp", lowered(self), "int")),
+            "__builtin_strcat" => Some(typed("nova_strcat", lowered(self), "string")),
+            "__builtin_substr" => Some(typed("nova_substr", lowered(self), "string")),
+            "__builtin_array_len" => Some(typed("nova_array_len", lowered(self), "int")),
+            "__builtin_panic" => Some(typed("nova_panic", lowered(self), "void")),
+            "__builtin_exit" => Some(typed("nova_exit", lowered(self), "void")),
+            _ => Some(typed(
+                "nova_unsupported",
+                vec![SirExpr::Literal(SirLiteral::String(name.to_string()))],
+                "int",
+            )),
+        }
     }
 
     /// `value.method(args)` becomes `Type_method(&value, args)` when the receiver
@@ -750,6 +841,20 @@ impl Lowerer {
                     Literal::Bool(b) => SirLiteral::Bool(*b),
                 })
             }
+            // `None` is the built-in empty `Option`.
+            Expr::Identifier(name) if name == "None" => {
+                self.uses_option = true;
+                SirExpr::Typed {
+                    expr: Box::new(SirExpr::StructLiteral {
+                        name: "Option".to_string(),
+                        fields: vec![(
+                            "tag".to_string(),
+                            SirExpr::Literal(SirLiteral::Int(1)),
+                        )],
+                    }),
+                    typ: "Option<int>".to_string(),
+                }
+            }
             Expr::Identifier(name) => {
                 let var = SirExpr::Var(name.clone());
                 match self.lookup(name) {
@@ -793,6 +898,45 @@ impl Lowerer {
                 }
             }
             Expr::Call(callee, args) => {
+                // `Some(value)` and `Enum.Variant(value)` build tagged structs.
+                if let Expr::Identifier(name) = callee.unspanned() {
+                    if name == "Some" {
+                        if let Some(arg) = args.first() {
+                            let payload = self
+                                .expr_type(arg)
+                                .unwrap_or_else(|| "int".to_string());
+                            return self.lower_payload_value("Option", 0, arg, &payload);
+                        }
+                    }
+                }
+                if let Expr::Field(object, variant) = callee.unspanned() {
+                    if let Expr::Identifier(enum_name) = object.unspanned() {
+                        if let Some(payload_type) = self
+                            .enum_payloads
+                            .get(enum_name)
+                            .and_then(|variants| variants.get(variant))
+                            .cloned()
+                        {
+                            let tag = self
+                                .enum_ordinals
+                                .get(&format!("{}_{}", enum_name, variant))
+                                .copied()
+                                .unwrap_or(0);
+                            if let Some(arg) = args.first() {
+                                return self
+                                    .lower_payload_value(enum_name, tag, arg, &payload_type);
+                            }
+                        }
+                    }
+                }
+                // The implicit `__builtin_*` functions map onto the runtime shim.
+                if let Expr::Identifier(name) = callee.unspanned() {
+                    if name.starts_with("__builtin_") {
+                        if let Some(call) = self.lower_builtin_call(name, args) {
+                            return call;
+                        }
+                    }
+                }
                 // `value.method(...)` is a call on the method's mangled function.
                 if let Some(call) = self.lower_method_call(callee, args) {
                     return call;
@@ -1126,6 +1270,37 @@ impl Lowerer {
         current_if.unwrap_or_else(|| SirExpr::Literal(SirLiteral::Unit))
     }
 
+    /// `Some(value)` and enum payload constructions become tagged struct
+    /// literals; the payload goes in the field that matches its type.
+    fn lower_payload_value(
+        &mut self,
+        enum_name: &str,
+        tag: i64,
+        arg: &Expr,
+        payload_type: &str,
+    ) -> SirExpr {
+        if enum_name == "Option" {
+            self.uses_option = true;
+        }
+        let (field, _) = payload_field(payload_type);
+        let fields = vec![
+            ("tag".to_string(), SirExpr::Literal(SirLiteral::Int(tag))),
+            (field.to_string(), self.lower_expr(arg)),
+        ];
+        let typ = if enum_name == "Option" {
+            format!("Option<{}>", payload_type)
+        } else {
+            enum_name.to_string()
+        };
+        SirExpr::Typed {
+            expr: Box::new(SirExpr::StructLiteral {
+                name: enum_name.to_string(),
+                fields,
+            }),
+            typ,
+        }
+    }
+
     /// Lower a statement-position `match` to a C `switch`. Returns `None` when
     /// an arm has no integer constant test (a string literal or a binding), so
     /// the caller keeps the expression-form chain instead.
@@ -1134,31 +1309,108 @@ impl Lowerer {
         scrutinee: &Expr,
         arms: &[MatchArm],
     ) -> Option<Vec<SirStatement>> {
-        let mut cases = Vec::new();
+        let record_expr = self.lower_expr(scrutinee);
+        let scrutinee_type = self.expr_type(scrutinee);
+        // A payload enum is a struct, so the switch tests its `tag`; a
+        // payload-less enum is already an integer value.
+        let is_payload_enum = scrutinee_type.as_deref().is_some_and(|typ| {
+            typ == "Option"
+                || typ.starts_with("Option<")
+                || self.enum_payloads.contains_key(typ)
+        });
+        let scrutinee_expr = if is_payload_enum {
+            SirExpr::FieldAccess {
+                object: Box::new(record_expr.clone()),
+                field: "tag".to_string(),
+            }
+        } else {
+            record_expr.clone()
+        };
+        let mut cases: Vec<(SirExpr, Vec<SirStatement>)> = Vec::new();
         let mut default = None;
 
         for arm in arms {
-            let constant = match &arm.pattern {
+            let (constant, binding) = match &arm.pattern {
                 Pattern::Literal(Literal::Integer(n)) => {
-                    Some(SirExpr::Literal(SirLiteral::Int(*n)))
+                    (Some(SirExpr::Literal(SirLiteral::Int(*n))), None)
                 }
                 Pattern::Literal(Literal::Bool(b)) => {
-                    Some(SirExpr::Literal(SirLiteral::Bool(*b)))
+                    (Some(SirExpr::Literal(SirLiteral::Bool(*b))), None)
                 }
                 Pattern::Literal(Literal::Char(c)) => {
-                    Some(SirExpr::Literal(SirLiteral::Char(*c)))
+                    (Some(SirExpr::Literal(SirLiteral::Char(*c))), None)
                 }
                 Pattern::Path(parts) if parts.len() == 2 => {
                     let name = format!("{}_{}", parts[0], parts[1]);
-                    Some(SirExpr::Literal(SirLiteral::Int(
-                        *self.enum_ordinals.get(&name)?,
-                    )))
+                    (
+                        Some(SirExpr::Literal(SirLiteral::Int(
+                            *self.enum_ordinals.get(&name)?,
+                        ))),
+                        None,
+                    )
                 }
-                Pattern::Wildcard | Pattern::Identifier(_) => None,
+                Pattern::Identifier(name) if name == "None" => {
+                    self.uses_option = true;
+                    (Some(SirExpr::Literal(SirLiteral::Int(1))), None)
+                }
+                Pattern::EnumVariant(enum_name, variant, inner) => {
+                    let binding_name = match inner.as_deref() {
+                        Some(Pattern::Identifier(name)) if name != "_" => Some(name.clone()),
+                        _ => None,
+                    };
+                    let (tag, payload_type) = if enum_name == "Some"
+                        || (enum_name == "Option" && variant == "Some")
+                    {
+                        self.uses_option = true;
+                        (
+                            0,
+                            scrutinee_type
+                                .as_deref()
+                                .and_then(option_payload_type)
+                                .or_else(|| Some("int".to_string())),
+                        )
+                    } else if enum_name == "None" {
+                        (1, None)
+                    } else {
+                        let key = format!("{}_{}", enum_name, variant);
+                        let tag = self.enum_ordinals.get(&key).copied()?;
+                        (
+                            tag,
+                            self.enum_payloads
+                                .get(enum_name)
+                                .and_then(|variants| variants.get(variant))
+                                .cloned(),
+                        )
+                    };
+                    let binding = binding_name.map(|name| {
+                        let typ = payload_type
+                            .clone()
+                            .unwrap_or_else(|| "int".to_string());
+                        (name, typ)
+                    });
+                    (Some(SirExpr::Literal(SirLiteral::Int(tag))), binding)
+                }
+                Pattern::Wildcard | Pattern::Identifier(_) => (None, None),
                 _ => return None,
             };
 
-            let body = self.lower_arm_body(&arm.body);
+            self.push_scope();
+            let mut body = Vec::new();
+            if let Some((name, typ)) = binding {
+                let (field, _) = payload_field(&typ);
+                body.push(SirStatement::Let {
+                    name: name.clone(),
+                    typ: Some(typ.clone()),
+                    value: SirExpr::FieldAccess {
+                        object: Box::new(record_expr.clone()),
+                        field: field.to_string(),
+                    },
+                });
+                self.declare(&name, Some(typ));
+            }
+            body.extend(self.lower_arm_body(&arm.body));
+            self.pop_scope();
+
             match constant {
                 Some(constant) => cases.push((constant, body)),
                 None => {
@@ -1170,7 +1422,7 @@ impl Lowerer {
         }
 
         Some(vec![SirStatement::Switch {
-            scrutinee: self.lower_expr(scrutinee),
+            scrutinee: scrutinee_expr,
             cases,
             default,
         }])
@@ -1262,6 +1514,44 @@ impl Lowerer {
             AstUnOp::AddrOf => SirUnOp::Not, // Placeholder for AddrOf
         }
     }
+}
+
+/// The struct fields that hold an enum payload: the discriminant plus one slot
+/// per scalar payload type.
+fn payload_struct_fields() -> Vec<SirStructField> {
+    vec![
+        SirStructField {
+            name: "tag".to_string(),
+            typ: "int".to_string(),
+        },
+        SirStructField {
+            name: "payload_i".to_string(),
+            typ: "int".to_string(),
+        },
+        SirStructField {
+            name: "payload_f".to_string(),
+            typ: "float".to_string(),
+        },
+        SirStructField {
+            name: "payload_s".to_string(),
+            typ: "string".to_string(),
+        },
+    ]
+}
+
+/// Which payload slot a value of `typ` uses, and the type it is read back as.
+fn payload_field(typ: &str) -> (&'static str, &'static str) {
+    match typ.to_lowercase().as_str() {
+        "float" | "f32" | "f64" => ("payload_f", "float"),
+        "string" | "str" => ("payload_s", "string"),
+        _ => ("payload_i", "int"),
+    }
+}
+
+/// The `T` in `Option<T>`, if the type name is an option.
+fn option_payload_type(typ: &str) -> Option<String> {
+    let inner = typ.strip_prefix("Option<")?.strip_suffix('>')?;
+    Some(inner.trim().to_string())
 }
 
 /// Replace whole identifiers in a type name: `T` in `[T]`, but not inside
@@ -1460,6 +1750,87 @@ mod tests {
             matches!(function.body.last(), Some(SirStatement::Return(Some(_)))),
             "the trailing expression should be returned: {:?}",
             function.body
+        );
+    }
+
+    #[test]
+    fn option_values_are_tagged_structs_and_match_binds_payloads() {
+        let program = lower(
+            "fn show(value: Option<int>) {\n    match value {\n        Some(v) => { print(v); },\n        None => { print(0); },\n    }\n}\n\nfn main() {\n    show(Some(42));\n    show(None);\n}\n",
+        );
+
+        let show = program
+            .functions
+            .iter()
+            .find(|function| function.name == "show")
+            .expect("show should be lowered");
+        let SirStatement::Switch { scrutinee, cases, .. } = show
+            .body
+            .iter()
+            .find(|statement| matches!(statement, SirStatement::Switch { .. }))
+            .expect("the option match should become a switch")
+        else {
+            unreachable!("just matched")
+        };
+        assert!(
+            matches!(scrutinee, SirExpr::FieldAccess { field, .. } if field == "tag"),
+            "the switch must test the tag: {scrutinee:?}"
+        );
+        assert_eq!(cases.len(), 2, "Some and None are both tag cases");
+        assert!(
+            cases[0].1.iter().any(|statement| matches!(
+                statement,
+                SirStatement::Let { name, .. } if name == "v"
+            )),
+            "the payload binding must be declared in the arm"
+        );
+        assert!(
+            program.structs.iter().any(|struct_def| struct_def.name == "Option"),
+            "the Option struct must be emitted"
+        );
+    }
+
+    #[test]
+    fn declared_enum_payloads_are_constructed_and_bound() {
+        let program = lower(
+            "enum Shape {\n    Circle(int),\n    Square(int),\n}\n\nfn main() {\n    let shape: Shape = Shape.Circle(7);\n    match shape {\n        Shape.Circle(r) => { print(r); },\n        Shape.Square(w) => { print(w); },\n    }\n}\n",
+        );
+        assert!(program.structs.iter().any(|struct_def| struct_def.name == "Shape"));
+        let main = program.functions.iter().find(|f| f.name == "main").expect("main");
+        let SirStatement::Let { value, .. } = &main.body[0] else {
+            panic!("expected a let, got {:?}", main.body[0]);
+        };
+        let SirExpr::Typed { expr, .. } = value else {
+            panic!("payload construction should be typed: {value:?}");
+        };
+        assert!(
+            matches!(expr.as_ref(), SirExpr::StructLiteral { name, fields }
+                if name == "Shape" && fields.iter().any(|(f, _)| f == "payload_i")),
+            "expected a tagged Shape literal: {expr:?}"
+        );
+    }
+
+    #[test]
+    fn builtin_calls_lower_to_the_runtime() {
+        let program = lower(
+            "fn main() {\n    let n: int = __builtin_strlen(\"hi\");\n    print(n);\n    print(__builtin_strcat(\"a\", \"b\"));\n}\n",
+        );
+        let main = program
+            .functions
+            .iter()
+            .find(|function| function.name == "main")
+            .expect("main should be lowered");
+
+        let SirStatement::Let { value, .. } = &main.body[0] else {
+            panic!("first statement should be a let: {:?}", main.body[0]);
+        };
+        let SirExpr::Typed { expr, typ } = value else {
+            panic!("builtin result should be typed: {value:?}");
+        };
+        assert_eq!(typ, "int");
+        assert!(
+            matches!(expr.as_ref(), SirExpr::Call { callee, .. } if callee == "nova_strlen"),
+            "strlen should call the runtime: {expr:?}"
         );
     }
 

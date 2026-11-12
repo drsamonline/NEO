@@ -38,9 +38,14 @@ in a per-process temporary directory.
 
 ## Runtime shim
 
-Generated C does not call libc directly. It includes `nova_runtime.h` and calls a
-six-function ABI (`nova_print_int`, `nova_print_float`, `nova_print_bool`,
-`nova_print_char`, `nova_print_str`, `nova_print_newline`). The compiler writes
+Generated C does not call libc directly. It includes `nova_runtime.h` (ABI v2) and
+calls the print family (`nova_print_int`, `nova_print_float`, `nova_print_bool`,
+`nova_print_char`, `nova_print_str`, `nova_print_newline`), the string helpers
+(`nova_strlen`, `nova_strdup`, `nova_strcat`, `nova_strcmp`, `nova_substr`,
+`nova_tostring_int`, `nova_tostring_bool`) and the bounds-checked array accessors
+(`nova_array_get`, `nova_array_set`, `nova_array_len`), plus `nova_fail`,
+`nova_panic`, `nova_exit` and `nova_unsupported`. Arrays are the `NovaArray`
+struct (pointer + length) declared in the header. The compiler writes
 `nova_runtime.h` and `nova_runtime.c` itself — beside the C for `emit -o` and
 `build`, and into the temporary build directory for `run` — and links the source
 into the executable.
@@ -53,7 +58,7 @@ cc /tmp/hello.c /tmp/nova_runtime.c -o /tmp/hello
 ```
 
 The shim's ABI lives in `compiler/src/runtime.rs`; `nova_runtime_version()`
-reports version `1`.
+reports version `2`.
 
 Which function is used comes from the value's type: SIR expressions carry the
 type the lowerer knows (`SirExpr::Typed`), taken from a variable's declaration or
@@ -78,8 +83,20 @@ A payload-less enum variant is an integer constant (`Color.Red` → `Color_Red`)
 `match` in statement position becomes a real C `switch`: each literal or variant arm
 is a `case` (the variant's ordinal is the constant) and the wildcard is `default`.
 A `match` whose value is used stays a chain of equality tests, which C renders as
-ternaries. Arrays are `int*`: a literal becomes a C compound literal and indexing is
-unchecked.
+ternaries. Arrays are `NovaArray` values: a literal becomes `(NovaArray){ (int[]){…}, n }`
+and indexing goes through `nova_array_get`/`nova_array_set`, so both reads and
+writes are bounds-checked and abort on a bad index.
+
+`__builtin_*` names need no declaration: `__builtin_print`, `__builtin_println`,
+`__builtin_typeof` (answered at compile time), `__builtin_tostring`,
+`__builtin_strlen`, `__builtin_strcat`, `__builtin_strcmp`, `__builtin_substr`,
+`__builtin_array_len`, `__builtin_panic` and `__builtin_exit` lower to the shim.
+Other builtins resolve but trap with `nova_unsupported` until they are implemented.
+
+`Option<T>` is built in: `Some(value)` and `None` resolve without declarations, are
+stored as a tagged struct, and `Some(v)`/`None` patterns in a statement `match`
+test the tag and bind the payload. Declared enums with payloads work the same way
+(`Shape.Circle(7)`); a payload is one scalar (`int`, `float` or `string`).
 
 A generic function is emitted once per concrete call: `fn id<T>(x: T) -> T` called
 with an `int` and a `string` becomes `id_int` and `id_string`, with `T` substituted
@@ -103,10 +120,10 @@ never guessed at. Diagnostics point at the offending expression - the returned v
 the argument, or the call - using the spans the parser records.
 
 `compiler/tests/stdlib_parse.rs` requires all four modules under `stdlib/` to lex and
-parse. That is a syntax guarantee only: the modules also use payload-carrying
-`Option<T>` values, closures and `__builtin_*` functions that are not declared, so
-`emit stdlib/...` still stops in semantic analysis even though generic functions are
-now monomorphised.
+parse. `stdlib/core` now emits C as well (builtins, generics, `Option`, arrays).
+`stdlib/io`, `stdlib/math` and `stdlib/text` call helpers such as `strlen`, `fabs`
+and `array_len` that they expect from a sibling module, so those three still stop in
+semantic analysis until cross-file resolution lands.
 
 It also checks every `return` (and a trailing expression) against the
 function's declared return type: a mismatch is `E0308`, an `int` may promote to a
@@ -116,8 +133,8 @@ expression is rejected. Expression types it cannot infer (identifiers, field acc
 arbitrary calls) are never guessed at, so this cannot produce a false error.
 
 Parsed but not lowered yet: closures, slices, references, tuples, `use`/`mod`,
-enum variants that carry data, `match` binding or string patterns, and generic
-structs or generic methods. The parser accepts them so the standard library can be
+string patterns, generic enums other than `Option`, and generic structs or generic
+methods. The parser accepts them so the standard library can be
 checked; SIR and the C backend still cover only the subset above, and tuples and
 closures lower to unit.
 

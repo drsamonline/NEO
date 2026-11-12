@@ -17,6 +17,8 @@ pub enum Type {
     Char,
     /// Unit type ()
     Unit,
+    /// Never type (`!`): a function that cannot return normally.
+    Never,
     /// Array type [T]
     Array(Box<Type>),
     /// Slice type [T]
@@ -61,6 +63,7 @@ impl fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Char => write!(f, "char"),
             Type::Unit => write!(f, "()"),
+            Type::Never => write!(f, "!"),
             Type::Array(t) => write!(f, "[{}]", t),
             Type::Slice(t) => write!(f, "[{}]", t),
             Type::Tuple(types) => {

@@ -285,6 +285,123 @@ fn array_example_runs() {
 }
 
 #[test]
+fn option_and_payload_enums_run() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("payload");
+    let source = dir.join("payload.nova");
+    fs::write(
+        &source,
+        "enum Shape {\n    Circle(int),\n    Square(int),\n}\n\nfn describe(value: Option<int>) {\n    match value {\n        Some(v) => { print(v); },\n        None => { print(\"none\"); },\n    }\n}\n\nfn main() {\n    describe(Some(42));\n    describe(None);\n    let shape: Shape = Shape.Circle(7);\n    match shape {\n        Shape.Circle(r) => { print(r); },\n        Shape.Square(w) => { print(w); },\n    }\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "42\nnone\n7\n");
+}
+
+#[test]
+fn bounds_are_checked_on_writes_too() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("bounds-write");
+    let source = dir.join("bounds_write.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let values: Array = [1, 2];\n    values[2] = 9;\n    print(\"unreachable\");\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(!run.status.success(), "out-of-bounds write must fail");
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("array index out of bounds"),
+        "expected a bounds diagnostic, got: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+}
+
+#[test]
+fn builtin_functions_use_the_runtime() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("builtins");
+    let source = dir.join("builtins.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let text: String = \"nova\";\n    print(__builtin_strlen(text));\n    print(__builtin_strcat(text, \"!\"));\n    print(__builtin_strcmp(text, \"nova\"));\n    print(__builtin_typeof(text));\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "4\nnova!\n0\nString\n"
+    );
+}
+
+#[test]
+fn out_of_bounds_array_access_fails_at_runtime() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("bounds");
+    let source = dir.join("bounds.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let values: Array = [1, 2, 3];\n    print(values[7]);\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(!run.status.success(), "out-of-bounds access must fail");
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("array index out of bounds"),
+        "expected a bounds diagnostic, got: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+}
+
+#[test]
 fn match_statement_emits_a_c_switch_and_runs() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

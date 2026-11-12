@@ -128,10 +128,11 @@ impl CBackend {
     /// The C spelling of a NOVA type: a struct's own name when it is one of the
     /// program's structs, otherwise a scalar C type (unknown names become `int`).
     fn c_type(&self, typ: &str) -> String {
-        // Arrays are pointer-to-element for now. `Array` is the example type;
-        // `[T]` is the slice spelling the parser accepts.
-        if typ.starts_with('[') || typ.eq_ignore_ascii_case("array") {
-            return "int*".to_string();
+        // Arrays carry their length, so indexing can be bounds-checked wherever
+        // the array is passed. `Array` is the example type; `[T]` is the slice
+        // spelling the parser accepts, with or without a reference prefix.
+        if typ.contains('[') || typ.eq_ignore_ascii_case("array") {
+            return "NovaArray".to_string();
         }
         // A method's `self` is a pointer to the struct.
         if let Some(base) = typ.strip_suffix('*') {
@@ -392,14 +393,23 @@ impl CBackend {
             }
             SirExpr::AddressOf(inner) => format!("&({})", self.expr_to_c(inner)),
             SirExpr::Array(items) => {
+                if items.is_empty() {
+                    return "(NovaArray){ 0, 0 }".to_string();
+                }
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_c(item)).collect();
-                format!("(int[]){{ {} }}", values.join(", "))
+                format!(
+                    "(NovaArray){{ (int[]){{ {} }}, {} }}",
+                    values.join(", "),
+                    items.len()
+                )
             }
-            SirExpr::Index { array, index } => {
-                format!("({})[{}]", self.expr_to_c(array), self.expr_to_c(index))
-            }
+            SirExpr::Index { array, index } => format!(
+                "nova_array_get({}, {})",
+                self.expr_to_c(array),
+                self.expr_to_c(index)
+            ),
             SirExpr::IndexAssign { array, index, value } => format!(
-                "({})[{}] = {}",
+                "nova_array_set({}, {}, {})",
                 self.expr_to_c(array),
                 self.expr_to_c(index),
                 self.expr_to_c(value)

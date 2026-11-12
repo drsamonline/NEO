@@ -12,19 +12,19 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Semantic analyser | ✅ names, scopes, return-type checking, call arity/type checking | `compiler/src/sema` tests |
 | SIR | ✅ typed expressions (`SirExpr::Typed`) | lowerer tests |
 | Lowerer | ✅ AST → SIR for the supported subset, including structs, field assignment, `impl` methods, enums, `match`, arrays and generic instantiation | lowerer tests |
-| C backend | ✅ runnable output (`int main`), struct `typedef`s and compound literals, enum constants, array literals/indexing, runtime-shim calls | end-to-end tests |
-| C runtime shim | ✅ `nova_runtime.h/.c`, ABI v1 (print family) | runtime + end-to-end tests |
+| C backend | ✅ runnable output (`int main`), struct `typedef`s and compound literals, enum constants, tagged payload-enum structs, bounds-checked array values, runtime-shim calls | end-to-end tests |
+| C runtime shim | ✅ `nova_runtime.h/.c`, ABI v2 (print, strings, bounds-checked arrays, panic/exit, unsupported-builtin trap) | runtime + end-to-end tests |
 | CLI | ✅ `emit` / `build` / `run`, `-o`, `--target c`, `--` args | end-to-end tests |
 | Package manager | ⚠️ real `init`/`build`/`run`; registry mocked; dependencies recorded but not built | `pkg` tests |
 | LSP | ⚠️ real compiler diagnostics; go-to-definition is a string search; `references` TODO | `lsp` tests |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
 | Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
 | JS / Rust / WASM backends | ⚠️ generators exist, no CLI reaches them | — |
-| Standard library | ⚠️ all four modules parse; `emit` still stops because `__builtin_*` functions are undeclared, payload enums (`Option<T>`) and closures are not lowered (generics are now monomorphised) | `compiler/tests/stdlib_parse.rs`, `nova-compiler emit stdlib/core/core.nova` |
+| Standard library | ⚠️ all four modules parse; `core` now **emits C**; `io`/`math`/`text` stop at helpers they expect from a sibling module (`strlen`, `fabs`, `array_len`) | `compiler/tests/stdlib_parse.rs`, `nova-compiler emit stdlib/*/*.nova` |
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 139 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 149 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 
@@ -38,10 +38,10 @@ Each milestone is done only when its acceptance check passes in CI.
 | 4 | Return-type checking | `fn f() -> bool { return 1; }` is `E0308` | ✅ done |
 | 5 | Call argument checking | wrong arity and wrong argument types are errors | ✅ done |
 | 6 | Spans on expressions | every type diagnostic points at the offending expression | ✅ done |
-| 7 | Make the standard library parse | all `stdlib/**/*.nova` emit C | 🚧 parses; emit blocked by lowering |
+| 7 | Make the standard library parse | all `stdlib/**/*.nova` emit C | 🚧 all parse; `core` emits C, the other three need cross-module helpers |
 | 8 | Resolve calls, `use`, `mod` across files | a two-file program builds and runs | ⬜ |
 | 9 | Enums + `match` end to end | a `match` program compiles to `switch` and runs | ✅ done |
-| 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | 🚧 runs; no bounds checks |
+| 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | ✅ done |
 | 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ⬜ |
 | 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests (`integration_tests/` today imports APIs that do not exist) | ⬜ |
 | 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits and is tested | ⬜ |
@@ -72,9 +72,16 @@ Each milestone is done only when its acceptance check passes in CI.
 - `match` supports literals, `Enum.Variant` paths and the wildcard arm. A statement
   `match` becomes a C `switch`; a value `match` stays a ternary chain. Binding
   patterns, string patterns and enum variants that carry data are not lowered.
-- Arrays are `int*` (an array literal becomes a C compound literal) with no bounds
-  checks and no element type other than `int`.
-- Assignment to an array element is not implemented; field assignment is.
+- Arrays are `NovaArray` (a pointer plus a length) with `int` elements; reads and
+  writes are bounds-checked at runtime and abort with `array index out of bounds`.
+- Payload enums store one scalar payload (`int`, `float` or `string`) in a fixed
+  tagged struct; `Option<T>` is a built-in of the same shape. Generic enums other
+  than `Option` are not monomorphised, and payload matching is statement-position
+  only.
+- `__builtin_*` printing, type, string, array-length, panic and exit builtins lower
+  to the shim. OS and collection builtins (`args`, `array_push`, `array_pop`,
+  `getenv`, `now`, `sleep`, `cwd`, `chdir`) resolve but trap through
+  `nova_unsupported`.
 - Expression types that cannot be inferred are never guessed, so type checking is sound
   but incomplete.
 - `--release` selects an output directory only; the compiler has no optimisation levels.

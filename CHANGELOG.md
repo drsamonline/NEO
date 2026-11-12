@@ -5,6 +5,36 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Builtins, bounds-checked arrays and payload enums ⭐ NEW
+- **The `__builtin_*` functions are declared by the compiler.** `print`, `println`,
+  `typeof` (answered statically), `tostring`, `strlen`, `strcat`, `strcmp`,
+  `substr`, `array_len`, `panic` and `exit` resolve in sema, are typed by name and
+  lower to the runtime shim. Constructs with no lowering yet (`args`, `array_push`,
+  `array_pop`, `getenv`, `now`, `sleep`, `cwd`, `chdir`) resolve too but call
+  `nova_unsupported`, which names them on stderr and exits 1 rather than silently
+  mis-compiling.
+- **Arrays are `NovaArray` (pointer + length).** `c_type` emits the struct, an array
+  literal becomes `(NovaArray){ (int[]){ … }, n }`, and reads/writes go through
+  `nova_array_get`/`nova_array_set`, which abort with `array index out of bounds`.
+  Length travels with the value, so a callee's `arr[i]` is checked even when the
+  array was created elsewhere.
+- **Payload-carrying enums lower to tagged structs.** A variant payload is stored in
+  `payload_i`/`payload_f`/`payload_s`, `Shape.Circle(7)` becomes a compound literal
+  with `tag = 0`, and `match` switches on `.tag` while binding the payload to the
+  pattern's name.
+- **`Option<T>` is built in.** `Some(value)` and `None` resolve without declarations,
+  use the same tagged struct, and are matched with `Some(v)`/`None` in statement
+  `match`. `None` is tag 1; the payload type is taken from the value at construction.
+- **`!` is a real return type.** A function declared `-> !` (such as `panic`) is not
+  required to return a value.
+- **`stdlib/core/core.nova` now emits C.** `io`, `math` and `text` still stop at
+  helpers they expect from a sibling module (`strlen`, `fabs`, `array_len`).
+- **Tests:** sema builtin acceptance; lowerer tests for the tag switch, payload
+  binding, `Option` struct and tagged `Shape` literal; end-to-end
+  `builtin_functions_use_the_runtime`, `option_and_payload_enums_run`,
+  `out_of_bounds_array_access_fails_at_runtime`, `bounds_are_checked_on_writes_too`;
+  and a stdlib test that `core` emits C.
+
 #### Statement `match` emits a C `switch` ⭐ NEW
 - **A `match` used as a statement now compiles to a real C `switch`.** Each literal
   and `Enum.Variant` arm becomes a `case` with the variant's ordinal as the constant;

@@ -4,11 +4,16 @@
 //! `nova-compiler emit stdlib/*/*.nova`; before milestone 7 none of them
 //! lexed, so nothing downstream could ever be tested. This test is the
 //! acceptance check for "the standard library parses": every module must lex
-//! and parse without diagnostics. It does not claim they compile - lowering
-//! structs, enums, `match` and closures is still open.
+//! and parse without diagnostics. `core` goes further and emits C; `io`, `math`
+//! and `text` still call helpers those modules expect from a sibling module.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn compiler() -> &'static str {
+    env!("CARGO_BIN_EXE_nova-compiler")
+}
 
 fn nova_files(directory: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(directory).expect("the stdlib directory should exist");
@@ -20,6 +25,37 @@ fn nova_files(directory: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+/// `core` is the module the compiler can already lower: builtins, generics,
+/// payload-carrying `Option` and arrays all emit real C.
+#[test]
+fn core_module_emits_c() {
+    let dir = std::env::temp_dir().join(format!("nova-stdlib-emit-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp dir");
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("compiler crate has a parent")
+        .join("stdlib")
+        .join("core")
+        .join("core.nova");
+    let output = dir.join("core.c");
+
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&core)
+        .arg("-o")
+        .arg(&output)
+        .output()
+        .expect("run nova-compiler emit");
+    assert!(
+        emit.status.success(),
+        "stdlib/core must emit C:\n{}",
+        String::from_utf8_lossy(&emit.stderr)
+    );
+    let c_code = fs::read_to_string(&output).expect("read emitted C");
+    assert!(c_code.contains("nova_runtime.h"));
+    assert!(c_code.contains("Option"));
 }
 
 #[test]

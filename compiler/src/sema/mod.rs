@@ -303,6 +303,11 @@ impl SemanticAnalyzer {
                 self.check_expr(expr_inner);
             }
             nova_common::Expr::Identifier(name) => {
+                // `__builtin_*` names and the built-in `Option` constructors are
+                // declared by the compiler, not the program.
+                if name.starts_with("__builtin_") || name == "Some" || name == "None" {
+                    return;
+                }
                 // Check if identifier is defined
                 if self.symbol_table.lookup(name).is_none() {
                     self.diagnostics.error(
@@ -338,9 +343,36 @@ impl SemanticAnalyzer {
             nova_common::Expr::Match(scrutinee, arms) => {
                 self.check_expr(scrutinee);
                 for arm in arms {
+                    // A payload pattern binds its variant's value for the arm.
+                    let binding = match &arm.pattern {
+                        nova_common::Pattern::EnumVariant(_, _, Some(inner)) => {
+                            match inner.as_ref() {
+                                nova_common::Pattern::Identifier(name) if name != "_" => {
+                                    Some(name.clone())
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    };
+                    if let Some(name) = &binding {
+                        let symbol = Symbol::new(
+                            name.clone(),
+                            SymbolKind::Variable,
+                            nova_common::Span::default(),
+                        );
+                        let _ = self.symbol_table.insert(symbol);
+                        let mut scope = HashMap::new();
+                        scope.insert(name.clone(), Type::Int);
+                        self.type_scopes.push(scope);
+                    }
+
                     self.check_expr(&arm.body);
                     if let Some(guard) = &arm.guard {
                         self.check_expr(guard);
+                    }
+                    if binding.is_some() {
+                        self.type_scopes.pop();
                     }
                 }
             }
@@ -434,6 +466,11 @@ impl SemanticAnalyzer {
         let nova_common::Expr::Identifier(name) = callee.unspanned() else {
             return;
         };
+        // Builtins are declared by the compiler with no user-visible signature;
+        // checking them against one would only produce false errors.
+        if name.starts_with("__builtin_") || name == "Some" {
+            return;
+        }
         let Some(signature) = self.signatures.get(name).cloned() else {
             return;
         };
@@ -516,6 +553,8 @@ impl SemanticAnalyzer {
         }
 
         match (&context.typ, value) {
+            // A `!` function cannot return, so no value can be wrong here.
+            (Some(Type::Never), _) => {}
             (Some(expected), Some(expr)) => {
                 if matches!(expected, Type::Unit) {
                     self.diagnostics.push(
@@ -577,7 +616,7 @@ impl SemanticAnalyzer {
         let Some(expected) = func.return_type.as_ref().map(|t| type_from_name(&t.name)) else {
             return;
         };
-        if matches!(expected, Type::Unit) {
+        if matches!(expected, Type::Unit | Type::Never) {
             return;
         }
         if let Some(found) = self.infer_expr_type(expr) {
@@ -606,7 +645,7 @@ impl SemanticAnalyzer {
         let Some(expected) = func.return_type.as_ref().map(|t| type_from_name(&t.name)) else {
             return;
         };
-        if matches!(expected, Type::Unit) || block.final_expr.is_some() {
+        if matches!(expected, Type::Unit | Type::Never) || block.final_expr.is_some() {
             return;
         }
         if block_contains_return(block) || ends_with_loop(block) {
@@ -662,13 +701,20 @@ impl SemanticAnalyzer {
                 _ => None,
             },
             Expr::Call(callee, _args) => match callee.as_ref() {
-                Expr::Identifier(name) => self.signatures.get(name).and_then(|signature| {
-                    if signature.generics.is_empty() {
-                        signature.return_type.clone()
+                Expr::Identifier(name) if name == "Some" => None,
+                Expr::Identifier(name) => {
+                    if let Some(builtin) = builtin_return_type(name) {
+                        Some(builtin)
                     } else {
-                        None
+                        self.signatures.get(name).and_then(|signature| {
+                            if signature.generics.is_empty() {
+                                signature.return_type.clone()
+                            } else {
+                                None
+                            }
+                        })
                     }
-                }),
+                }
                 _ => None,
             },
             Expr::If(_, then_block, _else_block) => then_block
@@ -762,7 +808,24 @@ impl SemanticAnalyzer {
 
 /// A declared type name as the analyzer's `Type`. Unknown names become
 /// `Struct(name)`, so two mentions of the same name still compare equal.
+/// Return type of a compiler-declared `__builtin_*` function, when it is one.
+/// `None` also covers builtins whose result type depends on the argument.
+fn builtin_return_type(name: &str) -> Option<Type> {
+    Some(match name {
+        "__builtin_panic" | "__builtin_exit" => Type::Never,
+        "__builtin_print" | "__builtin_println" => Type::Unit,
+        "__builtin_strlen" | "__builtin_strcmp" | "__builtin_array_len" => Type::Int,
+        "__builtin_typeof" | "__builtin_tostring" | "__builtin_strcat" | "__builtin_substr" => {
+            Type::String
+        }
+        _ => return None,
+    })
+}
+
 fn type_from_name(name: &str) -> Type {
+    if name == "!" {
+        return Type::Never;
+    }
     match name.to_lowercase().as_str() {
         "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => Type::Int,
         "float" | "f32" | "f64" => Type::Float,
@@ -1071,6 +1134,18 @@ mod tests {
             "struct Point {\n    x: int,\n    y: int,\n}\n\nfn get_x() -> int {\n    let p = Point { x: 1, y: 2 };\n    p.x\n}\n",
         );
         assert!(!analyzer.diagnostics.has_errors(), "{:?}", messages(&analyzer));
+    }
+
+    #[test]
+    fn builtin_calls_are_declared_by_the_compiler() {
+        let analyzer = analyze(
+            "fn loud(text: String) {\n    __builtin_print(__builtin_strcat(text, \"!\"));\n}\n\nfn main() {\n    let n: int = __builtin_strlen(\"hi\");\n    print(n);\n}\n", 
+        );
+        assert!(
+            !analyzer.diagnostics.has_errors(),
+            "builtins must resolve without user declarations: {:?}",
+            messages(&analyzer)
+        );
     }
 
     #[test]

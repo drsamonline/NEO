@@ -139,14 +139,17 @@ cargo build --release
   expression spans, return checking, generic-call acceptance
 - **Lowering to SIR**: structs, field assignment, `impl` methods, enums, `match`,
   arrays, generic instantiation
-- **C code generation**: runnable programs linked against the runtime shim;
-  statement `match` becomes a C `switch`
+- **C code generation**: runnable programs linked against the runtime shim (ABI v2);
+  statement `match` becomes a C `switch`, arrays are bounds-checked and
+  payload-carrying enums/`Option<T>` are tagged structs
+- **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
+  array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
   GC, file I/O, threading, async helpers (not yet linked to generated C)
 - **Tooling**: package manager, language server and debugger crates with tests
 
 ### Coming Soon 🚧
-- Standard library emitting C (blocked on builtins, payload enums, closures)
+- Standard library `io`/`math`/`text` emitting C (blocked on cross-file helpers)
 - Multi-file programs (`use`/`mod`)
 - Bounds-checked arrays and element types
 - `--target javascript|rust|wasm` wired into the CLI
