@@ -153,6 +153,12 @@ fn compile_to_c(input: &Path) -> String {
         }
     };
 
+    // `use name;` pulls the module's declarations into this program.
+    let program = match nova_compiler::modules::load_modules(program, input) {
+        Ok(program) => program,
+        Err(message) => die(&message),
+    };
+
     let mut analyzer = SemanticAnalyzer::new();
     if analyzer.analyze(&program).is_err() {
         eprintln!("{name}: semantic errors:");

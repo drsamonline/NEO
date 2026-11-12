@@ -128,6 +128,12 @@ impl CBackend {
     /// The C spelling of a NOVA type: a struct's own name when it is one of the
     /// program's structs, otherwise a scalar C type (unknown names become `int`).
     fn c_type(&self, typ: &str) -> String {
+        // A generic enum or struct is one C type: `Result<int, String>` -> `Result`.
+        if let Some((base, _)) = typ.split_once('<') {
+            if self.struct_names.iter().any(|name| name == base) {
+                return base.to_string();
+            }
+        }
         // Arrays carry their length, so indexing can be bounds-checked wherever
         // the array is passed. `Array` is the example type; `[T]` is the slice
         // spelling the parser accepts, with or without a reference prefix.
@@ -394,11 +400,12 @@ impl CBackend {
             SirExpr::AddressOf(inner) => format!("&({})", self.expr_to_c(inner)),
             SirExpr::Array(items) => {
                 if items.is_empty() {
-                    return "(NovaArray){ 0, 0 }".to_string();
+                    return "nova_array_from(0, 0)".to_string();
                 }
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_c(item)).collect();
+                // Heap-allocated, so a later push can grow it safely.
                 format!(
-                    "(NovaArray){{ (int[]){{ {} }}, {} }}",
+                    "nova_array_from((int[]){{ {} }}, {})",
                     values.join(", "),
                     items.len()
                 )

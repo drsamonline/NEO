@@ -7,6 +7,7 @@ pub mod diagnostics;
 pub mod sema;
 pub mod backend;
 pub mod lowerer;
+pub mod modules;
 pub mod runtime;
 
 // Re-export main components for easy access

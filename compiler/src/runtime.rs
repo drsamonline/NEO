@@ -29,11 +29,12 @@ pub const HEADER: &str = r#"/* nova_runtime.h - NOVA runtime shim (ABI v2).
 extern "C" {
 #endif
 
-/* An array value: a pointer plus the length, so indexing can be checked
- * wherever the array is passed. Structs are copied by value. */
+/* An array value: a heap buffer, its length and its capacity, so indexing can
+ * be checked and push/pop can grow it. Structs are copied by value. */
 typedef struct {
     int *data;
     long long len;
+    long long cap;
 } NovaArray;
 
 /* Output. Each writes a value with no trailing newline; the compiler emits
@@ -56,10 +57,14 @@ char *nova_tostring_int(long long value);
 char *nova_tostring_bool(bool value);
 void nova_string_free(char *value);
 
-/* Arrays. Reads and writes are bounds-checked and abort on a bad index. */
+/* Arrays. Reads and writes are bounds-checked and abort on a bad index. An
+ * array literal is allocated with nova_array_from so push can grow it. */
+NovaArray nova_array_from(const int *items, long long len);
 long long nova_array_len(NovaArray array);
 int nova_array_get(NovaArray array, long long index);
 void nova_array_set(NovaArray array, long long index, int value);
+void nova_array_push(NovaArray *array, int value);
+int nova_array_pop(NovaArray *array);
 
 /* Failure and process control. */
 void nova_fail(const char *message);
@@ -181,6 +186,20 @@ void nova_string_free(char *value) {
     free(value);
 }
 
+NovaArray nova_array_from(const int *items, long long len) {
+    NovaArray array;
+    array.len = len;
+    array.cap = len > 0 ? len : 4;
+    array.data = (int *)malloc((size_t)array.cap * sizeof(int));
+    if (array.data == NULL) {
+        nova_fail("out of memory");
+    }
+    if (len > 0) {
+        memcpy(array.data, items, (size_t)len * sizeof(int));
+    }
+    return array;
+}
+
 long long nova_array_len(NovaArray array) {
     return array.len;
 }
@@ -197,6 +216,31 @@ void nova_array_set(NovaArray array, long long index, int value) {
         nova_fail("array index out of bounds");
     }
     array.data[index] = value;
+}
+
+void nova_array_push(NovaArray *array, int value) {
+    if (array == NULL) {
+        nova_fail("push on a missing array");
+    }
+    if (array->len >= array->cap) {
+        long long cap = array->cap > 0 ? array->cap * 2 : 4;
+        int *grown = (int *)realloc(array->data, (size_t)cap * sizeof(int));
+        if (grown == NULL) {
+            nova_fail("out of memory");
+        }
+        array->data = grown;
+        array->cap = cap;
+    }
+    array->data[array->len] = value;
+    array->len += 1;
+}
+
+int nova_array_pop(NovaArray *array) {
+    if (array == NULL || array->len <= 0) {
+        nova_fail("pop from an empty array");
+    }
+    array->len -= 1;
+    return array->data[array->len];
 }
 
 void nova_fail(const char *message) {
@@ -234,7 +278,12 @@ mod tests {
     /// defined in the source; a typo would otherwise surface only at link time.
     #[test]
     fn header_and_source_declare_the_abi() {
-        assert!(HEADER.contains("typedef struct {\n    int *data;\n    long long len;\n} NovaArray;"), "header must define NovaArray");
+        assert!(
+            HEADER.contains(
+                "typedef struct {\n    int *data;\n    long long len;\n    long long cap;\n} NovaArray;"
+            ),
+            "header must define NovaArray"
+        );
         assert!(SOURCE.contains("nova_fail(\"array index out of bounds\")"));
         assert!(HEADER.contains("ABI v2") && SOURCE.contains("ABI v2"));
     }
@@ -256,6 +305,9 @@ mod tests {
             "nova_array_get",
             "nova_array_set",
             "nova_array_len",
+            "nova_array_from",
+            "nova_array_push",
+            "nova_array_pop",
             "nova_panic",
             "nova_fail",
         ] {

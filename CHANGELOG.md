@@ -5,6 +5,28 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Modules, growable arrays and generic enums ⭐ NEW
+- **`use name;` / `use name.*;` load modules.** The loader looks beside the
+  importing file (`name.nova`, `name/mod.nova`, `name/name.nova`), then in
+  `stdlib/name/name.nova` in the source directory or any ancestor. Imports are
+  depth-first and deduplicated, so importing `core` twice merges it once. All four
+  `stdlib` modules now emit C.
+- **Arrays are heap-allocated and growable.** A literal becomes
+  `nova_array_from((int[]){…}, n)` (copying into a `malloc` block), and
+  `__builtin_array_push`/`__builtin_array_pop` call
+  `nova_array_push`/`nova_array_pop`, which double the capacity with `realloc` and
+  abort on an empty pop. `NovaArray` gained a `cap` field.
+- **Generic enums other than `Option` work.** `enum Result<T, E> { Ok(T), Err(E) }`
+  emits one tagged struct; a constructor whose payload names a generic parameter
+  takes the payload type from its argument, and a match binding substitutes the
+  generic argument from the matched type (`Result<int, String>` makes `E` a
+  `String`, so the binding prints as a string).
+- **Local `const` declarations are lowered** as read-only bindings, with sema
+  registering them in the enclosing scope.
+- **Tests:** a module-resolution unit test plus a stdlib lookup test, end-to-end
+  `use_pulls_in_a_sibling_module` and
+  `generic_enum_payloads_and_growable_arrays_run` (prints `7`, `bad`, `3`, `3`).
+
 #### Builtins, bounds-checked arrays and payload enums ⭐ NEW
 - **The `__builtin_*` functions are declared by the compiler.** `print`, `println`,
   `typeof` (answered statically), `tostring`, `strlen`, `strcat`, `strcmp`,

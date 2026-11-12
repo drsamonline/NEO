@@ -241,6 +241,18 @@ impl SemanticAnalyzer {
     /// Check a statement
     fn check_statement(&mut self, stmt: &nova_common::Statement) {
         match stmt {
+            // A local `const` is visible to the statements after it.
+            nova_common::Statement::Item(nova_common::Item::Const(const_def)) => {
+                let symbol =
+                    Symbol::new(const_def.name.clone(), SymbolKind::Const, const_def.span);
+                let _ = self.symbol_table.insert(symbol);
+                if let Some(scope) = self.type_scopes.last_mut() {
+                    if let Some(typ) = const_def.typ.as_ref().map(|t| type_from_name(&t.name)) {
+                        scope.insert(const_def.name.clone(), typ);
+                    }
+                }
+                self.check_expr(&const_def.value);
+            }
             nova_common::Statement::Let(let_stmt) => {
                 // Add variable to symbol table
                 if let nova_common::Pattern::Identifier(ident_name) = &let_stmt.pattern {

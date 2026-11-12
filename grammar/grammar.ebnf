@@ -77,7 +77,7 @@ const_decl     = "const" identifier [ ":" type_expr ] "=" expr ";" ;
 static_decl    = "static" identifier [ ":" type_expr ] "=" expr ";" ;
 struct         = "struct" identifier "{" [ field { "," field } ] "}" ;
 field          = identifier ":" type_expr ;
-enum           = "enum" identifier "{" [ variant { "," variant } ] "}" ;
+enum           = "enum" identifier [ "<" identifier { "," identifier } ">" ] "{" [ variant { "," variant } ] "}" ;
 variant        = identifier [ "(" [ type_expr { "," type_expr } ] ")" ] ;
 use_decl       = "use" path ";" ;
 path           = identifier { ( "::" | "." ) ( identifier | "*" ) } ;

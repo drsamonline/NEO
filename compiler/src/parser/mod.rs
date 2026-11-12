@@ -724,6 +724,25 @@ impl Parser {
             return Err(());
         };
         
+        // Generic parameters: `enum Result<T, E>`.
+        let mut generics = Vec::new();
+        if self.match_token(TokenKind::Less) {
+            if !self.check(TokenKind::Greater) {
+                loop {
+                    if self.check(TokenKind::Identifier(String::new())) {
+                        generics.push(self.advance().lexeme.clone());
+                    } else {
+                        self.error_at_current("Expected type parameter name");
+                        return Err(());
+                    }
+                    if !self.match_token(TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::Greater, "Expected '>' after type parameters")?;
+        }
+
         self.expect(TokenKind::LBrace, "Expected '{' after enum name")?;
         
         let mut variants = Vec::new();
@@ -767,7 +786,7 @@ impl Parser {
         
         Ok(EnumDef {
             name: name.lexeme.clone(),
-            generics: Vec::new(),
+            generics,
             variants,
             is_pub: false,
             span: Span::new(enum_token.span.start, self.peek().span.end),

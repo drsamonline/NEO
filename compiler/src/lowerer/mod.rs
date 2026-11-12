@@ -23,6 +23,8 @@ pub struct Lowerer {
     enum_ordinals: HashMap<String, i64>,
     /// Enum name -> variant name -> payload type, for variants that carry data.
     enum_payloads: HashMap<String, HashMap<String, String>>,
+    /// Enum name -> its generic parameters, so payload types can be substituted.
+    enum_generics: HashMap<String, Vec<String>>,
     /// True once `Some`/`None` are lowered, so the `Option` struct is emitted.
     uses_option: bool,
     /// Generic functions, keyed by name; lowered once per instantiation.
@@ -64,6 +66,7 @@ impl Lowerer {
             enums: HashMap::new(),
             enum_ordinals: HashMap::new(),
             enum_payloads: HashMap::new(),
+            enum_generics: HashMap::new(),
             uses_option: false,
             generic_decls: HashMap::new(),
             pending: Vec::new(),
@@ -197,6 +200,8 @@ impl Lowerer {
                         });
                     }
                     self.enum_payloads.insert(enum_def.name.clone(), payloads);
+                    self.enum_generics
+                        .insert(enum_def.name.clone(), enum_def.generics.clone());
                 }
                 nova_common::Item::Impl(impl_block) => {
                     for method in &impl_block.methods {
@@ -313,7 +318,7 @@ impl Lowerer {
 
         let mut params = Vec::new();
         for param in &instance.function.params {
-            let typ = self.substitute(&param.typ.name);
+            let typ = self.substitute(&type_display(&param.typ));
             self.declare(&param.name, Some(typ.clone()));
             params.push(SirParam {
                 name: param.name.clone(),
@@ -428,7 +433,7 @@ impl Lowerer {
     fn lower_function(&mut self, func: &Function) -> SirFunction {
         self.push_scope();
         for param in &func.params {
-            self.declare(&param.name, Some(param.typ.name.clone()));
+            self.declare(&param.name, Some(type_display(&param.typ)));
         }
 
         let return_type = func.return_type.as_ref().map(|typ| typ.name.clone());
@@ -446,7 +451,7 @@ impl Lowerer {
             name: func.name.clone(),
             params: func.params.iter().map(|p| SirParam {
                 name: p.name.clone(),
-                typ: p.typ.name.clone(),
+                typ: type_display(&p.typ),
             }).collect(),
             return_type: func.return_type.as_ref().map(|t| t.name.clone()),
             body: body_stmts,
@@ -474,10 +479,10 @@ impl Lowerer {
                     },
                 });
             } else {
-                self.declare(&param.name, Some(param.typ.name.clone()));
+                self.declare(&param.name, Some(type_display(&param.typ)));
                 params.push(SirParam {
                     name: param.name.clone(),
-                    typ: param.typ.name.clone(),
+                    typ: type_display(&param.typ),
                 });
             }
         }
@@ -572,6 +577,17 @@ impl Lowerer {
             "__builtin_strcat" => Some(typed("nova_strcat", lowered(self), "string")),
             "__builtin_substr" => Some(typed("nova_substr", lowered(self), "string")),
             "__builtin_array_len" => Some(typed("nova_array_len", lowered(self), "int")),
+            // Push and pop mutate the header (length, capacity), so they take
+            // the array by address.
+            "__builtin_array_push" => {
+                let array = SirExpr::AddressOf(Box::new(self.lower_expr(args.first()?)));
+                let value = self.lower_expr(args.get(1)?);
+                Some(typed("nova_array_push", vec![array, value], "void"))
+            }
+            "__builtin_array_pop" => {
+                let array = SirExpr::AddressOf(Box::new(self.lower_expr(args.first()?)));
+                Some(typed("nova_array_pop", vec![array], "int"))
+            }
             "__builtin_panic" => Some(typed("nova_panic", lowered(self), "void")),
             "__builtin_exit" => Some(typed("nova_exit", lowered(self), "void")),
             _ => Some(typed(
@@ -609,12 +625,29 @@ impl Lowerer {
 
     fn lower_statement(&mut self, stmt: &Statement) -> Vec<SirStatement> {
         match stmt {
+            // A local `const` is a read-only binding with an initialiser.
+            Statement::Item(nova_common::Item::Const(const_def)) => {
+                let typ = const_def
+                    .typ
+                    .as_ref()
+                    .map(|typ| self.substitute(&typ.name))
+                    .or_else(|| self.expr_type(&const_def.value));
+                self.declare(&const_def.name, typ.clone());
+                vec![SirStatement::Let {
+                    name: const_def.name.clone(),
+                    typ,
+                    value: self.lower_expr(&const_def.value),
+                }]
+            }
             Statement::Let(let_stmt) => {
                 let name = match &let_stmt.pattern {
                     Pattern::Identifier(n) => n.clone(),
                     _ => "_".to_string(),
                 };
-                let declared = let_stmt.typ.as_ref().map(|t| self.substitute(&t.name));
+                let declared = let_stmt
+                    .typ
+                    .as_ref()
+                    .map(|typ| self.substitute(&type_display(typ)));
                 let value = let_stmt.init.as_ref()
                     .map(|e| self.lower_expr(e))
                     .unwrap_or_else(|| SirExpr::Literal(SirLiteral::Int(0)));
@@ -923,6 +956,18 @@ impl Lowerer {
                                 .copied()
                                 .unwrap_or(0);
                             if let Some(arg) = args.first() {
+                                // A variant declared with a generic parameter takes
+                                // its payload type from the value at this call.
+                                let payload_type = if self
+                                    .enum_generics
+                                    .get(enum_name)
+                                    .is_some_and(|generics| generics.contains(&payload_type))
+                                {
+                                    self.expr_type(arg)
+                                        .unwrap_or_else(|| "int".to_string())
+                                } else {
+                                    payload_type
+                                };
                                 return self
                                     .lower_payload_value(enum_name, tag, arg, &payload_type);
                             }
@@ -1313,11 +1358,10 @@ impl Lowerer {
         let scrutinee_type = self.expr_type(scrutinee);
         // A payload enum is a struct, so the switch tests its `tag`; a
         // payload-less enum is already an integer value.
-        let is_payload_enum = scrutinee_type.as_deref().is_some_and(|typ| {
-            typ == "Option"
-                || typ.starts_with("Option<")
-                || self.enum_payloads.contains_key(typ)
-        });
+        let is_payload_enum = scrutinee_type
+            .as_deref()
+            .map(|typ| typ.split('<').next().unwrap_or(typ))
+            .is_some_and(|base| base == "Option" || self.enum_payloads.contains_key(base));
         let scrutinee_expr = if is_payload_enum {
             SirExpr::FieldAccess {
                 object: Box::new(record_expr.clone()),
@@ -1379,7 +1423,14 @@ impl Lowerer {
                             self.enum_payloads
                                 .get(enum_name)
                                 .and_then(|variants| variants.get(variant))
-                                .cloned(),
+                                .map(|payload| {
+                                    substitute_generic_payload(
+                                        payload,
+                                        enum_name,
+                                        scrutinee_type.as_deref(),
+                                        self.enum_generics.get(enum_name),
+                                    )
+                                }),
                         )
                     };
                     let binding = binding_name.map(|name| {
@@ -1546,6 +1597,50 @@ fn payload_field(typ: &str) -> (&'static str, &'static str) {
         "string" | "str" => ("payload_s", "string"),
         _ => ("payload_i", "int"),
     }
+}
+
+/// A type as written, including generic arguments: `Result<int, String>`.
+fn type_display(typ: &nova_common::TypeExpr) -> String {
+    if typ.generics.is_empty() {
+        typ.name.clone()
+    } else {
+        format!(
+            "{}<{}>",
+            typ.name,
+            typ.generics
+                .iter()
+                .map(type_display)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+/// The arguments in `Name<A, B>`, if the type name has any.
+fn generic_arguments(typ: &str) -> Option<Vec<String>> {
+    let inner = typ.split_once('<')?.1.strip_suffix('>')?;
+    Some(inner.split(',').map(|arg| arg.trim().to_string()).collect())
+}
+
+/// Replace a variant payload type that names one of the enum's generic
+/// parameters with the concrete argument from the matched type.
+fn substitute_generic_payload(
+    payload: &str,
+    _enum_name: &str,
+    scrutinee_type: Option<&str>,
+    generics: Option<&Vec<String>>,
+) -> String {
+    let (Some(generics), Some(scrutinee)) = (generics, scrutinee_type) else {
+        return payload.to_string();
+    };
+    let Some(arguments) = generic_arguments(scrutinee) else {
+        return payload.to_string();
+    };
+    generics
+        .iter()
+        .position(|generic| generic == payload)
+        .and_then(|index| arguments.get(index).cloned())
+        .unwrap_or_else(|| payload.to_string())
 }
 
 /// The `T` in `Option<T>`, if the type name is an option.

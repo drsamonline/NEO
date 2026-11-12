@@ -72,6 +72,9 @@ structs) are printed as `int`.
 
 ## Scope
 
+Module loading lives in `compiler/src/modules.rs`: `use` is resolved at compile time
+and the imported items are merged ahead of the program's own.
+
 Implemented and exercised by `compiler/tests/end_to_end.rs`: literals, `let`,
 arithmetic and comparisons, `if`/`else`, `while`, `for i in a..b`, `return`,
 function definitions and calls, recursion, `struct` declarations, struct
@@ -85,7 +88,9 @@ is a `case` (the variant's ordinal is the constant) and the wildcard is `default
 A `match` whose value is used stays a chain of equality tests, which C renders as
 ternaries. Arrays are `NovaArray` values: a literal becomes `(NovaArray){ (int[]){…}, n }`
 and indexing goes through `nova_array_get`/`nova_array_set`, so both reads and
-writes are bounds-checked and abort on a bad index.
+writes are bounds-checked and abort on a bad index. Literals are heap-allocated with
+`nova_array_from`, and `__builtin_array_push`/`__builtin_array_pop` grow and shrink
+the local array through `nova_array_push`/`nova_array_pop`.
 
 `__builtin_*` names need no declaration: `__builtin_print`, `__builtin_println`,
 `__builtin_typeof` (answered at compile time), `__builtin_tostring`,
@@ -96,7 +101,8 @@ Other builtins resolve but trap with `nova_unsupported` until they are implement
 `Option<T>` is built in: `Some(value)` and `None` resolve without declarations, are
 stored as a tagged struct, and `Some(v)`/`None` patterns in a statement `match`
 test the tag and bind the payload. Declared enums with payloads work the same way
-(`Shape.Circle(7)`); a payload is one scalar (`int`, `float` or `string`).
+(`Shape.Circle(7)`, or `Result<T, E>` with the payload type substituted from the
+matched type); a payload is one scalar (`int`, `float` or `string`).
 
 A generic function is emitted once per concrete call: `fn id<T>(x: T) -> T` called
 with an `int` and a `string` becomes `id_int` and `id_string`, with `T` substituted
@@ -120,10 +126,10 @@ never guessed at. Diagnostics point at the offending expression - the returned v
 the argument, or the call - using the spans the parser records.
 
 `compiler/tests/stdlib_parse.rs` requires all four modules under `stdlib/` to lex and
-parse. `stdlib/core` now emits C as well (builtins, generics, `Option`, arrays).
-`stdlib/io`, `stdlib/math` and `stdlib/text` call helpers such as `strlen`, `fabs`
-and `array_len` that they expect from a sibling module, so those three still stop in
-semantic analysis until cross-file resolution lands.
+parse. All four modules now emit C: `use core.*;` (and text's `use io.*;`) pull the
+sibling module's declarations in, and the module loader searches beside the
+importing file and then `stdlib/<name>/<name>.nova` in the source directory or an
+ancestor. A two-file program using `use helper.*;` builds and runs.
 
 It also checks every `return` (and a trailing expression) against the
 function's declared return type: a mismatch is `E0308`, an `int` may promote to a
@@ -132,9 +138,8 @@ return type is rejected, and a non-unit function with no `return` and no tail
 expression is rejected. Expression types it cannot infer (identifiers, field access,
 arbitrary calls) are never guessed at, so this cannot produce a false error.
 
-Parsed but not lowered yet: closures, slices, references, tuples, `use`/`mod`,
-string patterns, generic enums other than `Option`, and generic structs or generic
-methods. The parser accepts them so the standard library can be
+Parsed but not lowered yet: closures, slices, references, tuples, `mod` declarations
+(`use` is resolved), string patterns, and generic structs or generic methods. The parser accepts them so the standard library can be
 checked; SIR and the C backend still cover only the subset above, and tuples and
 closures lower to unit.
 

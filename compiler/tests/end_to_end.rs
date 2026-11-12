@@ -285,6 +285,66 @@ fn array_example_runs() {
 }
 
 #[test]
+fn use_pulls_in_a_sibling_module() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("modules");
+    let source = dir.join("main.nova");
+    fs::write(&source, "use helper.*;\n\nfn main() {\n    print(twice(21));\n}\n")
+        .expect("write main");
+    fs::write(
+        dir.join("helper.nova"),
+        "fn twice(value: int) -> int {\n    value * 2\n}\n",
+    )
+    .expect("write helper");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "42\n");
+}
+
+#[test]
+fn generic_enum_payloads_and_growable_arrays_run() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("generic-enum");
+    let source = dir.join("generic_enum.nova");
+    fs::write(
+        &source,
+        "enum Result<T, E> {\n    Ok(T),\n    Err(E),\n}\n\nfn show(r: Result<int, String>) {\n    match r {\n        Result.Ok(v) => { print(v); },\n        Result.Err(e) => { print(e); },\n    }\n}\n\nfn main() {\n    show(Result.Ok(7));\n    show(Result.Err(\"bad\"));\n    let values: Array = [1, 2];\n    __builtin_array_push(values, 3);\n    print(__builtin_array_len(values));\n    print(__builtin_array_pop(values));\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "7\nbad\n3\n3\n");
+}
+
+#[test]
 fn option_and_payload_enums_run() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

@@ -149,9 +149,9 @@ cargo build --release
 - **Tooling**: package manager, language server and debugger crates with tests
 
 ### Coming Soon 🚧
-- Standard library `io`/`math`/`text` emitting C (blocked on cross-file helpers)
-- Multi-file programs (`use`/`mod`)
-- Bounds-checked arrays and element types
+- `mod` declarations (only `use` is resolved)
+- Growable arrays are implemented; element types other than `int` are not
+- Generic structs and generic methods
 - `--target javascript|rust|wasm` wired into the CLI
 - LSP go-to-definition/references, DWARF debugger, real package registry
 
