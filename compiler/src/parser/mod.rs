@@ -855,6 +855,18 @@ impl Parser {
             self.error_at_current("Expected type name for impl");
             return Err(());
         };
+
+        // Optional parameters of the implemented type: `impl Box<T>`.
+        let mut generics = Vec::new();
+        if self.match_token(TokenKind::Less) {
+            while self.check(TokenKind::Identifier(String::new())) {
+                generics.push(self.advance().lexeme.clone());
+                if !self.match_token(TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(TokenKind::Greater, "Expected '>' after impl type parameters")?;
+        }
         
         self.expect(TokenKind::LBrace, "Expected '{' after impl type")?;
         
@@ -872,7 +884,7 @@ impl Parser {
         
         Ok(ImplBlock {
             type_name,
-            generics: Vec::new(),
+            generics,
             methods,
             span: Span::new(impl_token.span.start, self.peek().span.end),
         })

@@ -418,6 +418,17 @@ impl CGenerator {
                 }
                 self.write(" }");
             }
+            SirExpr::StringSlice { value, start, end } => {
+                self.write("nova_substr(");
+                self.generate_expr(value);
+                self.write(", ");
+                self.generate_expr(start);
+                self.write(", (");
+                self.generate_expr(end);
+                self.write(" - ");
+                self.generate_expr(start);
+                self.write("))");
+            }
             SirExpr::Index { array, index } => {
                 self.write("(");
                 self.generate_expr(array);

@@ -343,6 +343,13 @@ impl WasmBackend {
                 }
                 self.writeln(";; array literal");
             }
+            SirExpr::StringSlice { value, start, end } => {
+                // Strings are not represented in this experimental emitter yet.
+                self.generate_expr(value);
+                self.generate_expr(start);
+                self.generate_expr(end);
+                self.writeln("drop");
+            }
             SirExpr::Index { array, index } => {
                 self.generate_expr(array);
                 self.generate_expr(index);

@@ -5,6 +5,26 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Generic methods, string slices and string patterns ⭐ NEW
+- **Generic methods are monomorphised.** `impl Box<T> { fn get(&self) -> T }` emits
+  `Box_int_get` and `Box_float_get`, with `self` typed as `Box<int>`/`Box<float>`
+  for field typing and the C parameter typed as the concrete struct. The parser
+  accepts `impl Box<T>` and records the block's parameters.
+- **String slices compile to the runtime.** `text[start..end]` lowers to
+  `SirExpr::StringSlice` and emits `nova_substr(text, start, end - start)`; the
+  expression is typed `string`, and the other backends emit `substring`/Rust range
+  equivalents.
+- **String literals work in `match`.** A value-position match compares with
+  `nova_strcmp(...) == 0`; a statement-position match with string arms becomes an
+  if/else chain, since C case labels must be integers. Previously a string arm was
+  silently treated as the fallback.
+- **Tests:** `generic_methods_are_monomorphised` (prints `7`, `2.5`) and
+  `string_slices_and_match_patterns_run` (prints `hello`, `world`, `matched`,
+  `fallback`).
+- **Not done:** closures. They still lower to unit; capturing closures need a
+  closure/environment ABI (a value with a function pointer plus an environment),
+  which is a separate design, not a small lowering change.
+
 #### `mod` loading, array references and generic structs ⭐ NEW
 - **`mod name;` loads a module file.** It resolves through the same search as
   `use` (beside the file, then `stdlib/<name>/<name>.nova` in an ancestor) and the

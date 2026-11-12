@@ -75,14 +75,14 @@ final_expr     = expr ;
 
 const_decl     = "const" identifier [ ":" type_expr ] "=" expr ";" ;
 static_decl    = "static" identifier [ ":" type_expr ] "=" expr ";" ;
-struct         = "struct" identifier "{" [ field { "," field } ] "}" ;
+struct         = "struct" identifier [ "<" identifier { "," identifier } ">" ] "{" [ field { "," field } ] "}" ;
 field          = identifier ":" type_expr ;
 enum           = "enum" identifier [ "<" identifier { "," identifier } ">" ] "{" [ variant { "," variant } ] "}" ;
 variant        = identifier [ "(" [ type_expr { "," type_expr } ] ")" ] ;
 use_decl       = "use" path ";" ;
 path           = identifier { ( "::" | "." ) ( identifier | "*" ) } ;
 mod_decl       = "mod" identifier ;
-impl_block     = "impl" identifier "{" { function } "}" ;
+impl_block     = "impl" identifier [ "<" identifier { "," identifier } ">" ] "{" { function } "}" ;
 
 ; Expression chain, loosest first. The order is the parser's own: assignment ->
 ; or -> and -> equality -> comparison -> term -> shift -> range -> factor ->

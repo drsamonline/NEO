@@ -103,10 +103,15 @@ the call site passes `&array`, and indexing dereferences it, so a push inside th
 callee updates the caller's header. Other reference positions still erase to their
 base value.
 
-Generic structs are monomorphised from the binding's annotation: `Box<int>` emits
-`Box_int` with `T` replaced in the field types (`Pair<A, B>` → `Pair_int_float`).
-An unannotated struct literal keeps the erased generic type. Generic methods are
-not supported.
+Generic structs and their methods are monomorphised from the annotation or the
+receiver: `Box<int>` emits `Box_int` with `T` replaced in the field types
+(`Pair<A, B>` → `Pair_int_float`), and `impl Box<T> { fn get(&self) -> T }` emits
+`Box_int_get` and `Box_float_get`. An unannotated struct literal keeps the erased
+generic type.
+
+A string range index is a slice: `text[0..5]` emits `nova_substr(text, 0, 5 - 0)`.
+String literals in `match` compare with `nova_strcmp`; a statement-position match
+with string arms becomes an if/else chain because C `case` labels are integers.
 
 `Option<T>` is built in: `Some(value)` and `None` resolve without declarations, are
 stored as a tagged struct, and `Some(v)`/`None` patterns in a statement `match`
@@ -148,8 +153,9 @@ return type is rejected, and a non-unit function with no `return` and no tail
 expression is rejected. Expression types it cannot infer (identifiers, field access,
 arbitrary calls) are never guessed at, so this cannot produce a false error.
 
-Parsed but not lowered yet: closures, slices, general references (only `&mut` array
-parameters are lowered), tuples, string patterns, and generic methods. The parser accepts them so the standard library can be
+Parsed but not lowered yet: closures (they lower to unit; capturing closures need a
+function-pointer plus environment ABI), general slices and references (only `&mut`
+array parameters and string range indexes are lowered), and tuples. The parser accepts them so the standard library can be
 checked; SIR and the C backend still cover only the subset above, and tuples and
 closures lower to unit.
 

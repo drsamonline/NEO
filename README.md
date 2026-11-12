@@ -144,6 +144,8 @@ cargo build --release
   payload-carrying enums/`Option<T>` are tagged structs, generic structs are
   monomorphised
 - **Modules**: `use` and `mod` load sibling and standard-library files
+- **Strings**: slicing (`text[a..b]`) and string-literal `match` arms
+- **Generics**: functions, enums, structs and impl methods are monomorphised
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -151,7 +153,7 @@ cargo build --release
 - **Tooling**: package manager, language server and debugger crates with tests
 
 ### Coming Soon 🚧
-- Generic methods and general (non-array) reference lowering
+- Closures and general (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
 - Generic structs and generic methods
 - `--target javascript|rust|wasm` wired into the CLI

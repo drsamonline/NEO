@@ -248,6 +248,12 @@ impl JsBackend {
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_js(item)).collect();
                 format!("[{}]", values.join(", "))
             }
+            SirExpr::StringSlice { value, start, end } => format!(
+                "{}.substring({}, {})",
+                self.expr_to_js(value),
+                self.expr_to_js(start),
+                self.expr_to_js(end)
+            ),
             SirExpr::Index { array, index } => {
                 format!("({})[{}]", self.expr_to_js(array), self.expr_to_js(index))
             }

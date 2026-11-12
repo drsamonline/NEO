@@ -294,6 +294,12 @@ impl RustBackend {
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_rust(item)).collect();
                 format!("vec![{}]", values.join(", "))
             }
+            SirExpr::StringSlice { value, start, end } => format!(
+                "{}[{}..{}].to_string()",
+                self.expr_to_rust(value),
+                self.expr_to_rust(start),
+                self.expr_to_rust(end)
+            ),
             SirExpr::Index { array, index } => {
                 format!("({})[{}]", self.expr_to_rust(array), self.expr_to_rust(index))
             }

@@ -345,6 +345,67 @@ fn reference_array_parameters_share_the_header() {
 }
 
 #[test]
+fn string_slices_and_match_patterns_run() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("strings");
+    let source = dir.join("strings.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let text: String = \"hello world\";\n    print(text[0..5]);\n    print(text[6..11]);\n    match text {\n        \"hello world\" => { print(\"matched\"); },\n        _ => { print(\"no\"); },\n    }\n    match text {\n        \"other\" => { print(\"wrong\"); },\n        _ => { print(\"fallback\"); },\n    }\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "hello\nworld\nmatched\nfallback\n"
+    );
+}
+
+#[test]
+fn generic_methods_are_monomorphised() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("generic-method");
+    let source = dir.join("generic_method.nova");
+    fs::write(
+        &source,
+        "struct Box<T> {\n    value: T,\n}\n\nimpl Box<T> {\n    fn get(&self) -> T {\n        self.value\n    }\n}\n\nfn main() {\n    let boxed: Box<int> = Box { value: 7 };\n    print(boxed.get());\n    let real: Box<float> = Box { value: 2.5 };\n    print(real.get());\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler run");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "7\n2.5\n");
+}
+
+#[test]
 fn generic_structs_are_monomorphised() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

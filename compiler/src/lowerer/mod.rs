@@ -35,6 +35,15 @@ pub struct Lowerer {
     /// The type a `let` or parameter expects, so a struct literal can pick its
     /// instantiation instead of the erased generic name.
     expected_type: Option<String>,
+    /// Methods of generic structs that still need to be lowered per receiver type.
+    pending_methods: Vec<PendingMethod>,
+    /// Concrete method names already scheduled.
+    instantiated_methods: HashSet<String>,
+    /// Generic parameters of the `impl` block currently being collected.
+    method_generics: HashMap<String, Vec<String>>,
+    /// `Type_method` -> the method's AST, so a generic method can be lowered
+    /// again for each receiver type.
+    method_declarations: HashMap<String, Function>,
     /// True once `Some`/`None` are lowered, so the `Option` struct is emitted.
     uses_option: bool,
     /// Generic functions, keyed by name; lowered once per instantiation.
@@ -64,6 +73,20 @@ struct MethodSig {
     return_type: Option<String>,
 }
 
+/// One `impl Box<T> { … }` method specialised for a concrete receiver type.
+#[derive(Clone)]
+struct PendingMethod {
+    method: Function,
+    /// The impl's type name, e.g. `Box`.
+    base: String,
+    /// The C struct name, e.g. `Box_int`.
+    concrete_type: String,
+    /// The receiver type as written, e.g. `Box<int>`.
+    self_type: String,
+    concrete_name: String,
+    substitution: HashMap<String, String>,
+}
+
 impl Lowerer {
     pub fn new() -> Self {
         Self {
@@ -81,6 +104,10 @@ impl Lowerer {
             struct_generics: HashMap::new(),
             pending_structs: Vec::new(),
             expected_type: None,
+            pending_methods: Vec::new(),
+            instantiated_methods: HashSet::new(),
+            method_generics: HashMap::new(),
+            method_declarations: HashMap::new(),
             uses_option: false,
             generic_decls: HashMap::new(),
             pending: Vec::new(),
@@ -230,6 +257,12 @@ impl Lowerer {
                         .insert(enum_def.name.clone(), enum_def.generics.clone());
                 }
                 nova_common::Item::Impl(impl_block) => {
+                    if !impl_block.generics.is_empty() {
+                        self.method_generics.insert(
+                            impl_block.type_name.clone(),
+                            impl_block.generics.clone(),
+                        );
+                    }
                     for method in &impl_block.methods {
                         self.methods
                             .entry(impl_block.type_name.clone())
@@ -243,6 +276,10 @@ impl Lowerer {
                                         .map(|typ| typ.name.clone()),
                                 },
                             );
+                        self.method_declarations.insert(
+                            format!("{}_{}", impl_block.type_name, method.name),
+                            method.clone(),
+                        );
                     }
                 }
                 nova_common::Item::Struct(struct_def) => {
@@ -322,6 +359,13 @@ impl Lowerer {
             let instance = self.pending[index].clone();
             index += 1;
             functions.push(self.lower_instance(&instance));
+        }
+
+        let mut method_index = 0;
+        while method_index < self.pending_methods.len() {
+            let method = self.pending_methods[method_index].clone();
+            method_index += 1;
+            functions.push(self.lower_method_instance(&method));
         }
 
         structs.extend(self.pending_structs.drain(..));
@@ -545,6 +589,62 @@ impl Lowerer {
             .unwrap_or(false)
     }
 
+    /// Lower one `impl Box<T>` method for a concrete receiver type.
+    fn lower_method_instance(&mut self, instance: &PendingMethod) -> SirFunction {
+        self.substitutions.push(instance.substitution.clone());
+        self.push_scope();
+
+        let mut params = Vec::new();
+        for (index, param) in instance.method.params.iter().enumerate() {
+            let is_self = index == 0 && param.name == "self";
+            if is_self {
+                // Typing uses `Box<int>`; C uses the monomorphised `Box_int`.
+                self.declare(&param.name, Some(instance.self_type.clone()));
+                let by_reference = param.typ.name.trim_start().starts_with('&');
+                params.push(SirParam {
+                    name: param.name.clone(),
+                    typ: if by_reference {
+                        format!("{}*", instance.concrete_type)
+                    } else {
+                        instance.concrete_type.clone()
+                    },
+                });
+            } else {
+                let typ = self.substitute(&type_display(&param.typ));
+                self.declare(&param.name, Some(typ.clone()));
+                params.push(SirParam {
+                    name: param.name.clone(),
+                    typ,
+                });
+            }
+        }
+
+        let return_type = instance
+            .method
+            .return_type
+            .as_ref()
+            .map(|typ| self.substitute(&type_display(typ)));
+        let previous = self.discard_result;
+        self.discard_result = !Self::returns_value(&return_type);
+        let body = match &instance.method.body {
+            Some(block) => self.lower_block(block),
+            None => Vec::new(),
+        };
+        let body = Self::finish_body(body, &return_type);
+        self.discard_result = previous;
+
+        self.pop_scope();
+        self.substitutions.pop();
+
+        SirFunction {
+            name: instance.concrete_name.clone(),
+            params,
+            return_type,
+            body,
+            span: instance.method.span.clone(),
+        }
+    }
+
     /// A function that declares a value and ends in an expression returns that
     /// expression, rather than leaving it as a discarded statement.
     fn finish_body(mut body: Vec<SirStatement>, return_type: &Option<String>) -> Vec<SirStatement> {
@@ -733,6 +833,74 @@ impl Lowerer {
             return None;
         };
         let type_name = self.expr_type(receiver)?;
+
+        // A method on `Box<int>` is emitted as `Box_int_method`.
+        if let Some((base, argument_list)) = type_name.split_once('<') {
+            if let Some(signature) = self.methods.get(base).and_then(|m| m.get(method)).cloned()
+            {
+                let arguments: Vec<String> = argument_list
+                    .trim_end_matches('>')
+                    .split(',')
+                    .map(|argument| argument.trim().to_string())
+                    .collect();
+                let generics = self
+                    .method_generics
+                    .get(base)
+                    .cloned()
+                    .or_else(|| self.struct_generics.get(base).cloned())
+                    .unwrap_or_default();
+                let substitution: HashMap<String, String> = generics
+                    .iter()
+                    .zip(arguments.iter())
+                    .map(|(generic, argument)| (generic.clone(), argument.clone()))
+                    .collect();
+                let concrete_type = format!(
+                    "{}_{}",
+                    base,
+                    arguments
+                        .iter()
+                        .map(|argument| mangle_type(argument))
+                        .collect::<Vec<_>>()
+                        .join("_")
+                );
+                let concrete_name = format!("{}_{}", concrete_type, method);
+
+                if self.instantiated_methods.insert(concrete_name.clone()) {
+                    if let Some(declaration) = self.methods
+                        .get(base)
+                        .and_then(|_| self.method_declarations.get(&format!("{}_{}", base, method)))
+                        .cloned()
+                    {
+                        self.pending_methods.push(PendingMethod {
+                            method: declaration,
+                            base: base.to_string(),
+                            concrete_type,
+                            self_type: type_name.clone(),
+                            concrete_name: concrete_name.clone(),
+                            substitution: substitution.clone(),
+                        });
+                    }
+                }
+
+                self.instantiate_struct(base, &type_name);
+
+                let mut lowered_args = vec![SirExpr::AddressOf(Box::new(self.lower_expr(receiver)))];
+                lowered_args.extend(args.iter().map(|arg| self.lower_expr(arg)));
+
+                let call = SirExpr::Call {
+                    callee: concrete_name,
+                    args: lowered_args,
+                };
+                return Some(match signature.return_type {
+                    Some(typ) => SirExpr::Typed {
+                        expr: Box::new(call),
+                        typ: substitute_type_name(&typ, &substitution),
+                    },
+                    None => call,
+                });
+            }
+        }
+
         let signature = self.methods.get(&type_name)?.get(method)?.clone();
 
         let mut lowered_args = vec![SirExpr::AddressOf(Box::new(self.lower_expr(receiver)))];
@@ -815,6 +983,11 @@ impl Lowerer {
                         // patterns with no constant test fall through to the
                         // ternary chain below.
                         if let Some(statements) = self.lower_match_statement(scrutinee, arms) {
+                            return statements;
+                        }
+                        // String patterns cannot be `switch` labels, so the same
+                        // arms become an if/else statement chain.
+                        if let Some(statements) = self.lower_match_to_if(scrutinee, arms) {
                             return statements;
                         }
                     }
@@ -1372,6 +1545,22 @@ impl Lowerer {
                 }
             }
             Expr::Index(obj, index) => {
+                // `text[start..end]` is a runtime substring.
+                if self
+                    .expr_type(obj)
+                    .is_some_and(|typ| matches!(typ.to_lowercase().as_str(), "string" | "str"))
+                {
+                    if let Expr::Range(start, end) = index.unspanned() {
+                        return SirExpr::Typed {
+                            expr: Box::new(SirExpr::StringSlice {
+                                value: Box::new(self.lower_expr(obj)),
+                                start: Box::new(self.lower_expr(start)),
+                                end: Box::new(self.lower_expr(end)),
+                            }),
+                            typ: "string".to_string(),
+                        };
+                    }
+                }
                 let access = SirExpr::Index {
                     array: Box::new(self.lower_array_value(obj)),
                     index: Box::new(self.lower_expr(index)),
@@ -1649,6 +1838,78 @@ impl Lowerer {
         }
     }
 
+    /// A statement-position `match` with string literals becomes an if/else
+    /// chain, because C case labels must be integers.
+    fn lower_match_to_if(
+        &mut self,
+        scrutinee: &Expr,
+        arms: &[MatchArm],
+    ) -> Option<Vec<SirStatement>> {
+        let scrutinee_expr = self.lower_expr(scrutinee);
+        let mut fallback: Vec<SirStatement> = Vec::new();
+        let mut has_test = false;
+
+        for arm in arms.iter().rev() {
+            let body = self.lower_arm_body(&arm.body);
+            let condition = match &arm.pattern {
+                Pattern::Literal(Literal::String(text)) => Some(SirExpr::BinOp {
+                    left: Box::new(SirExpr::Typed {
+                        expr: Box::new(SirExpr::Call {
+                            callee: "nova_strcmp".to_string(),
+                            args: vec![
+                                scrutinee_expr.clone(),
+                                SirExpr::Literal(SirLiteral::String(text.clone())),
+                            ],
+                        }),
+                        typ: "int".to_string(),
+                    }),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Literal(SirLiteral::Int(0))),
+                }),
+                Pattern::Literal(Literal::Integer(value)) => Some(SirExpr::BinOp {
+                    left: Box::new(scrutinee_expr.clone()),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Literal(SirLiteral::Int(*value))),
+                }),
+                Pattern::Literal(Literal::Bool(value)) => Some(SirExpr::BinOp {
+                    left: Box::new(scrutinee_expr.clone()),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Literal(SirLiteral::Bool(*value))),
+                }),
+                Pattern::Literal(Literal::Char(value)) => Some(SirExpr::BinOp {
+                    left: Box::new(scrutinee_expr.clone()),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Literal(SirLiteral::Char(*value))),
+                }),
+                Pattern::Path(parts) if parts.len() == 2 => Some(SirExpr::BinOp {
+                    left: Box::new(scrutinee_expr.clone()),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Var(format!("{}_{}", parts[0], parts[1]))),
+                }),
+                Pattern::Wildcard | Pattern::Identifier(_) => None,
+                _ => return None,
+            };
+
+            match condition {
+                Some(condition) => {
+                    has_test = true;
+                    fallback = vec![SirStatement::If {
+                        condition,
+                        then_block: body,
+                        else_block: Some(fallback),
+                    }];
+                }
+                None => fallback = body,
+            }
+        }
+
+        if has_test {
+            Some(fallback)
+        } else {
+            None
+        }
+    }
+
     /// `match` becomes a chain of equality tests (ternaries in C). Supported
     /// patterns: literals, `Enum.Variant` paths, and the wildcard arm.
     fn lower_match_chain(&mut self, scrutinee: &Expr, arms: &[MatchArm]) -> SirExpr {
@@ -1658,6 +1919,21 @@ impl Lowerer {
         for arm in arms.iter().rev() {
             let body = self.lower_expr(&arm.body);
             let condition = match &arm.pattern {
+                // Strings compare through the runtime; other literals use `==`.
+                Pattern::Literal(Literal::String(text)) => Some(SirExpr::BinOp {
+                    left: Box::new(SirExpr::Typed {
+                        expr: Box::new(SirExpr::Call {
+                            callee: "nova_strcmp".to_string(),
+                            args: vec![
+                                scrutinee_expr.clone(),
+                                SirExpr::Literal(SirLiteral::String(text.clone())),
+                            ],
+                        }),
+                        typ: "int".to_string(),
+                    }),
+                    op: SirBinOp::Eq,
+                    right: Box::new(SirExpr::Literal(SirLiteral::Int(0))),
+                }),
                 Pattern::Literal(literal) => Some(SirExpr::BinOp {
                     left: Box::new(scrutinee_expr.clone()),
                     op: SirBinOp::Eq,
@@ -1666,9 +1942,7 @@ impl Lowerer {
                         Literal::Float(f) => SirExpr::Literal(SirLiteral::Float(*f)),
                         Literal::Bool(b) => SirExpr::Literal(SirLiteral::Bool(*b)),
                         Literal::Char(c) => SirExpr::Literal(SirLiteral::Char(*c)),
-                        // String matching needs a runtime strcmp; until then the
-                        // arm is treated as the fallback rather than mis-compiled.
-                        Literal::String(_) => return body,
+                        Literal::String(_) => unreachable!("handled above"),
                     }),
                 }),
                 Pattern::Path(parts) if parts.len() == 2 => Some(SirExpr::BinOp {

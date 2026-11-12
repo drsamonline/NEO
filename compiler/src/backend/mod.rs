@@ -448,6 +448,13 @@ impl CBackend {
                     items.len()
                 )
             }
+            SirExpr::StringSlice { value, start, end } => format!(
+                "nova_substr({}, {}, ({} - {}))",
+                self.expr_to_c(value),
+                self.expr_to_c(start),
+                self.expr_to_c(end),
+                self.expr_to_c(start)
+            ),
             SirExpr::Index { array, index } => format!(
                 "nova_array_get({}, {})",
                 self.expr_to_c(array),
@@ -539,6 +546,7 @@ impl CBackend {
             SirExpr::FieldAssign { value, .. } => self.print_kind(value),
             SirExpr::AddressOf(_) | SirExpr::Deref(_) => "int",
             SirExpr::Array(_) | SirExpr::Index { .. } => "int",
+            SirExpr::StringSlice { .. } => "str",
             SirExpr::IndexAssign { value, .. } => self.print_kind(value),
             SirExpr::If { then_expr, .. } => self.print_kind(then_expr),
             SirExpr::Typed { expr, typ } => Self::print_kind_for_type(typ)

@@ -24,7 +24,7 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 156 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 158 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 
@@ -64,8 +64,8 @@ Each milestone is done only when its acceptance check passes in CI.
 - Expression spans are recorded for expressions the parser returns from `parse_expr`;
   an operand inside a larger expression has no span of its own and falls back to the
   enclosing expression's span.
-- Tuples and closures lower to unit, so the standard library parses but
-  `emit stdlib/...` stops in semantic analysis.
+- Tuples and closures lower to unit. Closures are the remaining gap for fully
+  functional standard-library helpers such as `compose` and `map`.
 - Generics are monomorphised from concrete call sites: only instantiated functions
   are emitted, an unbound type parameter falls back to `int`, and generic structs or
   generic methods are not supported.
@@ -76,9 +76,12 @@ Each milestone is done only when its acceptance check passes in CI.
   reads and writes are bounds-checked at runtime and abort with
   `array index out of bounds`. Push/pop grow and shrink a local array; a `&mut [T]`
   parameter passes the header by address, so pushes in the callee are visible.
-- Generic structs are monomorphised from the binding's annotation (`Pair<int, float>`
-  becomes `Pair_int_float`); an unannotated literal keeps the erased type. Generic
-  methods are not supported, and references are only lowered for array parameters.
+- Generic structs and their methods are monomorphised from the receiver/binding
+  type (`Pair<int, float>` becomes `Pair_int_float`); an unannotated literal keeps
+  the erased type. References are only lowered for array parameters.
+- String slices (`text[a..b]`) lower to `nova_substr`; string literals match through
+  `nova_strcmp`. Closures still lower to unit: capturing closures need a
+  function-pointer plus environment ABI.
 - Payload enums store one scalar payload (`int`, `float` or `string`) in a fixed
   tagged struct; `Option<T>` is a built-in of the same shape and other generic enums
   substitute their payload types from the matched type. Variants with more than one

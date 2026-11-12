@@ -143,6 +143,12 @@ pub enum SirExpr {
         array: Box<SirExpr>,
         index: Box<SirExpr>,
     },
+    /// String slice: `text[start..end]`.
+    StringSlice {
+        value: Box<SirExpr>,
+        start: Box<SirExpr>,
+        end: Box<SirExpr>,
+    },
     /// Array element write: `array[index] = value`.
     IndexAssign {
         array: Box<SirExpr>,
