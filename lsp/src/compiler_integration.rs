@@ -98,7 +98,20 @@ impl SymbolTable {
 
 /// Incremental compiler for LSP
 pub struct IncrementalCompiler {
-    cache: HashMap<String, CompileResult>,
+    /// URI -> (hash of the analysed text, result). The hash is what makes this an
+    /// *incremental* compiler: editing a document must not return the previous
+    /// document's diagnostics.
+    cache: HashMap<String, (u64, CompileResult)>,
+}
+
+fn content_hash(content: &str) -> u64 {
+    // FNV-1a: tiny, deterministic, and good enough to tell revisions apart.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in content.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    hash
 }
 
 impl IncrementalCompiler {
@@ -110,9 +123,13 @@ impl IncrementalCompiler {
 
     /// Compile a document and return diagnostics + symbols
     pub fn compile(&mut self, uri: &str, content: &str) -> CompileResult {
-        // Check cache first
-        if let Some(cached) = self.cache.get(uri) {
-            return cached.clone();
+        // Check cache first, but only for the same text. Editors reuse a URI while
+        // the buffer changes, so keying on the URI alone would serve stale errors.
+        let hash = content_hash(content);
+        if let Some((cached_hash, cached)) = self.cache.get(uri) {
+            if *cached_hash == hash {
+                return cached.clone();
+            }
         }
 
         let mut diagnostics = Vec::new();
@@ -132,7 +149,7 @@ impl IncrementalCompiler {
                 sir,
                 symbols,
             };
-            self.cache.insert(uri.to_string(), result.clone());
+            self.cache.insert(uri.to_string(), (hash, result.clone()));
             return result;
         }
 
@@ -149,7 +166,7 @@ impl IncrementalCompiler {
                     sir,
                     symbols,
                 };
-                self.cache.insert(uri.to_string(), result.clone());
+                self.cache.insert(uri.to_string(), (hash, result.clone()));
                 return result;
             }
         };
@@ -157,29 +174,13 @@ impl IncrementalCompiler {
         // Extract symbols from AST (works even if later phases fail)
         self.extract_symbols(&ast, &mut symbols);
 
-        // Phase 3: Semantic Analysis
+        // Phase 3: Semantic Analysis. Every semantic error carries its own span,
+        // message and optional help, so the editor gets a precise range and a
+        // suggested fix instead of a generic "analysis failed" at 0:0.
         let mut sema = SemanticAnalyzer::new();
-        if sema.analyze(&ast).is_err() {
-            diagnostics.push(Diagnostic {
-                range: Range {
-                    start: Position {
-                        line: 0,
-                        character: 0,
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 0,
-                    },
-                },
-                severity: Some(DiagnosticSeverity::ERROR),
-                code: Some(NumberOrString::String("E0001".to_string())),
-                code_description: None,
-                source: Some("nova".to_string()),
-                message: "semantic analysis failed".to_string(),
-                related_information: None,
-                tags: None,
-                data: None,
-            });
+        let _ = sema.analyze(&ast);
+        for diag in sema.diagnostics.iter() {
+            diagnostics.push(self.convert_diagnostic(diag, content));
         }
 
         // Phase 4: Lowering to SIR (only if no fatal errors so far)
@@ -196,7 +197,7 @@ impl IncrementalCompiler {
             sir,
             symbols,
         };
-        self.cache.insert(uri.to_string(), result.clone());
+        self.cache.insert(uri.to_string(), (hash, result.clone()));
         result
     }
 
@@ -230,11 +231,23 @@ impl IncrementalCompiler {
             end_char
         };
 
+        // LSP diagnostics have no dedicated help field, so the cause is the first
+        // line of the message and each suggested fix follows on its own line.
+        let mut message = diag.message.clone();
+        for note in &diag.notes {
+            message.push_str("\nnote: ");
+            message.push_str(note);
+        }
+        for help in &diag.helps {
+            message.push_str("\nhelp: ");
+            message.push_str(help);
+        }
+
         Diagnostic {
             range: Range {
                 start: Position {
                     line: start_line,
-                    character: start_char,
+                    character: start_char.min(end_char.max(start_char)),
                 },
                 end: Position {
                     line: end_line,
@@ -245,7 +258,7 @@ impl IncrementalCompiler {
             code: diag.code.clone().map(NumberOrString::String),
             code_description: None,
             source: Some("nova".to_string()),
-            message: diag.message.clone(),
+            message,
             related_information: None,
             tags: None,
             data: None,
@@ -347,7 +360,7 @@ impl IncrementalCompiler {
 
     /// Get a cached compile result for a URI, if present
     pub fn cached_result(&self, uri: &str) -> Option<&CompileResult> {
-        self.cache.get(uri)
+        self.cache.get(uri).map(|(_, result)| result)
     }
 
     /// Clear all cache
@@ -412,5 +425,46 @@ fn main() {
         let r2 = compiler.compile("cached.nova", "fn bar() { }\n");
         assert!(r2.symbols.get("bar").is_some());
         assert!(r2.symbols.get("foo").is_none());
+    }
+
+    #[test]
+    fn test_content_change_is_not_served_from_cache() {
+        let mut compiler = IncrementalCompiler::new();
+        let broken = "fn main() { missing(); }\n";
+        let fixed = "fn main() { }\n";
+
+        let first = compiler.compile("edit.nova", broken);
+        assert!(!first.diagnostics.is_empty(), "expected an error for missing()");
+
+        // Same URI, different text: the edit must be re-analysed.
+        let second = compiler.compile("edit.nova", fixed);
+        assert!(
+            second.diagnostics.is_empty(),
+            "stale diagnostics after edit: {:?}",
+            second.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_semantic_error_has_range_and_message() {
+        let mut compiler = IncrementalCompiler::new();
+        let source = "fn main() {\n    let total = missing + 1;\n}\n";
+        let result = compiler.compile("types.nova", source);
+
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|d| d.severity == Some(DiagnosticSeverity::ERROR))
+            .expect("expected a type error");
+        assert!(
+            diagnostic.range.start.line >= 1,
+            "error should point at the offending line, got {:?}",
+            diagnostic.range
+        );
+        assert!(
+            !diagnostic.message.contains("semantic analysis failed"),
+            "generic message: {}",
+            diagnostic.message
+        );
     }
 }

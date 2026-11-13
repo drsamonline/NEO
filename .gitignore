@@ -1,2 +1,4 @@
 # Rust build artifacts
 target/
+# Benchmark build output
+benches/build/

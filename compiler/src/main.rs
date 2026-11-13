@@ -238,7 +238,17 @@ fn compile_to(input: &Path, target: Target) -> String {
     if analyzer.analyze(&program).is_err() {
         eprintln!("{name}: semantic errors:");
         for diag in analyzer.diagnostics.iter() {
-            eprintln!("  {}", diag.message);
+            // `file:line:col: cause` so editors and CI logs can jump to the name.
+            match &diag.span {
+                Some(span) => eprintln!(
+                    "  {name}:{}:{}: {}",
+                    span.start.line, span.start.column, diag.message
+                ),
+                None => eprintln!("  {name}: {}", diag.message),
+            }
+            for help in &diag.helps {
+                eprintln!("    help: {help}");
+            }
         }
         die("semantic analysis failed");
     }

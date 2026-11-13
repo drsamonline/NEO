@@ -17,7 +17,8 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | CLI | ✅ `emit` / `build` / `run`, `-o`, `--target c|js|rust|wasm`, `--` args; build/run are C-only | end-to-end tests |
 | Parity harness | ⚠️ `nova-compiler test --parity` compares stdout/exit across C, JS, Rust; WASM reported `held` (no executor, incomplete WAT) | manual run on a CLI program |
 | Package manager | ⚠️ real `init`/`build`/`run`; registry mocked; dependencies recorded but not built | `pkg` tests |
-| LSP | ⚠️ real compiler diagnostics; go-to-definition is a string search; `references` TODO | `lsp` tests |
+| LSP | ⚠️ real compiler diagnostics with spans, cause and `help:` fixes; FULL document sync; cache keyed by document text. Go-to-definition is still a string search; `references` TODO | `lsp` unit tests + stdio integration test |
+| Benchmarks | ✅ `benches/run.sh`: recursive fib(35), NOVA→C vs hand-written C, same `-O2`, stdout compared before timing | `benches/README.md` |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
 | Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
 | JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output (including arrays) is executed in tests, WASM still uses placeholders for closures/tuples | Node, `rustc` and emit tests |
@@ -25,7 +26,7 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 168 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 170 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 

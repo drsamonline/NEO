@@ -41,6 +41,9 @@ pub struct SemanticAnalyzer {
     type_scopes: Vec<HashMap<String, Type>>,
     /// Struct name -> field name -> declared type.
     struct_fields: HashMap<String, HashMap<String, Type>>,
+    /// Span of the expression currently being checked, so nested identifiers that
+    /// are not individually spanned still report a useful location.
+    current_span: Option<Span>,
 }
 
 impl SemanticAnalyzer {
@@ -52,6 +55,7 @@ impl SemanticAnalyzer {
             return_context: Vec::new(),
             type_scopes: Vec::new(),
             struct_fields: HashMap::new(),
+            current_span: None,
         };
         
         // Register built-in functions
@@ -314,16 +318,22 @@ impl SemanticAnalyzer {
     fn check_expr(&mut self, expr: &nova_common::Expr) {
         match expr {
             nova_common::Expr::Spanned(inner, span) => {
-                // A call directly under a span is checked with that span, so an
-                // arity error points at the call rather than the function.
-                if let nova_common::Expr::Call(func, args) = inner.as_ref() {
+                // An identifier under a span reports with that span so editors can
+                // point at the exact name instead of the enclosing expression.
+                if let nova_common::Expr::Identifier(name) = inner.as_ref() {
+                    self.check_identifier(name, Some(*span));
+                } else if let nova_common::Expr::Call(func, args) = inner.as_ref() {
+                    let outer = self.current_span.replace(*span);
                     self.check_expr(func);
                     for arg in args {
                         self.check_expr(arg);
                     }
+                    self.current_span = outer;
                     self.check_call_arguments(func, args, Some(*span));
                 } else {
+                    let outer = self.current_span.replace(*span);
                     self.check_expr(inner);
+                    self.current_span = outer;
                 }
             }
             nova_common::Expr::Literal(_lit) => {
@@ -337,17 +347,7 @@ impl SemanticAnalyzer {
                 self.check_expr(expr_inner);
             }
             nova_common::Expr::Identifier(name) => {
-                // `__builtin_*` names and the built-in `Option` constructors are
-                // declared by the compiler, not the program.
-                if name.starts_with("__builtin_") || name == "Some" || name == "None" {
-                    return;
-                }
-                // Check if identifier is defined
-                if self.symbol_table.lookup(name).is_none() {
-                    self.diagnostics.error(
-                        format!("Undefined variable: {}", name),
-                    );
-                }
+                self.check_identifier(name, None);
             }
             nova_common::Expr::Call(func, args) => {
                 self.check_expr(func);
@@ -495,6 +495,28 @@ impl SemanticAnalyzer {
                 if let Some(_) = self.symbol_table.exit_scope() {}
             }
         }
+    }
+
+    /// Check that an identifier resolves, reporting the name's span when known.
+    fn check_identifier(&mut self, name: &str, span: Option<Span>) {
+        // `__builtin_*` names and the built-in `Option` constructors are
+        // declared by the compiler, not the program.
+        if name.starts_with("__builtin_") || name == "Some" || name == "None" {
+            return;
+        }
+        if self.symbol_table.lookup(name).is_some() {
+            return;
+        }
+
+        let mut diag = Diagnostic::error(format!("undefined name `{name}`"))
+            .with_code("E0002")
+            .with_help(format!(
+                "declare `{name}` first (`let {name} = ...` or `fn {name}(...)`), or check the spelling"
+            ));
+        if let Some(span) = span.or(self.current_span) {
+            diag = diag.with_span(span);
+        }
+        self.diagnostics.push(diag);
     }
 
     /// Check a call's arity and argument types against the callee's signature.

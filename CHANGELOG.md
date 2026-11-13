@@ -5,6 +5,23 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Actionable diagnostics, LSP end-to-end, first benchmark ⭐ NEW
+- **Semantic errors point at the code and suggest a fix.** Undefined names now
+  report `file:line:col`, the cause, and a `help:` line (`declare \`x\` first…`),
+  and nested identifiers inherit the enclosing expression's span instead of
+  reporting no location.
+- **LSP diagnostics use those errors.** Every semantic diagnostic is converted
+  (no more generic “semantic analysis failed” at 0:0), with `help:` text in the
+  message. The document cache is keyed by text, so an edit is re-analysed rather
+  than served stale errors, and the server advertises FULL sync to match
+  `did_change`. A stdio integration test drives `initialize` → `didOpen` →
+  `publishDiagnostics` and asserts the reported range and message.
+- **First benchmark:** `benches/run.sh` times recursive `fib(35)` for NOVA→C and
+  hand-written C, both `-O2`, after checking their stdout matches. Measured
+  `22551 us` vs `22410 us` (best of 5) on the development machine.
+- **Tests:** LSP unit tests for content-keyed caching and error ranges, plus
+  `lsp/tests/diagnostics_stdio.rs`.
+
 #### Match guards and Rust arrays ⭐ NEW
 - **Guards work in `match`** (`x if x > 10 => …`). A guarded arm is lowered
   through the if/else chain rather than a `switch`; the binding is declared

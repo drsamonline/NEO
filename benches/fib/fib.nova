@@ -1,0 +1,15 @@
+// Benchmark: recursive Fibonacci.
+// Deliberately simple: call overhead, comparison and integer arithmetic only.
+
+fn fib(n: int) -> int {
+    if n < 2 {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fn main() -> int {
+    let n: int = 35;
+    print(fib(n));
+    return 0;
+}
