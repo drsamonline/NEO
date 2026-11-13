@@ -7,6 +7,9 @@ use nova_common::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr
 pub struct RustBackend {
     output: String,
     indent_level: usize,
+    /// Declared parameter types per function, so array arguments can be passed
+    /// as `&mut Vec<_>` at the call site.
+    signatures: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl RustBackend {
@@ -14,11 +17,22 @@ impl RustBackend {
         Self {
             output: String::new(),
             indent_level: 0,
+            signatures: std::collections::HashMap::new(),
         }
     }
 
     pub fn generate(&mut self, program: &SirProgram) -> String {
         self.output.clear();
+        self.signatures = program
+            .functions
+            .iter()
+            .map(|function| {
+                (
+                    function.name.clone(),
+                    function.params.iter().map(|param| param.typ.clone()).collect(),
+                )
+            })
+            .collect();
         
         // Add standard imports
         self.writeln("use std::io;");
@@ -46,7 +60,17 @@ impl RustBackend {
 
         // Rust needs a real `main`; a NOVA program's top-level statements are
         // lowered into the synthetic `__main`.
-        if !program.functions.iter().any(|f| f.name == "main")
+        let value_main = program.functions.iter().any(|f| {
+            f.name == "main"
+                && f.return_type
+                    .as_deref()
+                    .is_some_and(|rt| !matches!(rt, "void" | "()" | "!" | "unit"))
+        });
+        if value_main {
+            self.writeln("fn main() {");
+            self.writeln("    let _ = __nova_main();");
+            self.writeln("}");
+        } else if !program.functions.iter().any(|f| f.name == "main")
             && program.functions.iter().any(|f| f.name == "__main")
         {
             self.writeln("fn main() {");
@@ -58,7 +82,7 @@ impl RustBackend {
     }
 
     fn generate_global(&mut self, global: &SirGlobal) {
-        let rust_type = self.type_to_rust(&global.typ);
+        let rust_type = self.rust_type(&global.typ);
         if let Some(init_expr) = &global.init_value {
             let init = self.expr_to_rust(init_expr);
             self.writeln(&format!("static mut {}: {} = {};", global.name, rust_type, init));
@@ -69,20 +93,31 @@ impl RustBackend {
 
     fn generate_function(&mut self, func: &SirFunction) {
         let params: Vec<String> = func.params.iter()
-            .map(|p| format!("{}: {}", p.name, self.type_to_rust(&p.typ)))
+            .map(|p| format!("{}: {}", p.name, self.rust_param_type(&p.typ)))
             .collect();
         
+        let returns_value = func
+            .return_type
+            .as_deref()
+            .is_some_and(|rt| !matches!(rt, "void" | "()" | "!" | "unit"));
         let return_type = if let Some(ref rt) = func.return_type {
-            if rt == "void" || rt.is_empty() {
+            if rt == "void" || rt.is_empty() || rt == "!" {
                 String::new()
             } else {
-                format!(" -> {}", self.type_to_rust(rt))
+                format!(" -> {}", self.rust_type(rt))
             }
         } else {
             String::new()
         };
-        
-        self.writeln(&format!("fn {}({}){} {{", func.name, params.join(", "), return_type));
+
+        // Rust's `main` may not return a value, so a value-returning NOVA `main`
+        // becomes `__nova_main` with a thin wrapper below.
+        let emitted_name = if func.name == "main" && returns_value {
+            "__nova_main"
+        } else {
+            &func.name
+        };
+        self.writeln(&format!("fn {}({}){} {{", emitted_name, params.join(", "), return_type));
         
         self.indent_level += 1;
         
@@ -99,12 +134,13 @@ impl RustBackend {
         match stmt {
             SirStatement::Let { name, typ, value } => {
                 let rust_type = if let Some(t) = typ {
-                    self.type_to_rust(t)
+                    self.rust_type(t)
                 } else {
-                    "i32"
+                    "i32".to_string()
                 };
                 let val_str = self.expr_to_rust(value);
-                self.writeln(&format!("let {}: {} = {};", name, rust_type, val_str));
+                // NOVA `let` bindings are reassignable; Rust needs `mut`.
+                self.writeln(&format!("let mut {}: {} = {};", name, rust_type, val_str));
             }
             SirStatement::Expr(expr) => {
                 let expr_str = self.expr_to_rust(expr);
@@ -246,7 +282,22 @@ impl RustBackend {
                 format!("({}{})", op_str, operand_str)
             }
             SirExpr::Call { callee, args } => {
-                let args_str: Vec<String> = args.iter().map(|a| self.expr_to_rust(a)).collect();
+                let params = self.signatures.get(callee).cloned().unwrap_or_default();
+                let args_str: Vec<String> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(index, arg)| {
+                        let value = self.expr_to_rust(arg);
+                        let is_array = params
+                            .get(index)
+                            .is_some_and(|typ| typ.contains('[') || typ.eq_ignore_ascii_case("array"));
+                        if is_array {
+                            format!("&mut {}", value)
+                        } else {
+                            value
+                        }
+                    })
+                    .collect();
                 format!("{}({})", callee, args_str.join(", "))
             }
             SirExpr::If { condition, then_expr, else_expr } => {
@@ -329,16 +380,35 @@ impl RustBackend {
                 self.expr_to_rust(start),
                 self.expr_to_rust(end)
             ),
-            SirExpr::Index { array, index } => {
-                format!("({})[{}]", self.expr_to_rust(array), self.expr_to_rust(index))
-            }
+            SirExpr::Index { array, index } => format!(
+                "({})[({}) as usize]",
+                self.expr_to_rust(array),
+                self.expr_to_rust(index)
+            ),
             SirExpr::IndexAssign { array, index, value } => format!(
-                "({})[{}] = {}",
+                "({})[({}) as usize] = {}",
                 self.expr_to_rust(array),
                 self.expr_to_rust(index),
                 self.expr_to_rust(value)
             ),
         }
+    }
+
+    /// An array parameter is borrowed so callers keep ownership.
+    fn rust_param_type(&self, typ: &str) -> String {
+        if typ.trim().contains('[') || typ.trim().eq_ignore_ascii_case("array") {
+            return "&mut Vec<i32>".to_string();
+        }
+        self.rust_type(typ)
+    }
+
+    /// The Rust spelling of a NOVA type; arrays become `Vec<i32>`.
+    fn rust_type(&self, typ: &str) -> String {
+        let base = typ.trim();
+        if base.contains('[') || base.eq_ignore_ascii_case("array") {
+            return "Vec<i32>".to_string();
+        }
+        self.type_to_rust(base).to_string()
     }
 
     fn type_to_rust(&self, typ: &str) -> &'static str {

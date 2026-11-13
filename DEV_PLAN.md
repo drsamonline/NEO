@@ -19,12 +19,12 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | LSP | ⚠️ real compiler diagnostics; go-to-definition is a string search; `references` TODO | `lsp` tests |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
 | Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
-| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output is executed in tests, WASM still uses placeholders for closures/tuples | Node, `rustc` and emit tests |
+| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output (including arrays) is executed in tests, WASM still uses placeholders for closures/tuples | Node, `rustc` and emit tests |
 | Standard library | ✅ all four modules parse and emit C (`use` merges `core` and `io`) | `compiler/tests/stdlib_parse.rs`, `nova-compiler emit stdlib/*/*.nova` |
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 165 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 167 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 
@@ -72,9 +72,11 @@ Each milestone is done only when its acceptance check passes in CI.
 - Generics are monomorphised from concrete call sites: only instantiated functions
   are emitted, and an unbound type parameter falls back to `int`. Generic functions,
   structs, enums and impl methods are supported.
-- `match` supports literals, `Enum.Variant` paths and the wildcard arm. A statement
-  `match` becomes a C `switch`; a value `match` stays a ternary chain. Binding
-  patterns, string patterns and enum variants that carry data are not lowered.
+- `match` supports literals, string literals, `Enum.Variant` paths, binding
+  patterns and guards. A statement `match` becomes a C `switch`; guarded or
+  string arms fall back to an if/else chain, and a value `match` stays a ternary
+  chain. A value-position match with a binding pattern cannot declare its binding.
+  Variants with more than one payload are not lowered.
 - Arrays are `NovaArray` (a heap buffer, length and capacity) with `int` elements;
   reads and writes are bounds-checked at runtime and abort with
   `array index out of bounds`. Push/pop grow and shrink a local array; a `&mut [T]`

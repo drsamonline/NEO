@@ -2064,6 +2064,10 @@ impl Lowerer {
         scrutinee: &Expr,
         arms: &[MatchArm],
     ) -> Option<Vec<SirStatement>> {
+        // A guarded arm is not a constant `case`, so use the if/else chain.
+        if arms.iter().any(|arm| arm.guard.is_some()) {
+            return None;
+        }
         let record_expr = self.lower_expr(scrutinee);
         let scrutinee_type = self.expr_type(scrutinee);
         // A payload enum is a struct, so the switch tests its `tag`; a
@@ -2216,8 +2220,39 @@ impl Lowerer {
         let mut has_test = false;
 
         for arm in arms.iter().rev() {
+            // A binding pattern (`x if x > 10`) declares its name before the
+            // guard and the body are lowered.
+            self.push_scope();
+            let mut binding: Option<(String, String)> = None;
+            if let Pattern::Identifier(name) = &arm.pattern {
+                if name != "_" {
+                    let typ = self
+                        .expr_type(scrutinee)
+                        .unwrap_or_else(|| "int".to_string());
+                    self.declare(name, Some(typ.clone()));
+                    binding = Some((name.clone(), typ));
+                }
+            }
+            let guard = arm.guard.as_ref().map(|guard| self.lower_expr(guard));
             let body = self.lower_arm_body(&arm.body);
-            let condition = match &arm.pattern {
+            self.pop_scope();
+            // The binding must exist before the guard test, so the arm becomes
+            // `{ let x = value; if (guard) … }`.
+            let with_binding = |statements: Vec<SirStatement>| -> Vec<SirStatement> {
+                match &binding {
+                    Some((name, typ)) => {
+                        let mut wrapped = vec![SirStatement::Let {
+                            name: name.clone(),
+                            typ: Some(typ.clone()),
+                            value: scrutinee_expr.clone(),
+                        }];
+                        wrapped.extend(statements);
+                        wrapped
+                    }
+                    None => statements,
+                }
+            };
+            let pattern_condition = match &arm.pattern {
                 Pattern::Literal(Literal::String(text)) => Some(SirExpr::BinOp {
                     left: Box::new(SirExpr::Typed {
                         expr: Box::new(SirExpr::Call {
@@ -2255,17 +2290,34 @@ impl Lowerer {
                 Pattern::Wildcard | Pattern::Identifier(_) => None,
                 _ => return None,
             };
+            // A guard narrows the arm: `pattern && guard`.
+            let condition = match (pattern_condition, guard) {
+                (Some(pattern), Some(guard)) => Some(SirExpr::BinOp {
+                    left: Box::new(pattern),
+                    op: SirBinOp::And,
+                    right: Box::new(SirExpr::Typed {
+                        expr: Box::new(guard),
+                        typ: "bool".to_string(),
+                    }),
+                }),
+                (pattern, guard) => pattern.or(guard),
+            };
 
             match condition {
                 Some(condition) => {
                     has_test = true;
-                    fallback = vec![SirStatement::If {
+                    let branch = SirStatement::If {
                         condition,
                         then_block: body,
                         else_block: Some(fallback),
-                    }];
+                    };
+                    fallback = if binding.is_some() {
+                        vec![SirStatement::Block(with_binding(vec![branch]))]
+                    } else {
+                        vec![branch]
+                    };
                 }
-                None => fallback = body,
+                None => fallback = with_binding(body),
             }
         }
 
@@ -2283,8 +2335,9 @@ impl Lowerer {
         let mut result: Option<SirExpr> = None;
 
         for arm in arms.iter().rev() {
+            let guard = arm.guard.as_ref().map(|guard| self.lower_expr(guard));
             let body = self.lower_expr(&arm.body);
-            let condition = match &arm.pattern {
+            let pattern_condition = match &arm.pattern {
                 // Strings compare through the runtime; other literals use `==`.
                 Pattern::Literal(Literal::String(text)) => Some(SirExpr::BinOp {
                     left: Box::new(SirExpr::Typed {
@@ -2318,6 +2371,17 @@ impl Lowerer {
                 }),
                 // Wildcards and patterns without a test become the fallback.
                 _ => None,
+            };
+            let condition = match (pattern_condition, guard) {
+                (Some(pattern), Some(guard)) => Some(SirExpr::BinOp {
+                    left: Box::new(pattern),
+                    op: SirBinOp::And,
+                    right: Box::new(SirExpr::Typed {
+                        expr: Box::new(guard),
+                        typ: "bool".to_string(),
+                    }),
+                }),
+                (pattern, guard) => pattern.or(guard),
             };
 
             result = Some(match condition {

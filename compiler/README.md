@@ -87,7 +87,8 @@ A payload-less enum variant is an integer constant (`Color.Red` → `Color_Red`)
 `match` in statement position becomes a real C `switch`: each literal or variant arm
 is a `case` (the variant's ordinal is the constant) and the wildcard is `default`.
 A `match` whose value is used stays a chain of equality tests, which C renders as
-ternaries. Arrays are `NovaArray` values: a literal becomes `(NovaArray){ (int[]){…}, n }`
+ternaries. A guarded arm (`x if x > 10`) cannot be a `case`, so it uses the if/else
+chain with the binding declared before the guard. Arrays are `NovaArray` values: a literal becomes `(NovaArray){ (int[]){…}, n }`
 and indexing goes through `nova_array_get`/`nova_array_set`, so both reads and
 writes are bounds-checked and abort on a bad index. Literals are heap-allocated with
 `nova_array_from`, and `__builtin_array_push`/`__builtin_array_pop` grow and shrink

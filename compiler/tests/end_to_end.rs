@@ -995,6 +995,83 @@ fn call_results_print_with_their_return_type() {
 }
 
 #[test]
+fn match_guards_bind_and_filter_arms() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("match-guards");
+    let source = dir.join("guards.nova");
+    fs::write(
+        &source,
+        "fn classify(n: int) -> string {\n    match n {\n        x if x > 10 => {\n            return \"big\";\n        },\n        0 => {\n            return \"zero\";\n        },\n        _ => {\n            return \"small\";\n        },\n    }\n    return \"other\";\n}\n\nfn main() {\n    println(classify(12));\n    println(classify(0));\n    println(classify(3));\n\n    let n = 5;\n    let label: string = match n {\n        _ if n > 3 => \"high\",\n        _ => \"low\",\n    };\n    println(label);\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "big\nzero\nsmall\nhigh\n");
+}
+
+#[test]
+fn rust_array_example_matches_c_output() {
+    if !rustc_available() {
+        eprintln!("skipping: rustc is not installed");
+        return;
+    }
+
+    let example = workspace_root().join("examples/array_ops.nova");
+    let dir = scratch("rust-array");
+    let rust = dir.join("array_ops.rs");
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&example)
+        .arg("-o")
+        .arg(&rust)
+        .arg("--target")
+        .arg("rust")
+        .output()
+        .expect("emit rust");
+    assert!(emit.status.success(), "emit failed: {}", String::from_utf8_lossy(&emit.stderr));
+
+    let binary = dir.join("array_ops-rust");
+    let compile = Command::new("rustc")
+        .arg(&rust)
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .expect("run rustc");
+    assert!(
+        compile.status.success(),
+        "rustc failed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let rust_run = Command::new(&binary).output().expect("run rust binary");
+    assert!(rust_run.status.success());
+
+    let c_run = Command::new(compiler())
+        .arg("run")
+        .arg(&example)
+        .output()
+        .expect("run C example");
+    assert!(c_run.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&rust_run.stdout),
+        String::from_utf8_lossy(&c_run.stdout)
+    );
+}
+
+#[test]
 fn closure_parameters_accept_annotations_and_context() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

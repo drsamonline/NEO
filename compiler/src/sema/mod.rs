@@ -387,6 +387,10 @@ impl SemanticAnalyzer {
                                 _ => None,
                             }
                         }
+                        // `x if x > 10 => …` binds the scrutinee for the arm.
+                        nova_common::Pattern::Identifier(name) if name != "_" => {
+                            Some(name.clone())
+                        }
                         _ => None,
                     };
                     if let Some(name) = &binding {
@@ -397,7 +401,13 @@ impl SemanticAnalyzer {
                         );
                         let _ = self.symbol_table.insert(symbol);
                         let mut scope = HashMap::new();
-                        scope.insert(name.clone(), Type::Int);
+                        let binding_type = match &arm.pattern {
+                            nova_common::Pattern::Identifier(_) => self
+                                .infer_expr_type(scrutinee)
+                                .unwrap_or(Type::Int),
+                            _ => Type::Int,
+                        };
+                        scope.insert(name.clone(), binding_type);
                         self.type_scopes.push(scope);
                     }
 

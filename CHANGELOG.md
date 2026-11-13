@@ -5,6 +5,21 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Match guards and Rust arrays ⭐ NEW
+- **Guards work in `match`** (`x if x > 10 => …`). A guarded arm is lowered
+  through the if/else chain rather than a `switch`; the binding is declared
+  before the guard test, and a guard on a literal or wildcard becomes
+  `pattern && guard`. Works in statement and value position; a value-position
+  match with a *binding* pattern still has no place to declare it.
+- **Rust output handles arrays and a value-returning `main`.** Array types
+  become `Vec<i32>`, parameters are borrowed as `&mut Vec<i32>` (array arguments
+  are passed `&mut`), indices cast to `usize`, bindings are `let mut`, and a
+  `main` that returns a value becomes `__nova_main` with a `fn main` wrapper.
+  `examples/array_ops.nova` now produces the same output under `rustc` as the C
+  build.
+- **Tests:** `match_guards_bind_and_filter_arms` (`big/zero/small/high`) and
+  `rust_array_example_matches_c_output` (byte-identical stdout).
+
 #### Typed closures, executable JS/Rust, CI examples ⭐ NEW
 - **Closure parameters can be annotated** (`|x: float| x * 2.0`) and are inferred
   from a binding's function type (`let f: fn(int) -> int = |x| x + 2`).

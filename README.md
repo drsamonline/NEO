@@ -140,7 +140,8 @@ cargo build --release
 - **Lowering to SIR**: structs, field assignment, `impl` methods, enums, `match`,
   arrays, generic instantiation
 - **C code generation**: runnable programs linked against the runtime shim (ABI v3);
-  statement `match` becomes a C `switch`, arrays are bounds-checked and growable,
+  statement `match` becomes a C `switch` (guarded arms use an if/else chain),
+  arrays are bounds-checked and growable,
   payload-carrying enums/`Option<T>` are tagged structs, generic structs are
   monomorphised
 - **Modules**: `use` and `mod` load sibling and standard-library files
