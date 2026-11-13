@@ -873,6 +873,7 @@ version = "0.6.0"
 dependencies = [
  "nova-backend-js",
  "nova-backend-rust",
+ "nova-backend-wasm",
  "nova-common",
 ]
 

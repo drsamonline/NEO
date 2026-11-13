@@ -29,8 +29,8 @@ Then, from the repository root:
 ./target/release/nova-compiler emit examples/hello.nova -o /tmp/hello.c
 ```
 
-Options: `-o/--output <path>`, `--target c|js|rust` (`c` is the default and the only
-one `build`/`run` link), `-h/--help`.
+Options: `-o/--output <path>`, `--target c|js|rust|wasm` (`c` is the default and the
+only one `build`/`run` link), `-h/--help`.
 `run` passes everything after `--` to the program and exits with the program's status.
 
 `CC` selects the C compiler used by `build` and `run` (default `cc`). `build`
@@ -166,5 +166,5 @@ parameters and string range indexes are lowered).
 
 Arrays are `NovaArray` (heap buffer, length and capacity) with `int` elements.
 The JavaScript, Rust and WebAssembly generators live in `backends/` and consume the
-SIR from `nova-common`; `emit --target js` and `emit --target rust` select them, while
-build/run remain C-only.
+SIR from `nova-common`; `emit --target js|rust|wasm` selects them, while build/run
+remain C-only.

@@ -5,6 +5,18 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Standard library runs, WASM target, runtime correctness ⭐ NEW
+- **`use core;` programs build and run.** A stdlib program using `compose` with
+  two closures now prints `7`. Fixes: `-> !` functions emit a void body (no
+  `return nova_panic(...)`), a `&mut [T]` argument passed to a by-value parameter
+  is dereferenced, string literals escape control characters in C, and a
+  trapping `__builtin_*` returns a zero value of the declared type instead of an
+  incompatible `long long`.
+- **`--target wasm` emits WebAssembly text.** The WASM generator is wired into
+  the CLI alongside `js` and `rust`; build/run remain C-only.
+- `stdlib/core`'s `println` no longer prints a second newline: the runtime's
+  `print` already ends the line.
+
 #### Closures, tuples and selectable backend targets ⭐ NEW
 - **Closures are lowered with a real calling convention.** A closure is a
   `NovaClosure*` (a lifted function plus a heap environment): capturing closures

@@ -148,7 +148,7 @@ cargo build --release
 - **Generics**: functions, enums, structs and impl methods are monomorphised
 - **Closures and tuples**: lifted closures with heap environments and `fn(A) -> B`
   values; `NovaTuple_*` structs with `let (a, b) = pair;` destructuring
-- **Backends**: `emit --target c|js|rust` selects a generator; build/run link C
+- **Backends**: `emit --target c|js|rust|wasm` selects a generator; build/run link C
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -158,7 +158,7 @@ cargo build --release
 ### Coming Soon 🚧
 - General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
-- A build/run path for the JavaScript and Rust targets, and `--target wasm`
+- A build/run path for the JavaScript, Rust and WebAssembly targets
 - LSP go-to-definition/references, DWARF debugger, real package registry
 
 ## Documentation

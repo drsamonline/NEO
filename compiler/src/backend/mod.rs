@@ -12,6 +12,9 @@ pub struct CBackend {
     /// Structs that are really tagged enums (they have a `tag` field). Generic
     /// enums share one C type; generic structs are monomorphised per arguments.
     tagged: Vec<String>,
+    /// Return type of the function being written, so a trapping builtin can be
+    /// followed by a value of the right type.
+    current_return_type: Option<String>,
 }
 
 impl CBackend {
@@ -20,6 +23,7 @@ impl CBackend {
             output: String::new(),
             struct_names: Vec::new(),
             tagged: Vec::new(),
+            current_return_type: None,
         }
     }
 
@@ -102,6 +106,11 @@ impl CBackend {
     }
 
     fn write_function(&mut self, func: &SirFunction) {
+        self.current_return_type = Some(
+            func.return_type
+                .clone()
+                .unwrap_or_else(|| "void".to_string()),
+        );
         if Self::is_entry(&func.name) {
             // C requires `int main`, whatever NOVA declared. The value the NOVA
             // program returns (if any) is returned from here.
@@ -233,9 +242,50 @@ impl CBackend {
             "bool" => "int",
             "string" | "str" => "char*",
             "char" => "char",
-            "void" => "void",
+            "void" | "!" => "void",
             _ => "int", // default to int for unknown types
         }
+    }
+
+    /// The builtin name when the expression is a `nova_unsupported` trap call.
+    fn unsupported_call(expr: &SirExpr) -> Option<String> {
+        match expr {
+            SirExpr::Typed { expr, .. } => Self::unsupported_call(expr),
+            SirExpr::Call { callee, args } if callee == "nova_unsupported" => match args.first() {
+                Some(SirExpr::Literal(SirLiteral::String(name))) => Some(name.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// A zero value for a C type, used after a trapping call.
+    fn zero_for(c_type: &str) -> String {
+        if c_type.ends_with('*') {
+            format!("({})0", c_type)
+        } else {
+            match c_type {
+                "int" | "long long" | "double" | "char" | "bool" => "0".to_string(),
+                _ => format!("({}){{0}}", c_type),
+            }
+        }
+    }
+
+    /// Escape a NOVA string for a C string literal, including control characters.
+    fn escape_c_string(value: &str) -> String {
+        let mut escaped = String::with_capacity(value.len());
+        for ch in value.chars() {
+            match ch {
+                '\\' => escaped.push_str("\\\\"),
+                '"' => escaped.push_str("\\\""),
+                '\n' => escaped.push_str("\\n"),
+                '\r' => escaped.push_str("\\r"),
+                '\t' => escaped.push_str("\\t"),
+                '\0' => escaped.push_str("\\0"),
+                _ => escaped.push(ch),
+            }
+        }
+        escaped
     }
 
     /// The `nova_print_*` variant for a NOVA type name, when it is one the
@@ -291,6 +341,25 @@ impl CBackend {
                 let _ = writeln!(self.output, "{}{};", indent_str, self.expr_to_c(expr));
             }
             SirStatement::Return(expr) => {
+                // A builtin the runtime cannot provide traps; after the trap the
+                // function still needs a value of its declared type to compile.
+                if let Some(name) = expr.as_ref().and_then(Self::unsupported_call) {
+                    let typ = self.current_return_type.clone().unwrap_or_default();
+                    let c_type = self.c_type(&typ);
+                    let _ = writeln!(
+                        self.output,
+                        "{}nova_unsupported(\"{}\");",
+                        indent_str, name
+                    );
+                    if c_type == "void" {
+                        let _ = writeln!(self.output, "{}return;", indent_str);
+                    } else if c_type.ends_with('*') {
+                        let _ = writeln!(self.output, "{}return ({});", indent_str, Self::zero_for(&c_type));
+                    } else {
+                        let _ = writeln!(self.output, "{}return {};", indent_str, Self::zero_for(&c_type));
+                    }
+                    return;
+                }
                 match expr {
                     Some(e) => {
                         let _ = writeln!(self.output, "{}return {};", indent_str, self.expr_to_c(e));
@@ -410,7 +479,7 @@ impl CBackend {
                 SirLiteral::Int(i) => format!("{}", i),
                 SirLiteral::Float(f) => format!("{}", f),
                 SirLiteral::Bool(b) => if *b { "1" } else { "0" }.to_string(),
-                SirLiteral::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+                SirLiteral::String(s) => format!("\"{}\"", Self::escape_c_string(s)),
                 SirLiteral::Char(c) => format!("'{}'", c),
                 SirLiteral::Unit => "".to_string(),
             },

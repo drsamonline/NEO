@@ -9,3 +9,4 @@ description = "NOVA compiler"
 nova-common = { path = "../crates/nova-common" }
 nova-backend-js = { path = "../backends/javascript" }
 nova-backend-rust = { path = "../backends/rust" }
+nova-backend-wasm = { path = "../backends/wasm" }

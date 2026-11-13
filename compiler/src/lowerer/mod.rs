@@ -620,7 +620,9 @@ impl Lowerer {
     fn returns_value(return_type: &Option<String>) -> bool {
         return_type
             .as_deref()
-            .map(|typ| !matches!(typ.to_lowercase().as_str(), "void" | "unit"))
+            // `!` never returns a value, so a diverging body is emitted as
+            // statements (the call itself traps) rather than `return expr`.
+            .map(|typ| !matches!(typ.to_lowercase().as_str(), "void" | "unit" | "!"))
             .unwrap_or(false)
     }
 
@@ -750,6 +752,10 @@ impl Lowerer {
                     .is_some_and(|typ| typ.trim_start().starts_with('&'));
                 if wants_reference && !is_reference {
                     SirExpr::AddressOf(Box::new(lowered))
+                } else if !wants_reference && is_reference {
+                    // A `&mut [T]` value passed to a by-value parameter is
+                    // dereferenced, so `array_len(&mut arr)` sees the header.
+                    SirExpr::Deref(Box::new(lowered))
                 } else {
                     lowered
                 }

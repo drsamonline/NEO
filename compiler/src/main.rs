@@ -5,6 +5,7 @@
 
 use nova_backend_js::JsBackend;
 use nova_backend_rust::RustBackend;
+use nova_backend_wasm::WasmBackend;
 use nova_compiler::runtime;
 use nova_compiler::{CBackend, Lexer, Lowerer, Parser, SemanticAnalyzer};
 use std::env;
@@ -23,13 +24,13 @@ USAGE:
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
-        --target <name>   backend to emit: c (default), js, or rust
+        --target <name>   backend to emit: c (default), js, rust, or wasm
     -h, --help            show this help
 
 Generated C calls the NOVA runtime (`nova_runtime.h` / `nova_runtime.c`).
 `emit -o` writes those beside the C; `build` and `run` link them in.
-`--target js` and `--target rust` emit source for those languages; only the C
-backend has a build/run path.
+`--target js|rust|wasm` emits source (WebAssembly text format); only the C backend
+has a build/run path.
 ";
 
 fn main() {
@@ -72,6 +73,7 @@ enum Target {
     C,
     JavaScript,
     Rust,
+    WebAssembly,
 }
 
 impl Target {
@@ -80,6 +82,7 @@ impl Target {
             Target::C => "c",
             Target::JavaScript => "js",
             Target::Rust => "rust",
+            Target::WebAssembly => "wasm",
         }
     }
 }
@@ -118,8 +121,9 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Target, Vec<String>
                     Some("c") => target = Target::C,
                     Some("js") | Some("javascript") => target = Target::JavaScript,
                     Some("rust") => target = Target::Rust,
+                    Some("wasm") | Some("wat") => target = Target::WebAssembly,
                     Some(other) => die(&format!(
-                        "unknown target `{other}`: expected `c`, `js`, or `rust`"
+                        "unknown target `{other}`: expected `c`, `js`, `rust`, or `wasm`"
                     )),
                     None => die("`--target` needs a name"),
                 }
@@ -215,6 +219,7 @@ fn compile_to(input: &Path, target: Target) -> String {
         Target::C => CBackend::new().generate(&sir),
         Target::JavaScript => JsBackend::new().generate(&sir),
         Target::Rust => RustBackend::new().generate(&sir),
+        Target::WebAssembly => WasmBackend::new().generate(&sir),
     }
 }
 

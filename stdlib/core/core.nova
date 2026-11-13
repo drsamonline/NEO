@@ -9,10 +9,9 @@ fn print<T>(value: T) {
     __builtin_print(value);
 }
 
-/// Print a value with newline
+/// Print a value with newline. `print` already ends the line in the runtime.
 fn println<T>(value: T) {
     print(value);
-    print("\n");
 }
 
 /// Get the type of a value

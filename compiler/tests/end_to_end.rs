@@ -725,9 +725,31 @@ fn unsupported_target_is_refused() {
     assert!(!build.status.success());
     let stderr = String::from_utf8_lossy(&build.stderr);
     assert!(
-        stderr.contains("unknown target"),
+        stderr.contains("only supports `--target c`"),
         "unexpected stderr: {stderr}"
     );
+
+    // A name that is not a backend stays an error.
+    let unknown = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("--target")
+        .arg("cobol")
+        .output()
+        .expect("emit unknown target");
+    assert!(!unknown.status.success());
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("unknown target"));
+
+    // A WAT module is emitted rather than refused.
+    let wasm = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("--target")
+        .arg("wasm")
+        .output()
+        .expect("emit wasm");
+    assert!(wasm.status.success());
+    assert!(String::from_utf8_lossy(&wasm.stdout).contains("(module"));
 
     // `build` only links C, even when a target is a known emitter.
     let build = Command::new(compiler())
@@ -774,6 +796,42 @@ fn javascript_and_rust_targets_emit_source() {
         rust_source.contains("fn main"),
         "unexpected Rust: {rust_source}"
     );
+}
+
+#[test]
+fn stdlib_compose_runs_with_closures() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("stdlib-compose");
+    // A module file beside the program exercises the loader without needing the
+    // full standard library in the scratch directory.
+    fs::write(
+        dir.join("core.nova"),
+        "fn print<T>(value: T) { __builtin_print(value); }\n\nfn compose<A, B, C>(f: fn(B) -> C, g: fn(A) -> B) -> fn(A) -> C {\n    |x| f(g(x))\n}\n",
+    )
+    .expect("write module");
+    let source = dir.join("compose.nova");
+    fs::write(
+        &source,
+        "use core;\n\nfn main() {\n    let inc = |x| x + 1;\n    let dbl = |x| x * 2;\n    let both = compose(inc, dbl);\n    println(both(3));\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "7\n");
 }
 
 #[test]
