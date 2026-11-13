@@ -138,6 +138,10 @@ pub enum SirExpr {
         object: Box<SirExpr>,
         field: String,
         value: Box<SirExpr>,
+        /// Declared struct type of `object`, so codegen can find the field's
+        /// offset without re-deriving types. Empty when the lowerer did not know
+        /// it (the WASM backend rejects that case rather than guessing).
+        struct_type: String,
     },
     /// Array literal: `[a, b, c]`.
     Array(Vec<SirExpr>),
@@ -213,6 +217,8 @@ pub enum SirExpr {
     FieldAccess {
         object: Box<SirExpr>,
         field: String,
+        /// Declared struct type of `object`; see `FieldAssign::struct_type`.
+        struct_type: String,
     },
 }
 

@@ -5,6 +5,21 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### WASM structs/tuples, bounds checks, struct-aware SIR ⭐ NEW
+- **SIR carries the struct type on field access.** `FieldAccess`/`FieldAssign`
+  now include `struct_type`, filled by the lowerer from the object's type (tuple,
+  struct, and enum payload accesses), so a backend can find a field's offset
+  without re-deriving types.
+- **WASM supports structs and tuples.** Values are bump-allocated blocks with
+  one 4-byte slot per declared field; literals zero-initialise fields and store
+  the provided values, and field reads/writes use `i32.load/store offset=…` with
+  a trap if the type or field is unknown.
+- **WASM array indexing is bounds-checked.** The index is evaluated once, compared
+  against the length header, and out-of-range access traps (`unreachable`) instead
+  of reading unrelated memory.
+- **Tests:** structs + tuple destructuring print `3/5` and an out-of-bounds read
+  exits non-zero with no output (180 passing).
+
 #### WASM arrays, allocation benchmark ⭐ NEW
 - **The WASM target supports int arrays.** Array literals bump-allocate a block
   of `[len, elem0, …]` in linear memory; reads and writes are pointer math plus

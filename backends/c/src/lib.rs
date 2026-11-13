@@ -361,7 +361,7 @@ impl CGenerator {
                 self.write(&format!("{} = ", target));
                 self.generate_expr(value);
             }
-            SirExpr::FieldAssign { object, field, value } => {
+            SirExpr::FieldAssign { object, field, value, .. } => {
                 self.write("(");
                 self.generate_expr(object);
                 self.write(&format!(").{} = ", field));
@@ -393,7 +393,7 @@ impl CGenerator {
                 }
                 self.write(" }");
             }
-            SirExpr::FieldAccess { object, field } => {
+            SirExpr::FieldAccess { object, field, .. } => {
                 self.write("(");
                 self.generate_expr(object);
                 self.write(&format!(").{}", field));

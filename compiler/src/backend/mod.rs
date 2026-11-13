@@ -517,7 +517,7 @@ impl CBackend {
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_c(value))
             }
-            SirExpr::FieldAssign { object, field, value } => {
+            SirExpr::FieldAssign { object, field, value, .. } => {
                 if Self::is_self(object) {
                     format!("(self)->{} = {}", field, self.expr_to_c(value))
                 } else {
@@ -622,7 +622,7 @@ impl CBackend {
                     .collect();
                 format!("({}){{ {} }}", name, initialisers.join(", "))
             }
-            SirExpr::FieldAccess { object, field } => {
+            SirExpr::FieldAccess { object, field, .. } => {
                 if Self::is_self(object) {
                     format!("(self)->{}", field)
                 } else {

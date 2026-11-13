@@ -332,7 +332,7 @@ impl RustBackend {
                     .collect();
                 format!("{} {{ {} }}", name, fields.join(", "))
             }
-            SirExpr::FieldAccess { object, field } => {
+            SirExpr::FieldAccess { object, field, .. } => {
                 format!("({}).{}", self.expr_to_rust(object), field)
             }
             SirExpr::Block(stmts, final_expr) => {
@@ -360,7 +360,7 @@ impl RustBackend {
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_rust(value))
             }
-            SirExpr::FieldAssign { object, field, value } => {
+            SirExpr::FieldAssign { object, field, value, .. } => {
                 format!(
                     "({}).{} = {}",
                     self.expr_to_rust(object),

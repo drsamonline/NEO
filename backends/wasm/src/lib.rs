@@ -16,7 +16,7 @@
 use nova_common::sir::{
     SirBinOp, SirExpr, SirFunction, SirLiteral, SirProgram, SirStatement, SirUnOp,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub struct WasmBackend {
     output: String,
@@ -28,8 +28,10 @@ pub struct WasmBackend {
     /// Declared function names and whether they return a value.
     functions: Vec<(String, bool)>,
     locals: Vec<(String, String)>,
-    /// First byte of the bump-allocated heap for array literals.
+    /// First byte of the bump-allocated heap for arrays and structs.
     heap_start: usize,
+    /// Struct name -> field name -> byte offset (each field occupies 4 bytes).
+    structs: HashMap<String, Vec<(String, usize)>>,
 }
 
 /// Reject programs this backend cannot represent faithfully, so `emit --target
@@ -331,9 +333,40 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
             validate_expr(value)
         }
         SirExpr::StringSlice { .. } => Err("string slicing"),
-        SirExpr::Tuple { .. } => Err("tuples"),
-        SirExpr::StructLiteral { .. } => Err("struct literals"),
-        SirExpr::FieldAccess { .. } | SirExpr::FieldAssign { .. } => Err("struct fields"),
+        SirExpr::Tuple { items, .. } => {
+            for item in items {
+                validate_expr(item)?;
+            }
+            Ok(())
+        }
+        SirExpr::StructLiteral { fields, .. } => {
+            for (_, value) in fields {
+                validate_expr(value)?;
+            }
+            Ok(())
+        }
+        SirExpr::FieldAccess {
+            object,
+            struct_type,
+            ..
+        } => {
+            if struct_type.is_empty() {
+                return Err("a field access with no known struct type");
+            }
+            validate_expr(object)
+        }
+        SirExpr::FieldAssign {
+            object,
+            value,
+            struct_type,
+            ..
+        } => {
+            if struct_type.is_empty() {
+                return Err("a field assignment with no known struct type");
+            }
+            validate_expr(object)?;
+            validate_expr(value)
+        }
         SirExpr::Closure { .. } | SirExpr::EnvAccess { .. } | SirExpr::CallValue { .. } => {
             Err("closures and indirect calls")
         }
@@ -354,6 +387,7 @@ impl WasmBackend {
             functions: Vec::new(),
             locals: Vec::new(),
             heap_start: DATA_BASE,
+            structs: HashMap::new(),
         }
     }
 
@@ -362,6 +396,17 @@ impl WasmBackend {
         self.strings.clear();
         self.globals.clear();
         self.functions.clear();
+
+        self.structs.clear();
+        for structure in &program.structs {
+            let layout = structure
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| (field.name.clone(), index * 4))
+                .collect();
+            self.structs.insert(structure.name.clone(), layout);
+        }
 
         self.globals = program.globals.iter().map(|g| g.name.clone()).collect();
         self.functions = program
@@ -493,8 +538,10 @@ impl WasmBackend {
         for (name, typ) in self.locals.clone() {
             self.writeln(&format!("(local ${name} {typ})"));
         }
-        // Scratch pointer used while building an array literal.
+        // Scratch registers used while building arrays/structs and checking
+        // array bounds.
         self.writeln("(local $__arr_tmp i32)");
+        self.writeln("(local $__idx_tmp i32)");
 
         for stmt in &func.body {
             self.generate_statement(stmt);
@@ -1050,20 +1097,57 @@ impl WasmBackend {
             }
             SirExpr::SizeOf(_) => self.writeln("(i32.const 4)"),
             SirExpr::Cast { value, .. } => self.generate_expr(value),
-            SirExpr::Tuple { items, .. } => {
-                for item in items {
-                    self.generate_expr(item);
-                    self.writeln("drop");
-                }
-                self.writeln("(i32.const 0) (; tuple: unsupported ;)");
+            SirExpr::Tuple { name, items } => {
+                let values: Vec<(String, &SirExpr)> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| (format!("_{index}"), item))
+                    .collect();
+                self.emit_struct_value(name, &values);
             }
-            SirExpr::StructLiteral { .. } => {
-                self.writeln("(i32.const 0) (; struct: unsupported ;)")
+            SirExpr::StructLiteral { name, fields } => {
+                let values: Vec<(String, &SirExpr)> = fields
+                    .iter()
+                    .map(|(field, value)| (field.clone(), value))
+                    .collect();
+                self.emit_struct_value(name, &values);
             }
-            SirExpr::FieldAccess { .. } => self.writeln("(i32.const 0) (; field: unsupported ;)"),
-            SirExpr::FieldAssign { value, .. } => {
+            SirExpr::FieldAccess {
+                object,
+                field,
+                struct_type,
+            } => {
+                self.generate_expr(object);
+                let Some(offset) = self
+                    .structs
+                    .get(struct_type)
+                    .and_then(|layout| layout.iter().find(|(name, _)| name == field))
+                    .map(|(_, offset)| *offset)
+                else {
+                    self.writeln("unreachable (; unknown struct field ;)");
+                    self.writeln("(i32.const 0)");
+                    return;
+                };
+                self.writeln(&format!("(i32.load offset={offset})"));
+            }
+            SirExpr::FieldAssign {
+                object,
+                field,
+                value,
+                struct_type,
+            } => {
+                self.generate_expr(object);
+                let Some(offset) = self
+                    .structs
+                    .get(struct_type)
+                    .and_then(|layout| layout.iter().find(|(name, _)| name == field))
+                    .map(|(_, offset)| *offset)
+                else {
+                    self.writeln("unreachable (; unknown struct field ;)");
+                    return;
+                };
                 self.generate_expr(value);
-                self.writeln("drop (; field assignment: unsupported ;)");
+                self.writeln(&format!("(i32.store offset={offset})"));
             }
             SirExpr::Deref(inner) => {
                 self.generate_expr(inner);
@@ -1102,13 +1186,8 @@ impl WasmBackend {
                 self.writeln("(i32.const 0) (; string slice: unsupported ;)");
             }
             SirExpr::Index { array, index } => {
-                self.generate_expr(array);
-                self.writeln("(i32.const 4)");
-                self.writeln("(i32.add)");
-                self.generate_expr(index);
-                self.writeln("(i32.const 4)");
-                self.writeln("(i32.mul)");
-                self.writeln("(i32.add)");
+                self.emit_bounds_check(array, index);
+                self.emit_element_address();
                 self.writeln("(i32.load)");
             }
             SirExpr::IndexAssign {
@@ -1116,17 +1195,81 @@ impl WasmBackend {
                 index,
                 value,
             } => {
-                self.generate_expr(array);
-                self.writeln("(i32.const 4)");
-                self.writeln("(i32.add)");
-                self.generate_expr(index);
-                self.writeln("(i32.const 4)");
-                self.writeln("(i32.mul)");
-                self.writeln("(i32.add)");
+                self.emit_bounds_check(array, index);
+                self.emit_element_address();
                 self.generate_expr(value);
                 self.writeln("(i32.store)");
             }
         }
+    }
+
+    /// Evaluate the array and index once each, then trap when the index is out
+    /// of range, matching the C runtime's bounds failure instead of reading
+    /// unrelated memory.
+    fn emit_bounds_check(&mut self, array: &SirExpr, index: &SirExpr) {
+        self.generate_expr(array);
+        self.writeln("(local.set $__arr_tmp)");
+        self.generate_expr(index);
+        self.writeln("(local.set $__idx_tmp)");
+        self.writeln("(local.get $__idx_tmp)");
+        self.writeln("(local.get $__arr_tmp)");
+        self.writeln("(i32.load)");
+        self.writeln("(i32.ge_u)");
+        self.writeln("(if");
+        self.indent_level += 1;
+        self.writeln("(then");
+        self.indent_level += 1;
+        self.writeln("unreachable");
+        self.indent_level -= 1;
+        self.writeln(")");
+        self.indent_level -= 1;
+        self.writeln(")");
+    }
+
+    /// Push `base + 4 + index*4` for the array/value captured by the check.
+    fn emit_element_address(&mut self) {
+        self.writeln("(local.get $__arr_tmp)");
+        self.writeln("(i32.const 4)");
+        self.writeln("(i32.add)");
+        self.writeln("(local.get $__idx_tmp)");
+        self.writeln("(i32.const 4)");
+        self.writeln("(i32.mul)");
+        self.writeln("(i32.add)");
+    }
+
+    /// Allocate `size` bytes from the bump heap and leave the base pointer in
+    /// `$__arr_tmp`.
+    fn allocate(&mut self, size: usize) {
+        self.writeln("(global.get $__heap)");
+        self.writeln("(local.set $__arr_tmp)");
+        self.writeln("(global.set $__heap");
+        self.indent_level += 1;
+        self.writeln(&format!(
+            "(i32.add (global.get $__heap) (i32.const {size}))"
+        ));
+        self.indent_level -= 1;
+        self.writeln(")");
+    }
+
+    /// Build a struct/tuple value: every field is zero-initialised, then the
+    /// provided values are stored at their declared offsets.
+    fn emit_struct_value(&mut self, name: &str, values: &[(String, &SirExpr)]) {
+        let layout = self.structs.get(name).cloned().unwrap_or_default();
+        self.allocate(layout.len() * 4);
+        for (_, offset) in &layout {
+            self.writeln("(local.get $__arr_tmp)");
+            self.writeln("(i32.const 0)");
+            self.writeln(&format!("(i32.store offset={offset})"));
+        }
+        for (field, value) in values {
+            let Some((_, offset)) = layout.iter().find(|(name, _)| name == field) else {
+                continue;
+            };
+            self.writeln("(local.get $__arr_tmp)");
+            self.generate_expr(value);
+            self.writeln(&format!("(i32.store offset={offset})"));
+        }
+        self.writeln("(local.get $__arr_tmp)");
     }
 
     /// `print`/`println` end the line in NOVA. Strings pass a pointer and length
@@ -1251,7 +1394,9 @@ fn expression_yields_value(expr: &SirExpr, functions: &[(String, bool)]) -> bool
                 .map(|(_, returns)| *returns)
                 .unwrap_or(true)
         }
-        SirExpr::Assign { .. } | SirExpr::IndexAssign { .. } => false,
+        SirExpr::Assign { .. }
+        | SirExpr::IndexAssign { .. }
+        | SirExpr::FieldAssign { .. } => false,
         _ => true,
     }
 }

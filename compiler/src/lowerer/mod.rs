@@ -1444,6 +1444,7 @@ impl Lowerer {
                 expr: Box::new(SirExpr::FieldAccess {
                     object: Box::new(SirExpr::Var(temporary.clone())),
                     field: format!("_{index}"),
+                    struct_type: tuple_struct_name(&element_types),
                 }),
                 typ: element_type.clone(),
             };
@@ -1729,6 +1730,7 @@ impl Lowerer {
                     object: Box::new(self.lower_expr(object)),
                     field: field.clone(),
                     value: Box::new(self.lower_expr(value)),
+                    struct_type: self.expr_type(object).unwrap_or_default(),
                 },
                 Expr::Index(array, index) => SirExpr::IndexAssign {
                     array: Box::new(self.lower_array_value(array)),
@@ -1905,6 +1907,7 @@ impl Lowerer {
                 let access = SirExpr::FieldAccess {
                     object: Box::new(self.lower_expr(obj)),
                     field: field.clone(),
+                    struct_type: self.expr_type(obj).unwrap_or_default(),
                 };
                 // Knowing the field's declared type lets `print` pick the right
                 // runtime function.
@@ -2161,6 +2164,10 @@ impl Lowerer {
             SirExpr::FieldAccess {
                 object: Box::new(record_expr.clone()),
                 field: "tag".to_string(),
+                struct_type: scrutinee_type
+                    .as_deref()
+                    .map(|typ| typ.split('<').next().unwrap_or(typ).trim().to_string())
+                    .unwrap_or_default(),
             }
         } else {
             record_expr.clone()
@@ -2250,6 +2257,10 @@ impl Lowerer {
                     value: SirExpr::FieldAccess {
                         object: Box::new(record_expr.clone()),
                         field: field.to_string(),
+                        struct_type: scrutinee_type
+                            .as_deref()
+                            .map(|typ| typ.split('<').next().unwrap_or(typ).trim().to_string())
+                            .unwrap_or_default(),
                     },
                 });
                 self.declare(&name, Some(typ));
@@ -2873,7 +2884,7 @@ mod tests {
         );
         let main = program.functions.last().expect("main should be lowered");
         match &main.body[1] {
-            SirStatement::Expr(SirExpr::FieldAssign { object, field, value }) => {
+            SirStatement::Expr(SirExpr::FieldAssign { object, field, value, .. }) => {
                 // The object is a known variable, so it carries its type.
                 let object = match object.as_ref() {
                     SirExpr::Typed { expr, .. } => expr.as_ref(),

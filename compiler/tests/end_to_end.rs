@@ -923,6 +923,79 @@ fn wasm_output_assembles_and_runs_on_the_host() {
     assert_eq!(run.status.code(), Some(4));
 }
 
+/// Emit, assemble and run a WASM program on the committed host.
+/// Returns `None` when the toolchain needed to run WebAssembly is missing.
+fn run_wasm_source(name: &str, source: &str) -> Option<(String, Option<i32>)> {
+    if !node_available() || !wat2wasm_available() {
+        return None;
+    }
+    let dir = scratch(name);
+    let path = dir.join(format!("{name}.nova"));
+    fs::write(&path, source).expect("write wasm source");
+    let wat = dir.join(format!("{name}.wat"));
+    let wasm = dir.join(format!("{name}.wasm"));
+
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&path)
+        .arg("--target")
+        .arg("wasm")
+        .arg("-o")
+        .arg(&wat)
+        .output()
+        .expect("emit wasm");
+    assert!(emit.status.success(), "{}", String::from_utf8_lossy(&emit.stderr));
+
+    let assembler = std::env::var("WAT2WASM").unwrap_or_else(|_| "wat2wasm".to_string());
+    let assembled = Command::new(assembler)
+        .arg(&wat)
+        .arg("-o")
+        .arg(&wasm)
+        .output()
+        .expect("run wat2wasm");
+    assert!(
+        assembled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&assembled.stderr)
+    );
+
+    let run = Command::new("node")
+        .arg(workspace_root().join("backends/wasm/host.mjs"))
+        .arg(&wasm)
+        .output()
+        .expect("run the WASM host");
+    Some((
+        String::from_utf8_lossy(&run.stdout).into_owned(),
+        run.status.code(),
+    ))
+}
+
+#[test]
+fn wasm_structs_and_tuples_run_on_the_host() {
+    let Some((stdout, code)) = run_wasm_source(
+        "structs",
+        "struct Point {\n    x: int,\n    y: int,\n}\n\nfn main() -> int {\n    let p = Point { x: 3, y: 4 };\n    p.y = p.y + 1;\n    let pair = (p.x, p.y);\n    let (a, b) = pair;\n    print(a);\n    print(b);\n    return 0;\n}\n",
+    ) else {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    };
+    assert_eq!(stdout, "3\n5\n");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
+fn wasm_out_of_bounds_index_traps() {
+    let Some((stdout, code)) = run_wasm_source(
+        "oob",
+        "fn main() -> int {\n    let a = [1, 2];\n    print(a[5]);\n    return 0;\n}\n",
+    ) else {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    };
+    assert!(stdout.is_empty(), "must not read past the array: {stdout}");
+    assert_ne!(code, Some(0), "out-of-bounds access must trap");
+}
+
 #[test]
 fn wasm_arrays_run_on_the_host() {
     if !node_available() || !wat2wasm_available() {

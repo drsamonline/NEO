@@ -247,7 +247,7 @@ impl JsBackend {
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_js(value))
             }
-            SirExpr::FieldAssign { object, field, value } => {
+            SirExpr::FieldAssign { object, field, value, .. } => {
                 format!(
                     "({}).{} = {}",
                     self.expr_to_js(object),
@@ -307,7 +307,7 @@ impl JsBackend {
                     .collect();
                 format!("{{ {} }}", fields.join(", "))
             }
-            SirExpr::FieldAccess { object, field } => {
+            SirExpr::FieldAccess { object, field, .. } => {
                 format!("({}).{}", self.expr_to_js(object), field)
             }
             SirExpr::Block(stmts, final_expr) => {

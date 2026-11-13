@@ -21,12 +21,12 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Benchmarks | ✅ `benches/run.sh`: recursive fib(35) and 2000 short-lived array literals, NOVA→C vs hand-written C, same `-O2`, stdout compared before timing, 1.5× regressions fail | `benches/README.md`, CI |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
 | Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
-| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output (including arrays) is executed in tests. WASM executes ints/strings/recursion/loops and int arrays (bump-allocated) via `backends/wasm/host.mjs`; structs, tuples and closures are rejected by `validate` instead of emitted as placeholders | `backends/wasm` tests, Node + `wat2wasm` end-to-end tests |
+| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output (including arrays) is executed in tests. WASM executes ints/strings/recursion/loops, int arrays, structs and tuples (bump-allocated, bounds-checked) via `backends/wasm/host.mjs`; closures are rejected by `validate` instead of emitted as placeholders | `backends/wasm` tests, Node + `wat2wasm` end-to-end tests |
 | Standard library | ✅ all four modules parse and emit C (`use` merges `core` and `io`); `core` math helpers return their values (`factorial`, `fibonacci`, `sign`, `clamp`, `gcd`) | `compiler/tests/stdlib_parse.rs`, `compiler/tests/end_to_end.rs::core_stdlib_math_functions_return_their_values` |
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 178 passing, 0 failing (`cargo test --workspace`; WASM execution tests need `node` + `wat2wasm`).
+**Test suite:** 180 passing, 0 failing (`cargo test --workspace`; WASM execution tests need `node` + `wat2wasm`).
 
 ## Milestones, in order
 
