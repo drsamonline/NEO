@@ -1,0 +1,10 @@
+use core;
+
+fn main() -> int {
+    let values = [1, 2];
+    array_push(values, 3);
+    array_push(values, 4);
+    print(array_len(values));
+    print(values[3]);
+    return 0;
+}

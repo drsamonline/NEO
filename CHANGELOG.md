@@ -9,6 +9,26 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### WASM growable arrays and closures, four-backend parity corpus ⭐ NEW
+- **WASM arrays are growable.** An array value is a `[len, capacity, data]`
+  descriptor, so `array_push` can reallocate the data and update the descriptor
+  in place while the caller keeps using the same pointer. Indexing uses the data
+  pointer and still traps out of bounds.
+- **WASM closures run.** Lifted closures are emitted with an environment
+  parameter, stored as `[table index, environment pointer]` pairs, and called
+  through a `funcref` table (`call_indirect`). This covers non-capturing
+  closures, capturing closures, closures returned from functions, and
+  higher-order calls such as `compose`; nested indirect calls use per-depth
+  scratch locals so an inner call cannot clobber an outer callee.
+- **JavaScript closures now bind their environment.** Lifted functions take
+  `__env` first and the value is `fn.bind(null, env)`, fixing `compose` and
+  capturing closures. Both JS and Rust emit only functions reachable from
+  `main`, so unused `core` helpers no longer break compilation.
+- **Parity corpus in CI.** `tests/parity/` programs (starting with growable
+  arrays) join every `examples/*.nova` in a loop that runs
+  `nova-compiler test --parity`, so a backend regression fails CI instead of
+  being reported as `held`.
+
 #### WASM structs/tuples, bounds checks, struct-aware SIR ⭐ NEW
 - **SIR carries the struct type on field access.** `FieldAccess`/`FieldAssign`
   now include `struct_type`, filled by the lowerer from the object's type (tuple,

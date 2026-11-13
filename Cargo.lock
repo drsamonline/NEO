@@ -865,11 +865,11 @@ dependencies = [
 
 [[package]]
 name = "nova-common"
-version = "0.6.0"
+version = "0.6.1"
 
 [[package]]
 name = "nova-compiler"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "nova-backend-js",
  "nova-backend-rust",
@@ -921,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "nova-runtime"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "libc",
 ]

@@ -47,8 +47,8 @@ ABI declared in `compiler/src/runtime.rs` (`nova_print_*`, `nova_runtime_version
 - [ ] Build an executor for `async_rt`.
 - [ ] Expand I/O and threading tests before relying on either.
 - [x] Bounds-checked arrays in generated C (`nova_array_get`/`nova_array_set`).
-- [ ] Growable arrays and `array_push`/`array_pop` (they currently trap through
-      `nova_unsupported`).
+- [x] Growable arrays and `array_push`/`array_pop` (`nova_array_push` doubles
+      capacity; `nova_array_pop` shrinks the length).
 
 ## Verification
 

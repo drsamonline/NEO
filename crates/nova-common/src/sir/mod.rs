@@ -222,6 +222,170 @@ pub enum SirExpr {
     },
 }
 
+/// Function names reachable from `main`/`__main`, or `None` when the program
+/// has no entry point. Backends use this to avoid emitting imported-but-unused
+/// helpers that they cannot translate.
+pub fn reachable_functions(program: &SirProgram) -> Option<std::collections::HashSet<String>> {
+    let entry = if program.functions.iter().any(|f| f.name == "main") {
+        "main".to_string()
+    } else if program.functions.iter().any(|f| f.name == "__main") {
+        "__main".to_string()
+    } else {
+        return None;
+    };
+
+    let mut reachable = std::collections::HashSet::new();
+    let mut stack = vec![entry];
+    while let Some(name) = stack.pop() {
+        if !reachable.insert(name.clone()) {
+            continue;
+        }
+        if let Some(func) = program.functions.iter().find(|f| f.name == name) {
+            collect_callees(&func.body, &mut stack);
+        }
+    }
+    Some(reachable)
+}
+
+fn collect_callees(stmts: &[SirStatement], calls: &mut Vec<String>) {
+    for stmt in stmts {
+        match stmt {
+            SirStatement::Let { value, .. }
+            | SirStatement::Expr(value)
+            | SirStatement::Return(Some(value)) => collect_callees_expr(value, calls),
+            SirStatement::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                collect_callees_expr(condition, calls);
+                collect_callees(then_block, calls);
+                if let Some(else_block) = else_block {
+                    collect_callees(else_block, calls);
+                }
+            }
+            SirStatement::While { condition, body } => {
+                collect_callees_expr(condition, calls);
+                collect_callees(body, calls);
+            }
+            SirStatement::For { iterable, body, .. } => {
+                collect_callees_expr(iterable, calls);
+                collect_callees(body, calls);
+            }
+            SirStatement::Switch {
+                scrutinee,
+                cases,
+                default,
+            } => {
+                collect_callees_expr(scrutinee, calls);
+                for (constant, body) in cases {
+                    collect_callees_expr(constant, calls);
+                    collect_callees(body, calls);
+                }
+                if let Some(default) = default {
+                    collect_callees(default, calls);
+                }
+            }
+            SirStatement::Block(body) => collect_callees(body, calls),
+            SirStatement::Return(None) | SirStatement::Break | SirStatement::Continue => {}
+        }
+    }
+}
+
+fn collect_callees_expr(expr: &SirExpr, calls: &mut Vec<String>) {
+    match expr {
+        SirExpr::Call { callee, args } => {
+            calls.push(callee.clone());
+            for arg in args {
+                collect_callees_expr(arg, calls);
+            }
+        }
+        SirExpr::Typed { expr, .. }
+        | SirExpr::Cast { value: expr, .. }
+        | SirExpr::UnaryOp { operand: expr, .. }
+        | SirExpr::AddressOf(expr)
+        | SirExpr::Deref(expr) => collect_callees_expr(expr, calls),
+        SirExpr::BinOp { left, right, .. } => {
+            collect_callees_expr(left, calls);
+            collect_callees_expr(right, calls);
+        }
+        SirExpr::CallValue { args, .. } => {
+            for arg in args {
+                collect_callees_expr(arg, calls);
+            }
+        }
+        SirExpr::If {
+            condition,
+            then_expr,
+            else_expr,
+        } => {
+            collect_callees_expr(condition, calls);
+            collect_callees_expr(then_expr, calls);
+            if let Some(else_expr) = else_expr {
+                collect_callees_expr(else_expr, calls);
+            }
+        }
+        SirExpr::Block(stmts, final_expr) => {
+            collect_callees(stmts, calls);
+            if let Some(final_expr) = final_expr {
+                collect_callees_expr(final_expr, calls);
+            }
+        }
+        SirExpr::Assign { value, .. } => collect_callees_expr(value, calls),
+        SirExpr::Array(items) | SirExpr::Tuple { items, .. } => {
+            for item in items {
+                collect_callees_expr(item, calls);
+            }
+        }
+        SirExpr::Index { array, index } => {
+            collect_callees_expr(array, calls);
+            collect_callees_expr(index, calls);
+        }
+        SirExpr::IndexAssign {
+            array,
+            index,
+            value,
+        } => {
+            collect_callees_expr(array, calls);
+            collect_callees_expr(index, calls);
+            collect_callees_expr(value, calls);
+        }
+        SirExpr::StringSlice { value, start, end } => {
+            collect_callees_expr(value, calls);
+            collect_callees_expr(start, calls);
+            collect_callees_expr(end, calls);
+        }
+        SirExpr::StructLiteral { fields, .. } => {
+            for (_, value) in fields {
+                collect_callees_expr(value, calls);
+            }
+        }
+        SirExpr::FieldAccess { object, .. } => collect_callees_expr(object, calls),
+        SirExpr::FieldAssign {
+            object, value, ..
+        } => {
+            collect_callees_expr(object, calls);
+            collect_callees_expr(value, calls);
+        }
+        SirExpr::Closure { name, env } => {
+            calls.push(name.clone());
+            if let Some(env) = env {
+                collect_callees_expr(env, calls);
+            }
+        }
+        SirExpr::CallValue { callee, args, .. } => {
+            collect_callees_expr(callee, calls);
+            for arg in args {
+                collect_callees_expr(arg, calls);
+            }
+        }
+        SirExpr::EnvAccess { .. }
+        | SirExpr::SizeOf(_)
+        | SirExpr::Literal(_)
+        | SirExpr::Var(_) => {}
+    }
+}
+
 /// The C struct name for a tuple of `types`, e.g. `NovaTuple_int_string`.
 pub fn tuple_struct_name(types: &[String]) -> String {
     let mangled: Vec<String> = types

@@ -929,7 +929,13 @@ fn run_wasm_source(name: &str, source: &str) -> Option<(String, Option<i32>)> {
     if !node_available() || !wat2wasm_available() {
         return None;
     }
-    let dir = scratch(name);
+    // `use core;` resolves through the source file's ancestors, so the program
+    // has to live inside the workspace for the corpus tests.
+    let dir = workspace_root()
+        .join("target")
+        .join(format!("e2e-{}-{name}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create scratch directory");
     let path = dir.join(format!("{name}.nova"));
     fs::write(&path, source).expect("write wasm source");
     let wat = dir.join(format!("{name}.wat"));
@@ -980,6 +986,45 @@ fn wasm_structs_and_tuples_run_on_the_host() {
         return;
     };
     assert_eq!(stdout, "3\n5\n");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
+fn wasm_growable_arrays_run_on_the_host() {
+    let Some((stdout, code)) = run_wasm_source(
+        "wasm_push",
+        "use core;\n\nfn main() -> int {\n    let a = [1, 2];\n    array_push(a, 3);\n    array_push(a, 4);\n    print(array_len(a));\n    print(a[3]);\n    return 0;\n}\n",
+    ) else {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    };
+    assert_eq!(stdout, "4\n4\n");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
+fn wasm_closures_run_on_the_host() {
+    let Some((stdout, code)) = run_wasm_source(
+        "wasm_closures",
+        "use core;\n\nfn main() -> int {\n    let inc = |x| x + 1;\n    let dbl = |x| x * 2;\n    let both = compose(inc, dbl);\n    print(both(3));\n    return 0;\n}\n",
+    ) else {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    };
+    assert_eq!(stdout, "7\n");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
+fn wasm_capturing_closures_run_on_the_host() {
+    let Some((stdout, code)) = run_wasm_source(
+        "wasm_capture",
+        "fn main() -> int {\n    let y = 10;\n    let add = |x| x + y;\n    print(add(5));\n    return 0;\n}\n",
+    ) else {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    };
+    assert_eq!(stdout, "15\n");
     assert_eq!(code, Some(0));
 }
 

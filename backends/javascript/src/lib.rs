@@ -26,6 +26,11 @@ impl JsBackend {
         self.writeln("");
         // `print` is the language's line-at-a-time output, as in the C runtime.
         self.writeln("function print(value) { console.log(value); }");
+        // Arrays are native JS arrays; the runtime helpers are thin wrappers.
+        self.writeln("function nova_array_len(array) { return array.length; }");
+        self.writeln("function nova_array_push(array, value) { array.push(value); }");
+        // Environments are plain objects in JavaScript; copying is a no-op.
+        self.writeln("function nova_env_new(value, _size) { return value; }");
         self.writeln("");
         
         // Generate globals
@@ -37,8 +42,17 @@ impl JsBackend {
             self.writeln("");
         }
         
-        // Generate functions
+        // Emit only functions reachable from the entry point: `use core;`
+        // imports helpers this backend cannot translate, and they must not
+        // appear (or run) when unused.
+        let reachable = nova_common::sir::reachable_functions(program);
         for func in &program.functions {
+            if reachable
+                .as_ref()
+                .is_some_and(|names| !names.contains(&func.name))
+            {
+                continue;
+            }
             self.generate_function(func);
             self.writeln("");
         }
@@ -72,7 +86,12 @@ impl JsBackend {
     }
 
     fn generate_function(&mut self, func: &SirFunction) {
-        let params: Vec<String> = func.params.iter().map(|p| p.name.clone()).collect();
+        let mut params: Vec<String> = Vec::new();
+        // A lifted closure takes its environment as the first argument.
+        if func.env_type.is_some() {
+            params.push("__env".to_string());
+        }
+        params.extend(func.params.iter().map(|p| p.name.clone()));
         let params_str = params.join(", ");
         self.writeln(&format!("function {}({}) {{", func.name, params_str));
         
@@ -256,7 +275,8 @@ impl JsBackend {
                 )
             }
             // Objects are references in JavaScript, so address-of is a no-op.
-            SirExpr::Deref(inner) => format!("(*{})", self.expr_to_js(inner)),
+            // JavaScript has no pointers; references lower to the value itself.
+            SirExpr::Deref(inner) => self.expr_to_js(inner),
             SirExpr::AddressOf(inner) => self.expr_to_js(inner),
             SirExpr::Array(items) => {
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_js(item)).collect();
@@ -288,7 +308,15 @@ impl JsBackend {
                 }
             }
             SirExpr::Typed { expr, .. } => self.expr_to_js(expr),
-            SirExpr::Closure { name, .. } => name.clone(),
+            // Lifted closures always take the environment first; bind it (or
+            // `null`) so the value is callable with the user's arguments only.
+            SirExpr::Closure { name, env } => {
+                let environment = env
+                    .as_ref()
+                    .map(|env| self.expr_to_js(env))
+                    .unwrap_or_else(|| "null".to_string());
+                format!("{}.bind(null, {})", name, environment)
+            }
             SirExpr::EnvAccess { field, .. } => format!("__env.{}", field),
             SirExpr::SizeOf(_) => "0".to_string(),
             SirExpr::Cast { value, .. } => self.expr_to_js(value),

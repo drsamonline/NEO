@@ -52,10 +52,10 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - Four backend crates: C, JavaScript, Rust, WebAssembly. C is the reference and
   links the runtime shim; JavaScript and Rust output runs for the exercised
   subset. WebAssembly runs integers, booleans, string literals, `print`,
-  recursion, `if`/`while`/range-`for`, int arrays and structs/tuples
-  (bump-allocated linear memory, bounds-checked indexing) through
-  `backends/wasm/host.mjs`; closures are rejected with an explicit error
-  instead of emitting placeholder code.
+  recursion, `if`/`while`/range-`for`, growable int arrays, structs/tuples and
+  closures (including capturing and higher-order ones) through
+  `backends/wasm/host.mjs`; array access is bounds-checked and unsupported
+  signatures are rejected instead of emitting placeholder code.
 - Total: ~3,500+ lines of compiler code
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
@@ -172,9 +172,9 @@ cargo build --release
   (partial integration; see the status section)
 
 ### Coming Soon 🚧
-- WebAssembly support for closures (arrays, structs and tuples run; the emitter
-  rejects closures explicitly, and `nova-compiler test --parity` reports `wasm
-  held` only when `wat2wasm` or `node` is missing)
+- WebAssembly closures with non-`int` parameters or results (the emitter
+  rejects those signatures; the parity harness reports `wasm held` only when
+  `wat2wasm` or `node` is missing)
 - Multi-payload enum variants and value-position match bindings
 - General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not

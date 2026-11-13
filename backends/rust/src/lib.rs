@@ -41,6 +41,11 @@ impl RustBackend {
         self.writeln("fn print<T: std::fmt::Display>(value: T) {");
         self.writeln("    println!(\"{}\", value);");
         self.writeln("}");
+        // Arrays are `Vec<i32>`; these mirror the C runtime helpers.
+        self.writeln("fn nova_array_len(array: &Vec<i32>) -> i32 { array.len() as i32 }");
+        self.writeln(
+            "fn nova_array_push(array: &mut Vec<i32>, value: i32) { array.push(value); }",
+        );
         self.writeln("");
         
         // Generate globals as static mut (not ideal but works for simple cases)
@@ -52,8 +57,16 @@ impl RustBackend {
             self.writeln("");
         }
         
-        // Generate functions
+        // Emit only functions reachable from the entry point: imported but
+        // unused stdlib helpers may use constructs this backend cannot express.
+        let reachable = nova_common::sir::reachable_functions(program);
         for func in &program.functions {
+            if reachable
+                .as_ref()
+                .is_some_and(|names| !names.contains(&func.name))
+            {
+                continue;
+            }
             self.generate_function(func);
             self.writeln("");
         }
@@ -369,7 +382,7 @@ impl RustBackend {
                 )
             }
             SirExpr::Deref(inner) => format!("(*{})", self.expr_to_rust(inner)),
-            SirExpr::AddressOf(inner) => format!("&({})", self.expr_to_rust(inner)),
+            SirExpr::AddressOf(inner) => format!("&mut ({})", self.expr_to_rust(inner)),
             SirExpr::Array(items) => {
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_rust(item)).collect();
                 format!("vec![{}]", values.join(", "))

@@ -9,9 +9,14 @@
 //! `(pointer, length)` through `env.print_str`; integers go through
 //! `env.print_i32`. `backends/wasm/host.mjs` supplies those imports.
 //!
-//! Constructs without a representation yet (arrays, structs, tuples, closures)
-//! are rejected by the CLI's target check rather than silently lowered to
-//! placeholders - see `unsupported_feature` in this module.
+//! Int arrays use a `[len, capacity, data]` descriptor and grow in place via
+//! `array_push`; structs and tuples are bump-allocated blocks. Closures are
+//! lifted functions invoked through a `funcref` table with an environment
+//! pointer as their first argument.
+//!
+//! Constructs without a representation yet (floats in struct fields, non-int
+//! closure parameters, etc.) are rejected by `validate` rather than silently
+//! lowered to placeholders.
 
 use nova_common::sir::{
     SirBinOp, SirExpr, SirFunction, SirLiteral, SirProgram, SirStatement, SirUnOp,
@@ -32,6 +37,10 @@ pub struct WasmBackend {
     heap_start: usize,
     /// Struct name -> field name -> byte offset (each field occupies 4 bytes).
     structs: HashMap<String, Vec<(String, usize)>>,
+    /// Lifted closure function name -> table slot.
+    closures: HashMap<String, u32>,
+    /// Current indirect-call nesting depth, used to pick scratch locals.
+    call_depth: usize,
 }
 
 /// Reject programs this backend cannot represent faithfully, so `emit --target
@@ -137,9 +146,16 @@ fn collect_calls_expr(expr: &SirExpr, calls: &mut Vec<String>) {
             collect_calls_expr(left, calls);
             collect_calls_expr(right, calls);
         }
-        SirExpr::CallValue { args, .. } => {
+        SirExpr::CallValue { callee, args, .. } => {
+            collect_calls_expr(callee, calls);
             for arg in args {
                 collect_calls_expr(arg, calls);
+            }
+        }
+        SirExpr::Closure { name, env } => {
+            calls.push(name.clone());
+            if let Some(env) = env {
+                collect_calls_expr(env, calls);
             }
         }
         SirExpr::If {
@@ -195,8 +211,7 @@ fn collect_calls_expr(expr: &SirExpr, calls: &mut Vec<String>) {
             collect_calls_expr(object, calls);
             collect_calls_expr(value, calls);
         }
-        SirExpr::Closure { .. }
-        | SirExpr::EnvAccess { .. }
+        SirExpr::EnvAccess { .. }
         | SirExpr::SizeOf(_)
         | SirExpr::Literal(_)
         | SirExpr::Var(_) => {}
@@ -271,8 +286,13 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
         SirExpr::UnaryOp { operand, .. } => validate_expr(operand),
         SirExpr::Typed { expr, .. } | SirExpr::Cast { value: expr, .. } => validate_expr(expr),
         SirExpr::Call { callee, args } => {
-            if callee.starts_with("nova_") && callee != "nova_array_len" {
-                return Err("runtime calls other than array length");
+            if callee.starts_with("nova_")
+                && !matches!(
+                    callee.as_str(),
+                    "nova_array_len" | "nova_array_push" | "nova_env_new"
+                )
+            {
+                return Err("runtime calls this backend does not implement");
             }
             if callee == "print" || callee == "println" {
                 // Only integers and string literals have a host representation.
@@ -367,10 +387,35 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
             validate_expr(object)?;
             validate_expr(value)
         }
-        SirExpr::Closure { .. } | SirExpr::EnvAccess { .. } | SirExpr::CallValue { .. } => {
-            Err("closures and indirect calls")
+        SirExpr::Closure { env, .. } => {
+            if let Some(env) = env {
+                validate_expr(env)?;
+            }
+            Ok(())
         }
-        SirExpr::AddressOf(_) | SirExpr::Deref(_) => Err("references"),
+        SirExpr::EnvAccess { .. } => Ok(()),
+        SirExpr::CallValue {
+            callee,
+            args,
+            params,
+            return_type,
+        } => {
+            validate_expr(callee)?;
+            for arg in args {
+                validate_expr(arg)?;
+            }
+            if params
+                .iter()
+                .any(|param| matches!(param.as_str(), "float" | "f32" | "f64"))
+                || matches!(return_type.as_str(), "float" | "f32" | "f64")
+            {
+                return Err("closure signatures with floating-point parameters/results");
+            }
+            Ok(())
+        }
+        // WASM values for arrays/structs are already pointers, so `&` and `*`
+        // around them are no-ops.
+        SirExpr::AddressOf(inner) | SirExpr::Deref(inner) => validate_expr(inner),
     }
 }
 
@@ -388,6 +433,8 @@ impl WasmBackend {
             locals: Vec::new(),
             heap_start: DATA_BASE,
             structs: HashMap::new(),
+            closures: HashMap::new(),
+            call_depth: 0,
         }
     }
 
@@ -396,6 +443,14 @@ impl WasmBackend {
         self.strings.clear();
         self.globals.clear();
         self.functions.clear();
+
+        self.closures.clear();
+        for function in &program.functions {
+            if function.env_type.is_some() {
+                let index = self.closures.len() as u32;
+                self.closures.insert(function.name.clone(), index);
+            }
+        }
 
         self.structs.clear();
         for structure in &program.structs {
@@ -455,6 +510,45 @@ impl WasmBackend {
 
         self.writeln("(import \"env\" \"print_i32\" (func $print_i32 (param i32)))");
         self.writeln("(import \"env\" \"print_str\" (func $print_str (param i32 i32)))");
+        // Growable arrays: [len, capacity, data]; push copies into a larger
+        // block when full, so the descriptor pointer stays valid.
+        self.writeln("(func $__array_push (param $arr i32) (param $val i32)");
+        self.indent_level += 1;
+        self.writeln("(local $len i32) (local $cap i32) (local $data i32) (local $new i32) (local $i i32)");
+        self.writeln("(local.set $len (i32.load (local.get $arr)))");
+        self.writeln("(local.set $cap (i32.load offset=4 (local.get $arr)))");
+        self.writeln("(local.set $data (i32.load offset=8 (local.get $arr)))");
+        self.writeln("(if (i32.eq (local.get $len) (local.get $cap))");
+        self.indent_level += 1;
+        self.writeln("(then");
+        self.indent_level += 1;
+        self.writeln("(local.set $cap (select (i32.const 4) (i32.mul (local.get $cap) (i32.const 2)) (i32.eqz (local.get $cap))))");
+        self.writeln("(local.set $new (global.get $__heap))");
+        self.writeln("(global.set $__heap (i32.add (global.get $__heap) (i32.mul (local.get $cap) (i32.const 4))))");
+        self.writeln("(local.set $i (i32.const 0))");
+        self.writeln("(block $done");
+        self.indent_level += 1;
+        self.writeln("(loop $copy");
+        self.indent_level += 1;
+        self.writeln("(br_if $done (i32.ge_u (local.get $i) (local.get $len)))");
+        self.writeln("(i32.store (i32.add (local.get $new) (i32.mul (local.get $i) (i32.const 4))) (i32.load (i32.add (local.get $data) (i32.mul (local.get $i) (i32.const 4)))))");
+        self.writeln("(local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.writeln("(br $copy)");
+        self.indent_level -= 1;
+        self.writeln(")");
+        self.indent_level -= 1;
+        self.writeln(")");
+        self.writeln("(i32.store offset=8 (local.get $arr) (local.get $new))");
+        self.writeln("(i32.store offset=4 (local.get $arr) (local.get $cap))");
+        self.writeln("(local.set $data (local.get $new))");
+        self.indent_level -= 1;
+        self.writeln(")");
+        self.indent_level -= 1;
+        self.writeln(")");
+        self.writeln("(i32.store (i32.add (local.get $data) (i32.mul (local.get $len) (i32.const 4))) (local.get $val))");
+        self.writeln("(i32.store (local.get $arr) (i32.add (local.get $len) (i32.const 1)))");
+        self.indent_level -= 1;
+        self.writeln(")");
         // 16 pages (1 MiB) leaves room for strings plus bump-allocated arrays.
         self.writeln("(memory 16)");
         // The host reads string literals out of linear memory.
@@ -463,6 +557,21 @@ impl WasmBackend {
             "(global $__heap (mut i32) (i32.const {}))",
             self.heap_start
         ));
+
+        // One function type per closure arity (the environment is an extra
+        // leading i32 parameter), for both result shapes.
+        for arity in 0..8 {
+            let params = "i32 ".repeat(arity + 1);
+            self.writeln(&format!(
+                "(type $closure_{arity}_r (func (param {params})(result i32)))"
+            ));
+            self.writeln(&format!(
+                "(type $closure_{arity}_v (func (param {params})))"
+            ));
+        }
+        if !self.closures.is_empty() {
+            self.writeln(&format!("(table {} funcref)", self.closures.len()));
+        }
 
         for global in &program.globals {
             let typ = self.type_to_wasm(&global.typ);
@@ -498,6 +607,20 @@ impl WasmBackend {
             self.writeln(&format!("(export \"main\" (func ${entry}))"));
         }
 
+        if !self.closures.is_empty() {
+            let mut entries: Vec<(u32, String)> = self
+                .closures
+                .iter()
+                .map(|(name, index)| (*index, name.clone()))
+                .collect();
+            entries.sort_by_key(|(index, _)| *index);
+            let names: Vec<String> = entries
+                .iter()
+                .map(|(_, name)| format!("${name}"))
+                .collect();
+            self.writeln(&format!("(elem (i32.const 0) {})", names.join(" ")));
+        }
+
         self.indent_level -= 1;
         self.writeln(")");
         self.output.clone()
@@ -517,11 +640,15 @@ impl WasmBackend {
             String::new()
         };
 
-        let params: Vec<String> = func
-            .params
-            .iter()
-            .map(|p| format!("(param ${} {})", p.name, self.type_to_wasm(&p.typ)))
-            .collect();
+        let mut params: Vec<String> = Vec::new();
+        if func.env_type.is_some() {
+            params.push("(param $__env i32)".to_string());
+        }
+        params.extend(
+            func.params
+                .iter()
+                .map(|p| format!("(param ${} {})", p.name, self.type_to_wasm(&p.typ))),
+        );
 
         self.writeln(&format!(
             "(func ${}{}{}",
@@ -542,9 +669,21 @@ impl WasmBackend {
         // array bounds.
         self.writeln("(local $__arr_tmp i32)");
         self.writeln("(local $__idx_tmp i32)");
+        for depth in 0..4 {
+            self.writeln(&format!("(local $__call_ptr{depth} i32)"));
+            self.writeln(&format!("(local $__call_env{depth} i32)"));
+            self.writeln(&format!("(local $__call_index{depth} i32)"));
+        }
+        self.call_depth = 0;
 
         for stmt in &func.body {
             self.generate_statement(stmt);
+        }
+
+        // A value-returning function whose body ends in control flow (every
+        // branch returns) still needs a terminator on the fall-through path.
+        if returns_value(func) {
+            self.writeln("unreachable");
         }
 
         self.indent_level -= 1;
@@ -1032,6 +1171,29 @@ impl WasmBackend {
                 self.emit_print(args);
             }
             // Arrays are a pointer to `[len, elem0, elem1, ...]` in linear memory.
+            // `array_push` grows the data and updates the descriptor in place.
+            SirExpr::Call { callee, args } if callee == "nova_array_push" => {
+                if let Some(array) = args.first() {
+                    self.generate_expr(array);
+                } else {
+                    self.writeln("(i32.const 0)");
+                }
+                if let Some(value) = args.get(1) {
+                    self.generate_expr(value);
+                } else {
+                    self.writeln("(i32.const 0)");
+                }
+                self.writeln("(call $__array_push)");
+            }
+            // The environment already lives in linear memory, so copying it to
+            // the heap is a no-op on this backend.
+            SirExpr::Call { callee, args } if callee == "nova_env_new" => {
+                if let Some(value) = args.first() {
+                    self.generate_expr(value);
+                } else {
+                    self.writeln("(i32.const 0)");
+                }
+            }
             SirExpr::Call { callee, args } if callee == "nova_array_len" => {
                 if let Some(array) = args.first() {
                     self.generate_expr(array);
@@ -1046,12 +1208,38 @@ impl WasmBackend {
                 }
                 self.writeln(&format!("(call ${callee})"));
             }
-            SirExpr::CallValue { args, .. } => {
-                // Indirect calls (closures) have no WebAssembly ABI yet.
+            SirExpr::CallValue {
+                callee,
+                args,
+                return_type,
+                ..
+            } => {
+                // Closure value: [table index, environment pointer].
+                let depth = self.call_depth.min(3);
+                self.call_depth += 1;
+                self.generate_expr(callee);
+                self.writeln(&format!("(local.tee $__call_ptr{depth})"));
+                self.writeln("(i32.load offset=4)");
+                self.writeln(&format!("(local.set $__call_env{depth})"));
+                self.writeln(&format!("(local.get $__call_ptr{depth})"));
+                self.writeln("(i32.load)");
+                self.writeln(&format!("(local.set $__call_index{depth})"));
+                self.writeln(&format!("(local.get $__call_env{depth})"));
                 for arg in args {
                     self.generate_expr(arg);
                 }
-                self.writeln("(i32.const 0)");
+                self.call_depth -= 1;
+                self.writeln(&format!("(local.get $__call_index{depth})"));
+                let returns = return_type.as_str();
+                let suffix = if matches!(returns, "" | "void" | "()" | "unit" | "!") {
+                    "v"
+                } else {
+                    "r"
+                };
+                self.writeln(&format!(
+                    "(call_indirect (type $closure_{}_{suffix}))",
+                    args.len()
+                ));
             }
             SirExpr::If {
                 condition,
@@ -1092,8 +1280,36 @@ impl WasmBackend {
             // Constructs without a WebAssembly representation. The CLI rejects
             // them before reaching here; emitting a marker keeps `emit` honest
             // if the backend is used directly.
-            SirExpr::Closure { .. } | SirExpr::EnvAccess { .. } => {
-                self.writeln("(; closure: unsupported ;) (i32.const 0)");
+            SirExpr::Closure { name, env } => {
+                self.writeln("(global.get $__heap)");
+                self.writeln("(local.set $__arr_tmp)");
+                self.writeln("(global.set $__heap");
+                self.indent_level += 1;
+                self.writeln("(i32.add (global.get $__heap) (i32.const 8))");
+                self.indent_level -= 1;
+                self.writeln(")");
+                let index = self.closures.get(name).copied().unwrap_or(0);
+                self.writeln("(local.get $__arr_tmp)");
+                self.writeln(&format!("(i32.const {index})"));
+                self.writeln("(i32.store)");
+                self.writeln("(local.get $__arr_tmp)");
+                if let Some(env) = env {
+                    self.generate_expr(env);
+                } else {
+                    self.writeln("(i32.const 0)");
+                }
+                self.writeln("(i32.store offset=4)");
+                self.writeln("(local.get $__arr_tmp)");
+            }
+            SirExpr::EnvAccess { env_type, field } => {
+                self.writeln("(local.get $__env)");
+                let offset = self
+                    .structs
+                    .get(env_type)
+                    .and_then(|layout| layout.iter().find(|(name, _)| name == field))
+                    .map(|(_, offset)| *offset)
+                    .unwrap_or(0);
+                self.writeln(&format!("(i32.load offset={offset})"));
             }
             SirExpr::SizeOf(_) => self.writeln("(i32.const 4)"),
             SirExpr::Cast { value, .. } => self.generate_expr(value),
@@ -1149,35 +1365,45 @@ impl WasmBackend {
                 self.generate_expr(value);
                 self.writeln(&format!("(i32.store offset={offset})"));
             }
-            SirExpr::Deref(inner) => {
-                self.generate_expr(inner);
-                self.writeln("(i32.load)");
-            }
-            SirExpr::AddressOf(inner) => {
-                self.generate_expr(inner);
-                self.writeln("(; address-of: unsupported ;)");
-            }
+            SirExpr::Deref(inner) => self.generate_expr(inner),
+            // Arrays and structs are already pointers into linear memory, so
+            // taking their address is a no-op.
+            SirExpr::AddressOf(inner) => self.generate_expr(inner),
             SirExpr::Array(items) => {
-                let size = 4 + 4 * items.len();
-                // base = heap; heap += size
+                // Descriptor: [len, capacity, data pointer]. Keeping the
+                // descriptor stable lets `array_push` grow the data without
+                // changing the value held by the variable.
+                let data_size = 4 * items.len();
                 self.writeln("(global.get $__heap)");
                 self.writeln("(local.set $__arr_tmp)");
                 self.writeln("(global.set $__heap");
                 self.indent_level += 1;
                 self.writeln(&format!(
-                    "(i32.add (global.get $__heap) (i32.const {size}))"
+                    "(i32.add (global.get $__heap) (i32.const {}))",
+                    12 + data_size
                 ));
                 self.indent_level -= 1;
                 self.writeln(")");
-                // Length header.
+                // Data starts right after the 12-byte descriptor.
+                self.writeln("(local.get $__arr_tmp)");
+                self.writeln("(i32.const 12)");
+                self.writeln("(i32.add)");
+                self.writeln("(local.set $__idx_tmp)");
+                // len, capacity, data.
                 self.writeln("(local.get $__arr_tmp)");
                 self.writeln(&format!("(i32.const {})", items.len()));
                 self.writeln("(i32.store)");
+                self.writeln("(local.get $__arr_tmp)");
+                self.writeln(&format!("(i32.const {})", items.len()));
+                self.writeln("(i32.store offset=4)");
+                self.writeln("(local.get $__arr_tmp)");
+                self.writeln("(local.get $__idx_tmp)");
+                self.writeln("(i32.store offset=8)");
                 // Elements.
                 for (index, item) in items.iter().enumerate() {
-                    self.writeln("(local.get $__arr_tmp)");
+                    self.writeln("(local.get $__idx_tmp)");
                     self.generate_expr(item);
-                    self.writeln(&format!("(i32.store offset={})", 4 + index * 4));
+                    self.writeln(&format!("(i32.store offset={})", index * 4));
                 }
                 self.writeln("(local.get $__arr_tmp)");
             }
@@ -1226,11 +1452,10 @@ impl WasmBackend {
         self.writeln(")");
     }
 
-    /// Push `base + 4 + index*4` for the array/value captured by the check.
+    /// Push `data pointer + index*4` for the array/value captured by the check.
     fn emit_element_address(&mut self) {
         self.writeln("(local.get $__arr_tmp)");
-        self.writeln("(i32.const 4)");
-        self.writeln("(i32.add)");
+        self.writeln("(i32.load offset=8)");
         self.writeln("(local.get $__idx_tmp)");
         self.writeln("(i32.const 4)");
         self.writeln("(i32.mul)");
@@ -1381,12 +1606,22 @@ fn returns_value(func: &SirFunction) -> bool {
         .unwrap_or(false)
 }
 
+fn is_void_type(typ: &str) -> bool {
+    matches!(typ, "" | "void" | "()" | "unit" | "!")
+}
+
 fn expression_yields_value(expr: &SirExpr, functions: &[(String, bool)]) -> bool {
+    if let SirExpr::Typed { expr, .. } = expr {
+        return expression_yields_value(expr, functions);
+    }
     match expr {
         SirExpr::Call { callee, .. } => {
             if callee == "print" || callee == "println" {
                 // `emit_print` leaves a dummy value for `drop`.
                 return true;
+            }
+            if callee == "nova_array_push" || callee == "nova_env_new" {
+                return false;
             }
             functions
                 .iter()
@@ -1397,6 +1632,9 @@ fn expression_yields_value(expr: &SirExpr, functions: &[(String, bool)]) -> bool
         SirExpr::Assign { .. }
         | SirExpr::IndexAssign { .. }
         | SirExpr::FieldAssign { .. } => false,
+        SirExpr::CallValue { return_type, .. } => {
+            !matches!(return_type.as_str(), "" | "void" | "()" | "unit" | "!")
+        }
         _ => true,
     }
 }
