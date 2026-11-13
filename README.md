@@ -6,6 +6,8 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+
+![Screenshot](docs/shot.png)
 **A statically-typed, compiled systems programming language.** Its compiler lowers NOVA source through a semantic pipeline — lexer, parser, semantic analyser, SIR, lowerer — to four backends: **C, JavaScript, Rust and WebAssembly**, with a runtime, package manager, language server and debugger alongside.
 
 <a href="https://drsamonline.github.io/NEO/"><img src="https://img.shields.io/badge/Landing%20Page-Visit-3b82f6?style=flat-square" alt="Landing page"></a>
@@ -13,7 +15,7 @@
 <a href="https://img.shields.io/badge/Phase%202-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%202-Complete-brightgreen?style=flat-square" alt="Phase 2 Complete"></a>
 <a href="https://img.shields.io/badge/Phase%203-Partial-yellow"><img src="https://img.shields.io/badge/Phase%203-Partial-yellow?style=flat-square" alt="Phase 3 Partial"></a>
 <a href="https://img.shields.io/badge/Phase%204-In%20Progress-yellow"><img src="https://img.shields.io/badge/Phase%204-In%20Progress-yellow?style=flat-square" alt="Phase 4 In Progress"></a>
-<a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.0-blue?style=flat-square" alt="Version 0.6.0"></a>
+<a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.1-blue?style=flat-square" alt="Version 0.6.1"></a>
 <a href="backends/"><img src="https://img.shields.io/badge/Backends-4%20targets-orange?style=flat-square" alt="4 backend targets"></a>
 <a href="https://img.shields.io/badge/language-Rust-dea584"><img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square" alt="Rust"></a>
 
@@ -189,17 +191,15 @@ cargo build --release
 <!-- support:sweep -->
 ## Support
 
-One person's work: no company, no ads, no tracking, no paid tier. If it saved you an
-afternoon, a contribution keeps the next one coming — any amount, or none.
-
 | | |
 |---|---|
-| **UPI** | `drsohilboi@ybl` |
-| **Ko-fi** | [ko-fi.com/matneo](https://ko-fi.com/matneo) |
-| **PayPal** | [paypal.me/drsohilmomin](https://paypal.me/drsohilmomin?locale.x=en_GB&country.x=IN) |
-| **Books** | [the author's other work](https://www.amazon.com/stores/author/B08ZT331LY/allbooks) |
-| **Elsewhere** | [all projects](https://drsamonline.github.io/) |
-| **Email** | [sohilmomin2000@gmail.com](mailto:sohilmomin2000@gmail.com) — bugs, corrections, requests |
+| UPI (India) | `drsohilboi@ybl` — payee Dr Sohil Momin, open amount, or scan [the QR](docs/assets/upi-qr.svg) |
+| GitHub Sponsors | [github.com/sponsors/drsamonline](https://github.com/sponsors/drsamonline) |
+| Ko-fi | [ko-fi.com/matneo](https://ko-fi.com/matneo) |
+| PayPal | [paypal.me/drsohilmomin](https://paypal.me/drsohilmomin?locale.x=en_GB&country.x=IN) |
+| My books | [Amazon author store](https://www.amazon.com/stores/author/B08ZT331LY/allbooks?ccs_id=aed72b9f-71d9-41dc-adee-e9368a317acc) |
+| More apps | [drsamonline.github.io](https://drsamonline.github.io/) |
+| Email | [sohilmomin2000@gmail.com](mailto:sohilmomin2000@gmail.com) |
 
 ## License
 
