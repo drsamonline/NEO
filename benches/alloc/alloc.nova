@@ -1,0 +1,13 @@
+// Benchmark: many short-lived array literals.
+// Exercises allocation, indexing and mutation rather than pure arithmetic.
+
+fn main() -> int {
+    let total = 0;
+    for i in 0..2000 {
+        let a = [i, i + 1, i + 2, i + 3];
+        a[2] = a[2] + 1;
+        total = total + a[2];
+    }
+    print(total);
+    return 0;
+}

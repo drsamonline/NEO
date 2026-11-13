@@ -1,21 +1,25 @@
 # Benchmarks
 
-The first benchmark is deliberately small and boring: recursive `fib(35)`, which
-exercises calls, comparisons, integer arithmetic and return values — the parts
-every backend must get right before performance means anything.
+Two benchmarks:
+
+- `benches/fib/` — recursive `fib(35)`: calls, comparisons, integer arithmetic
+  and return values.
+- `benches/alloc/` — 2000 short-lived array literals with indexing and mutation:
+  allocation and bounds-checked array access rather than pure arithmetic.
 
 ## Method
 
-`benches/run.sh` does the same thing for both programs:
+`benches/run.sh` does the same thing for each program:
 
-1. `nova-compiler emit benches/fib/fib.nova` writes the C for the NOVA program
-   plus the runtime (`nova_runtime.c`).
-2. Both that C and the hand-written baseline `benches/fib/fib.c` are compiled
-   with the same `cc -O2`.
+1. `nova-compiler emit <bench>.nova` writes the C for the NOVA program plus the
+   runtime (`nova_runtime.c`).
+2. Both that C and the hand-written C baseline are compiled with the same
+   `cc -O2`.
 3. Each binary runs 5 times; the **best** wall-clock time is reported, in
    microseconds, measured with `date +%s%N`.
 4. Before timing, the two programs' stdout is compared; the script fails if
-   they disagree.
+   they disagree, and also fails when NOVA→C exceeds `BENCH_MAX_RATIO` (default
+   1.5×) of the C baseline.
 
 Run from the repository root:
 
@@ -24,18 +28,21 @@ benches/run.sh        # 5 runs each
 benches/run.sh 20     # more runs
 ```
 
-## Result (Linux x86-64, fib(35), best of 5)
+## Results (Linux x86-64, best of 5)
 
 ```
-output: 9227465 (nova and C agree)
-nova->C      22551 us
-C            22410 us
+fib(35): output 9227465 (nova and C agree)
+  nova->C      22326 us
+  C            21964 us
+alloc x2000: output 2005000 (nova and C agree)
+  nova->C      2586 us
+  C            2591 us
 ```
 
-The NOVA→C path is within ~0.6% of the hand-written C baseline on this run. That
-is expected: the C backend emits the same recursive shape and the runtime is not
-involved in the loop. This number is a regression guard for codegen, not a claim
-that NOVA is as fast as C in general — there is one benchmark and it does no
-allocation, strings or I/O.
+Both are within a few percent of the hand-written C baselines on this run. That
+is expected: the C backend emits the same shapes, and the allocation benchmark
+pays the same `malloc`/runtime cost per array. These numbers are a regression
+guard for codegen, not a claim that NOVA is as fast as C in general — neither
+benchmark does strings, I/O, or struct-heavy work.
 
 Measured values depend on the machine and load; re-run before comparing.

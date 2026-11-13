@@ -14,7 +14,7 @@
 //! placeholders - see `unsupported_feature` in this module.
 
 use nova_common::sir::{
-    SirBinOp, SirExpr, SirFunction, SirGlobal, SirLiteral, SirProgram, SirStatement, SirUnOp,
+    SirBinOp, SirExpr, SirFunction, SirLiteral, SirProgram, SirStatement, SirUnOp,
 };
 use std::collections::HashSet;
 
@@ -28,15 +28,177 @@ pub struct WasmBackend {
     /// Declared function names and whether they return a value.
     functions: Vec<(String, bool)>,
     locals: Vec<(String, String)>,
+    /// First byte of the bump-allocated heap for array literals.
+    heap_start: usize,
 }
 
 /// Reject programs this backend cannot represent faithfully, so `emit --target
 /// wasm` fails with a reason instead of writing placeholder code.
 pub fn validate(program: &SirProgram) -> Result<(), &'static str> {
-    for func in &program.functions {
-        validate_statements(&func.body)?;
+    // Only functions reachable from the entry point matter: a `use core;`
+    // program imports the whole module, including helpers this backend cannot
+    // compile, and it must still run if none of them are called.
+    let Some(reachable) = reachable_functions(program) else {
+        return Ok(());
+    };
+    for function in &program.functions {
+        if reachable.contains(&function.name) {
+            validate_statements(&function.body)?;
+        }
     }
     Ok(())
+}
+
+/// Functions called (transitively) from `main`/`__main`, or `None` when the
+/// program has no entry point.
+fn reachable_functions(program: &SirProgram) -> Option<HashSet<String>> {
+    let entry = if program.functions.iter().any(|f| f.name == "main") {
+        "main".to_string()
+    } else if program.functions.iter().any(|f| f.name == "__main") {
+        "__main".to_string()
+    } else {
+        return None;
+    };
+
+    let mut reachable = HashSet::new();
+    let mut stack = vec![entry];
+    while let Some(name) = stack.pop() {
+        if !reachable.insert(name.clone()) {
+            continue;
+        }
+        if let Some(func) = program.functions.iter().find(|f| f.name == name) {
+            collect_calls(&func.body, &mut stack);
+        }
+    }
+    Some(reachable)
+}
+
+fn collect_calls(stmts: &[SirStatement], calls: &mut Vec<String>) {
+    for stmt in stmts {
+        match stmt {
+            SirStatement::Let { value, .. }
+            | SirStatement::Expr(value)
+            | SirStatement::Return(Some(value)) => collect_calls_expr(value, calls),
+            SirStatement::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                collect_calls_expr(condition, calls);
+                collect_calls(then_block, calls);
+                if let Some(else_block) = else_block {
+                    collect_calls(else_block, calls);
+                }
+            }
+            SirStatement::While { condition, body } => {
+                collect_calls_expr(condition, calls);
+                collect_calls(body, calls);
+            }
+            SirStatement::For { iterable, body, .. } => {
+                collect_calls_expr(iterable, calls);
+                collect_calls(body, calls);
+            }
+            SirStatement::Switch {
+                scrutinee,
+                cases,
+                default,
+            } => {
+                collect_calls_expr(scrutinee, calls);
+                for (constant, body) in cases {
+                    collect_calls_expr(constant, calls);
+                    collect_calls(body, calls);
+                }
+                if let Some(default) = default {
+                    collect_calls(default, calls);
+                }
+            }
+            SirStatement::Block(body) => collect_calls(body, calls),
+            SirStatement::Return(None) | SirStatement::Break | SirStatement::Continue => {}
+        }
+    }
+}
+
+fn collect_calls_expr(expr: &SirExpr, calls: &mut Vec<String>) {
+    match expr {
+        SirExpr::Call { callee, args } => {
+            calls.push(callee.clone());
+            for arg in args {
+                collect_calls_expr(arg, calls);
+            }
+        }
+        SirExpr::Typed { expr, .. }
+        | SirExpr::Cast { value: expr, .. }
+        | SirExpr::UnaryOp { operand: expr, .. }
+        | SirExpr::AddressOf(expr)
+        | SirExpr::Deref(expr) => collect_calls_expr(expr, calls),
+        SirExpr::BinOp { left, right, .. } => {
+            collect_calls_expr(left, calls);
+            collect_calls_expr(right, calls);
+        }
+        SirExpr::CallValue { args, .. } => {
+            for arg in args {
+                collect_calls_expr(arg, calls);
+            }
+        }
+        SirExpr::If {
+            condition,
+            then_expr,
+            else_expr,
+        } => {
+            collect_calls_expr(condition, calls);
+            collect_calls_expr(then_expr, calls);
+            if let Some(else_expr) = else_expr {
+                collect_calls_expr(else_expr, calls);
+            }
+        }
+        SirExpr::Block(stmts, final_expr) => {
+            collect_calls(stmts, calls);
+            if let Some(final_expr) = final_expr {
+                collect_calls_expr(final_expr, calls);
+            }
+        }
+        SirExpr::Assign { value, .. } => collect_calls_expr(value, calls),
+        SirExpr::Array(items) | SirExpr::Tuple { items, .. } => {
+            for item in items {
+                collect_calls_expr(item, calls);
+            }
+        }
+        SirExpr::Index { array, index } => {
+            collect_calls_expr(array, calls);
+            collect_calls_expr(index, calls);
+        }
+        SirExpr::IndexAssign {
+            array,
+            index,
+            value,
+        } => {
+            collect_calls_expr(array, calls);
+            collect_calls_expr(index, calls);
+            collect_calls_expr(value, calls);
+        }
+        SirExpr::StringSlice { value, start, end } => {
+            collect_calls_expr(value, calls);
+            collect_calls_expr(start, calls);
+            collect_calls_expr(end, calls);
+        }
+        SirExpr::StructLiteral { fields, .. } => {
+            for (_, value) in fields {
+                collect_calls_expr(value, calls);
+            }
+        }
+        SirExpr::FieldAccess { object, .. } => collect_calls_expr(object, calls),
+        SirExpr::FieldAssign {
+            object, value, ..
+        } => {
+            collect_calls_expr(object, calls);
+            collect_calls_expr(value, calls);
+        }
+        SirExpr::Closure { .. }
+        | SirExpr::EnvAccess { .. }
+        | SirExpr::SizeOf(_)
+        | SirExpr::Literal(_)
+        | SirExpr::Var(_) => {}
+    }
 }
 
 fn validate_statements(stmts: &[SirStatement]) -> Result<(), &'static str> {
@@ -107,6 +269,9 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
         SirExpr::UnaryOp { operand, .. } => validate_expr(operand),
         SirExpr::Typed { expr, .. } | SirExpr::Cast { value: expr, .. } => validate_expr(expr),
         SirExpr::Call { callee, args } => {
+            if callee.starts_with("nova_") && callee != "nova_array_len" {
+                return Err("runtime calls other than array length");
+            }
             if callee == "print" || callee == "println" {
                 // Only integers and string literals have a host representation.
                 if let Some(arg) = args.first() {
@@ -144,8 +309,27 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
             Ok(())
         }
         SirExpr::Assign { value, .. } => validate_expr(value),
-        SirExpr::Array(_) => Err("arrays"),
-        SirExpr::Index { .. } | SirExpr::IndexAssign { .. } => Err("array indexing"),
+        SirExpr::Array(items) => {
+            // Every element is stored as an i32, so nested arrays would store a
+            // pointer (fine) but strings and floats would change meaning.
+            for item in items {
+                validate_expr(item)?;
+            }
+            Ok(())
+        }
+        SirExpr::Index { array, index } => {
+            validate_expr(array)?;
+            validate_expr(index)
+        }
+        SirExpr::IndexAssign {
+            array,
+            index,
+            value,
+        } => {
+            validate_expr(array)?;
+            validate_expr(index)?;
+            validate_expr(value)
+        }
         SirExpr::StringSlice { .. } => Err("string slicing"),
         SirExpr::Tuple { .. } => Err("tuples"),
         SirExpr::StructLiteral { .. } => Err("struct literals"),
@@ -158,7 +342,6 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
 }
 
 const DATA_BASE: usize = 1024;
-const PAGE: usize = 65536;
 
 impl WasmBackend {
     pub fn new() -> Self {
@@ -170,6 +353,7 @@ impl WasmBackend {
             params: HashSet::new(),
             functions: Vec::new(),
             locals: Vec::new(),
+            heap_start: DATA_BASE,
         }
     }
 
@@ -186,8 +370,22 @@ impl WasmBackend {
             .map(|f| (f.name.clone(), returns_value(f)))
             .collect();
 
+        // Only reachable functions are emitted: `use core;` merges helpers that
+        // this backend cannot compile, and they must not appear as dead code.
+        let reachable = reachable_functions(program);
+        let functions: Vec<&SirFunction> = program
+            .functions
+            .iter()
+            .filter(|func| {
+                reachable
+                    .as_ref()
+                    .map(|names| names.contains(&func.name))
+                    .unwrap_or(true)
+            })
+            .collect();
+
         // Assign every string literal an offset before emitting code.
-        for func in &program.functions {
+        for func in &functions {
             self.collect_statement_strings(&func.body);
         }
         for global in &program.globals {
@@ -204,15 +402,22 @@ impl WasmBackend {
             *offset = next_offset;
             next_offset += text.len();
         }
+        // Arrays are bump-allocated after the string data.
+        self.heap_start = (next_offset + 3) & !3;
 
         self.writeln("(module");
         self.indent_level += 1;
 
         self.writeln("(import \"env\" \"print_i32\" (func $print_i32 (param i32)))");
         self.writeln("(import \"env\" \"print_str\" (func $print_str (param i32 i32)))");
-        self.writeln(&format!("(memory {})", memory_pages(&program.globals, &self.strings)));
+        // 16 pages (1 MiB) leaves room for strings plus bump-allocated arrays.
+        self.writeln("(memory 16)");
         // The host reads string literals out of linear memory.
         self.writeln("(export \"memory\" (memory 0))");
+        self.writeln(&format!(
+            "(global $__heap (mut i32) (i32.const {}))",
+            self.heap_start
+        ));
 
         for global in &program.globals {
             let typ = self.type_to_wasm(&global.typ);
@@ -231,7 +436,7 @@ impl WasmBackend {
             ));
         }
 
-        for func in &program.functions {
+        for func in &functions {
             self.generate_function(func);
         }
 
@@ -288,6 +493,8 @@ impl WasmBackend {
         for (name, typ) in self.locals.clone() {
             self.writeln(&format!("(local ${name} {typ})"));
         }
+        // Scratch pointer used while building an array literal.
+        self.writeln("(local $__arr_tmp i32)");
 
         for stmt in &func.body {
             self.generate_statement(stmt);
@@ -761,14 +968,30 @@ impl WasmBackend {
                 self.writeln(wat_instruction(op));
             }
             SirExpr::UnaryOp { op, operand } => {
-                self.generate_expr(operand);
-                self.writeln(match op {
-                    SirUnOp::Neg => "i32.neg",
-                    SirUnOp::Not => "i32.eqz",
-                });
+                match op {
+                    // WebAssembly has no integer negate instruction: 0 - x.
+                    SirUnOp::Neg => {
+                        self.writeln("(i32.const 0)");
+                        self.generate_expr(operand);
+                        self.writeln("i32.sub");
+                    }
+                    SirUnOp::Not => {
+                        self.generate_expr(operand);
+                        self.writeln("i32.eqz");
+                    }
+                }
             }
             SirExpr::Call { callee, args } if callee == "print" || callee == "println" => {
                 self.emit_print(args);
+            }
+            // Arrays are a pointer to `[len, elem0, elem1, ...]` in linear memory.
+            SirExpr::Call { callee, args } if callee == "nova_array_len" => {
+                if let Some(array) = args.first() {
+                    self.generate_expr(array);
+                    self.writeln("(i32.load)");
+                } else {
+                    self.writeln("(i32.const 0)");
+                }
             }
             SirExpr::Call { callee, args } => {
                 for arg in args {
@@ -851,11 +1074,28 @@ impl WasmBackend {
                 self.writeln("(; address-of: unsupported ;)");
             }
             SirExpr::Array(items) => {
-                for item in items {
+                let size = 4 + 4 * items.len();
+                // base = heap; heap += size
+                self.writeln("(global.get $__heap)");
+                self.writeln("(local.set $__arr_tmp)");
+                self.writeln("(global.set $__heap");
+                self.indent_level += 1;
+                self.writeln(&format!(
+                    "(i32.add (global.get $__heap) (i32.const {size}))"
+                ));
+                self.indent_level -= 1;
+                self.writeln(")");
+                // Length header.
+                self.writeln("(local.get $__arr_tmp)");
+                self.writeln(&format!("(i32.const {})", items.len()));
+                self.writeln("(i32.store)");
+                // Elements.
+                for (index, item) in items.iter().enumerate() {
+                    self.writeln("(local.get $__arr_tmp)");
                     self.generate_expr(item);
-                    self.writeln("drop");
+                    self.writeln(&format!("(i32.store offset={})", 4 + index * 4));
                 }
-                self.writeln("(i32.const 0) (; array: unsupported ;)");
+                self.writeln("(local.get $__arr_tmp)");
             }
             SirExpr::StringSlice { value, .. } => {
                 self.generate_expr(value);
@@ -863,11 +1103,28 @@ impl WasmBackend {
             }
             SirExpr::Index { array, index } => {
                 self.generate_expr(array);
+                self.writeln("(i32.const 4)");
+                self.writeln("(i32.add)");
                 self.generate_expr(index);
-                self.writeln("(i32.const 0) (; index: unsupported ;)");
+                self.writeln("(i32.const 4)");
+                self.writeln("(i32.mul)");
+                self.writeln("(i32.add)");
+                self.writeln("(i32.load)");
             }
-            SirExpr::IndexAssign { .. } => {
-                self.writeln("(; index assignment: unsupported ;)");
+            SirExpr::IndexAssign {
+                array,
+                index,
+                value,
+            } => {
+                self.generate_expr(array);
+                self.writeln("(i32.const 4)");
+                self.writeln("(i32.add)");
+                self.generate_expr(index);
+                self.writeln("(i32.const 4)");
+                self.writeln("(i32.mul)");
+                self.writeln("(i32.add)");
+                self.generate_expr(value);
+                self.writeln("(i32.store)");
             }
         }
     }
@@ -994,19 +1251,9 @@ fn expression_yields_value(expr: &SirExpr, functions: &[(String, bool)]) -> bool
                 .map(|(_, returns)| *returns)
                 .unwrap_or(true)
         }
-        SirExpr::Assign { .. } => false,
+        SirExpr::Assign { .. } | SirExpr::IndexAssign { .. } => false,
         _ => true,
     }
-}
-
-fn memory_pages(globals: &[SirGlobal], strings: &[(String, usize)]) -> usize {
-    let bytes = strings
-        .iter()
-        .map(|(text, offset)| offset + text.len())
-        .max()
-        .unwrap_or(DATA_BASE);
-    let globals_bytes = globals.len() * 8;
-    ((bytes + globals_bytes) / PAGE).max(1)
 }
 
 fn escape_wat_string(text: &str) -> String {
@@ -1123,13 +1370,61 @@ mod tests {
         let mut backend = WasmBackend::new();
         let code = backend.generate(&program);
 
-        assert!(code.contains("(memory 1)"), "{code}");
+        assert!(code.contains("(memory 16)"), "{code}");
         assert!(code.contains("(export \"memory\" (memory 0))"), "{code}");
         assert!(code.contains("(data (i32.const 1024) \"hi\")"), "{code}");
         assert!(
             code.contains("(call $print_str (i32.const 1024) (i32.const 2))"),
             "{code}"
         );
+    }
+
+    #[test]
+    fn array_literals_allocate_and_index() {
+        let program = SirProgram {
+            functions: vec![SirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                return_type: None,
+                body: vec![
+                    SirStatement::Let {
+                        name: "a".to_string(),
+                        typ: Some("Array".to_string()),
+                        value: SirExpr::Array(vec![
+                            SirExpr::Literal(SirLiteral::Int(1)),
+                            SirExpr::Literal(SirLiteral::Int(2)),
+                        ]),
+                    },
+                    SirStatement::Expr(SirExpr::IndexAssign {
+                        array: Box::new(SirExpr::Var("a".to_string())),
+                        index: Box::new(SirExpr::Literal(SirLiteral::Int(1))),
+                        value: Box::new(SirExpr::Literal(SirLiteral::Int(9))),
+                    }),
+                    SirStatement::Expr(SirExpr::Call {
+                        callee: "print".to_string(),
+                        args: vec![SirExpr::Index {
+                            array: Box::new(SirExpr::Var("a".to_string())),
+                            index: Box::new(SirExpr::Literal(SirLiteral::Int(1))),
+                        }],
+                    }),
+                ],
+                span: Span::default(),
+                env_type: None,
+            }],
+            globals: vec![],
+            structs: vec![],
+        };
+
+        let mut backend = WasmBackend::new();
+        let code = backend.generate(&program);
+
+        assert!(code.contains("(global $__heap"), "{code}");
+        assert!(code.contains("(i32.store offset=4)"), "{code}");
+        assert!(code.contains("(i32.store offset=8)"), "{code}");
+        // Array values are pointers; the header holds the length.
+        assert!(code.contains("(i32.const 2)"), "{code}");
+        assert!(code.contains("(i32.store)"), "{code}");
+        assert!(!code.contains("array: unsupported"), "{code}");
     }
 
     #[test]

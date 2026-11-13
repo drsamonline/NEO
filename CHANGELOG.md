@@ -5,6 +5,19 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### WASM arrays, allocation benchmark ⭐ NEW
+- **The WASM target supports int arrays.** Array literals bump-allocate a block
+  of `[len, elem0, …]` in linear memory; reads and writes are pointer math plus
+  `i32.load`/`i32.store`, and `nova_array_len` reads the header. Only functions
+  reachable from `main` are emitted, so importing the whole `core` module no
+  longer drags unsupported helpers into the module. Structs, tuples and closures
+  remain explicitly rejected.
+- **Second benchmark:** `benches/alloc/` allocates 2000 four-element arrays with
+  indexing and mutation; NOVA→C measured 2586 us vs 2591 us for hand-written C
+  (best of 5). Both benchmarks now share the same timing and 1.5× guard.
+- **Tests:** WASM array emission unit test and an executed array program
+  (`print(total_of([1,2,3,4,5] with a[1]=10))` → `23`).
+
 #### WebAssembly parity, core stdlib values, benchmark guard ⭐ NEW
 - **The WebAssembly backend runs real programs.** It now emits declared locals,
   a linear memory with data segments for string literals, and imports

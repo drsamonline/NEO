@@ -924,6 +924,58 @@ fn wasm_output_assembles_and_runs_on_the_host() {
 }
 
 #[test]
+fn wasm_arrays_run_on_the_host() {
+    if !node_available() || !wat2wasm_available() {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    }
+
+    let dir = scratch("wasm-array");
+    let source = workspace_root().join("target").join("wasm_array.nova");
+    fs::create_dir_all(source.parent().expect("target directory")).expect("create target");
+    fs::write(
+        &source,
+        "use core;\n\nfn total_of(a: [int]) -> int {\n    let total = 0;\n    let i = 0;\n    while i < array_len(a) {\n        total = total + a[i];\n        i = i + 1;\n    }\n    return total;\n}\n\nfn main() -> int {\n    let a = [1, 2, 3, 4, 5];\n    a[1] = 10;\n    print(total_of(a));\n    return 0;\n}\n",
+    )
+    .expect("write source");
+
+    let wat = dir.join("array.wat");
+    let wasm = dir.join("array.wasm");
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("--target")
+        .arg("wasm")
+        .arg("-o")
+        .arg(&wat)
+        .output()
+        .expect("emit wasm");
+    let _ = fs::remove_file(&source);
+    assert!(emit.status.success(), "{}", String::from_utf8_lossy(&emit.stderr));
+
+    let assembler = std::env::var("WAT2WASM").unwrap_or_else(|_| "wat2wasm".to_string());
+    let assembled = Command::new(assembler)
+        .arg(&wat)
+        .arg("-o")
+        .arg(&wasm)
+        .output()
+        .expect("run wat2wasm");
+    assert!(
+        assembled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&assembled.stderr)
+    );
+
+    let run = Command::new("node")
+        .arg(workspace_root().join("backends/wasm/host.mjs"))
+        .arg(&wasm)
+        .output()
+        .expect("run the WASM host");
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "23\n");
+    assert_eq!(run.status.code(), Some(0));
+}
+
+#[test]
 fn javascript_and_rust_targets_emit_source() {
     let source = std::env::temp_dir().join("nova-target-emit.nova");
     fs::write(&source, "fn main() {\n    let x = 1;\n    println(x);\n}\n").expect("write source");
