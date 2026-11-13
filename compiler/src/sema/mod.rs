@@ -477,8 +477,8 @@ impl SemanticAnalyzer {
             }
             nova_common::Expr::Closure(params, body) => {
                 self.symbol_table.enter_scope();
-                for param in params {
-                    let symbol = Symbol::new(param.clone(), SymbolKind::Parameter, Span::default());
+                for (name, _typ) in params {
+                    let symbol = Symbol::new(name.clone(), SymbolKind::Parameter, Span::default());
                     let _ = self.symbol_table.insert(symbol);
                 }
                 self.check_expr(body);

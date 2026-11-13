@@ -25,6 +25,22 @@ fn c_compiler_available() -> bool {
         .unwrap_or(false)
 }
 
+fn node_available() -> bool {
+    Command::new("node")
+        .arg("--version")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+fn rustc_available() -> bool {
+    Command::new("rustc")
+        .arg("--version")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -976,6 +992,117 @@ fn call_results_print_with_their_return_type() {
         String::from_utf8_lossy(&run.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&run.stdout), "true\n1.5\nhi\n");
+}
+
+#[test]
+fn closure_parameters_accept_annotations_and_context() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("typed-closures");
+    let source = dir.join("typed_closures.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let f: fn(int) -> int = |x| x + 2;\n    println(f(3));\n\n    let g = |x: float| x * 2.0;\n    println(g(1.5));\n\n    let h = |x: string| x;\n    println(h(\"ok\"));\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "5\n3\nok\n");
+}
+
+#[test]
+fn javascript_output_runs_under_node() {
+    if !node_available() {
+        eprintln!("skipping: node is not installed");
+        return;
+    }
+
+    let dir = scratch("js-run");
+    let source = dir.join("typed.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let flag: bool = true;\n    let n: int = 7;\n    let name = \"nova\";\n    let f = 1.5;\n    print(flag);\n    print(n);\n    print(name);\n    print(f);\n}\n",
+    )
+    .expect("write source");
+    let js = dir.join("typed.js");
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("-o")
+        .arg(&js)
+        .arg("--target")
+        .arg("js")
+        .output()
+        .expect("emit js");
+    assert!(emit.status.success(), "emit failed: {}", String::from_utf8_lossy(&emit.stderr));
+
+    let run = Command::new("node")
+        .arg(&js)
+        .output()
+        .expect("run node");
+    assert!(
+        run.status.success(),
+        "node failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "true\n7\nnova\n1.5\n");
+}
+
+#[test]
+fn rust_output_compiles_and_runs() {
+    if !rustc_available() {
+        eprintln!("skipping: rustc is not installed");
+        return;
+    }
+
+    let dir = scratch("rust-run");
+    let source = dir.join("typed.nova");
+    fs::write(
+        &source,
+        "fn main() {\n    let flag: bool = true;\n    let n: int = 7;\n    let name = \"nova\";\n    let f = 1.5;\n    print(flag);\n    print(n);\n    print(name);\n    print(f);\n}\n",
+    )
+    .expect("write source");
+    let rust = dir.join("typed.rs");
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("-o")
+        .arg(&rust)
+        .arg("--target")
+        .arg("rust")
+        .output()
+        .expect("emit rust");
+    assert!(emit.status.success(), "emit failed: {}", String::from_utf8_lossy(&emit.stderr));
+
+    let binary = dir.join("typed-rust");
+    let compile = Command::new("rustc")
+        .arg(&rust)
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .expect("run rustc");
+    assert!(
+        compile.status.success(),
+        "rustc failed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run rust binary");
+    assert!(run.status.success());
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "true\n7\nnova\n1.5\n");
 }
 
 #[test]

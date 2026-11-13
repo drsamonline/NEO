@@ -24,6 +24,9 @@ impl JsBackend {
         // Add strict mode
         self.writeln("'use strict';");
         self.writeln("");
+        // `print` is the language's line-at-a-time output, as in the C runtime.
+        self.writeln("function print(value) { console.log(value); }");
+        self.writeln("");
         
         // Generate globals
         for global in &program.globals {
@@ -40,9 +43,11 @@ impl JsBackend {
             self.writeln("");
         }
         
-        // Generate main call if main function exists
+        // Run the entry point: an explicit `main`, or the synthetic `__main`.
         if program.functions.iter().any(|f| f.name == "main") {
             self.writeln("main();");
+        } else if program.functions.iter().any(|f| f.name == "__main") {
+            self.writeln("__main();");
         }
         
         self.output.clone()

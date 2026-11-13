@@ -146,9 +146,11 @@ cargo build --release
 - **Modules**: `use` and `mod` load sibling and standard-library files
 - **Strings**: slicing (`text[a..b]`) and string-literal `match` arms
 - **Generics**: functions, enums, structs and impl methods are monomorphised
-- **Closures and tuples**: lifted closures with heap environments and `fn(A) -> B`
-  values; `NovaTuple_*` structs with `let (a, b) = pair;` destructuring
-- **Backends**: `emit --target c|js|rust|wasm` selects a generator; build/run link C
+- **Closures and tuples**: lifted closures with heap environments, typed closure
+  parameters and `fn(A) -> B` values; `NovaTuple_*` structs with
+  `let (a, b) = pair;` destructuring
+- **Backends**: `emit --target c|js|rust|wasm` selects a generator; JS and Rust
+  output is executed in tests, build/run link C
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -158,7 +160,8 @@ cargo build --release
 ### Coming Soon 🚧
 - General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
-- A build/run path for the JavaScript, Rust and WebAssembly targets
+- A build/run path in the compiler for JavaScript, Rust and WebAssembly output
+  (JS/Rust output runs, but only through their own toolchains)
 - LSP go-to-definition/references, DWARF debugger, real package registry
 
 ## Documentation

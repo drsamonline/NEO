@@ -1341,7 +1341,14 @@ impl Parser {
             if !self.check(TokenKind::Pipe) && !self.check(TokenKind::Or) {
                 loop {
                     if self.check(TokenKind::Identifier(String::new())) {
-                        params.push(self.advance().lexeme.clone());
+                        let name = self.advance().lexeme.clone();
+                        // `|x: int|` annotates the parameter's type.
+                        let typ = if self.match_token(TokenKind::Colon) {
+                            Some(self.parse_type_expr()?)
+                        } else {
+                            None
+                        };
+                        params.push((name, typ));
                     } else {
                         self.error_at_current("Expected closure parameter");
                         return Err(());

@@ -5,6 +5,22 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Typed closures, executable JS/Rust, CI examples ⭐ NEW
+- **Closure parameters can be annotated** (`|x: float| x * 2.0`) and are inferred
+  from a binding's function type (`let f: fn(int) -> int = |x| x + 2`).
+  Unannotated parameters with no context still default to `int`.
+- **Generated JavaScript runs.** The JS backend emits a `print` helper and calls
+  the entry point (`main` or `__main`); a typed program produces the same output
+  under Node as the C build.
+- **Generated Rust compiles and runs.** The Rust backend emits a `print` helper,
+  wraps `__main` in `fn main`, and maps string literals to `&'static str` and
+  floats to `f64`, so `rustc` accepts the output.
+- **Tests execute all three targets:** `javascript_output_runs_under_node`,
+  `rust_output_compiles_and_runs` (both skip when the tool is missing) and
+  `closure_parameters_accept_annotations_and_context`.
+- **CI runs every example and every standard-library module**, and checks the
+  hello program under Node and `rustc`.
+
 #### Standard library runs, WASM target, runtime correctness ⭐ NEW
 - **`use core;` programs build and run.** A stdlib program using `compose` with
   two closures now prints `7`. Fixes: `-> !` functions emit a void body (no

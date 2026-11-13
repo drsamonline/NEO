@@ -25,3 +25,23 @@ jobs:
         run: python3 tools/example-check.py
       - run: cargo build --workspace --all-targets
       - run: cargo test --workspace
+      - name: Every example builds and runs
+        run: |
+          cargo build -p nova-compiler
+          for example in examples/*.nova; do
+            ./target/debug/nova-compiler run "$example" > /dev/null
+          done
+      - name: Every standard-library module emits C
+        run: |
+          for module in stdlib/*/*.nova; do
+            ./target/debug/nova-compiler emit "$module" -o "/tmp/$(basename "$module" .nova).c"
+          done
+      - name: Generated JavaScript runs
+        run: |
+          ./target/debug/nova-compiler emit examples/hello.nova --target js > /tmp/hello.js
+          test "$(node /tmp/hello.js)" = "Hello, NOVA"
+      - name: Generated Rust runs
+        run: |
+          ./target/debug/nova-compiler emit examples/hello.nova --target rust > /tmp/hello.rs
+          rustc /tmp/hello.rs -o /tmp/hello-rust
+          test "$(/tmp/hello-rust)" = "Hello, NOVA"

@@ -136,7 +136,8 @@ pattern        = [ "mut" ] ( integer
                            | tuple_pattern
                            | identifier [ "(" pattern ")" ] [ "." identifier ] ) ;
 tuple_pattern  = "(" pattern { "," pattern } ")" ;
-closure        = ( "|" | "||" ) [ identifier { "," identifier } ] ( "|" | "||" ) expr ;
+closure        = ( "|" | "||" ) [ closure_param { "," closure_param } ] ( "|" | "||" ) expr ;
+closure_param  = identifier [ ":" type_expr ] ;
 
 identifier     = ? identifier token ? ;
 integer        = ? integer literal ? ;

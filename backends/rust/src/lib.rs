@@ -23,6 +23,11 @@ impl RustBackend {
         // Add standard imports
         self.writeln("use std::io;");
         self.writeln("");
+        // `print` writes a value and a newline, matching the C runtime.
+        self.writeln("fn print<T: std::fmt::Display>(value: T) {");
+        self.writeln("    println!(\"{}\", value);");
+        self.writeln("}");
+        self.writeln("");
         
         // Generate globals as static mut (not ideal but works for simple cases)
         for global in &program.globals {
@@ -37,6 +42,16 @@ impl RustBackend {
         for func in &program.functions {
             self.generate_function(func);
             self.writeln("");
+        }
+
+        // Rust needs a real `main`; a NOVA program's top-level statements are
+        // lowered into the synthetic `__main`.
+        if !program.functions.iter().any(|f| f.name == "main")
+            && program.functions.iter().any(|f| f.name == "__main")
+        {
+            self.writeln("fn main() {");
+            self.writeln("    __main();");
+            self.writeln("}");
         }
         
         self.output.clone()
@@ -332,10 +347,10 @@ impl RustBackend {
             "i64" => "i64",
             "u32" => "u32",
             "u64" => "u64",
-            "float" | "f32" => "f32",
-            "f64" => "f64",
+            "float" | "f32" | "f64" => "f64",
             "bool" => "bool",
-            "string" | "String" => "String",
+            // Literals are `&str`; a `String` binding would reject them.
+            "string" | "String" => "&'static str",
             "char" => "char",
             "void" => "()",
             _ => "i32", // Default to i32 for unknown types

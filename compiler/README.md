@@ -157,8 +157,9 @@ arbitrary calls) are never guessed at, so this cannot produce a false error.
 Closures lower to a lifted top-level function plus a heap environment: a closure
 value is a `NovaClosure*`, its captures are copied into a generated `__Env_N`
 struct, the lifted body reads them through `__env`, and every lifted function takes
-`void *__env` first. Closure parameters are typed `int`, since closure syntax has no
-parameter annotations. Tuples lower to generated `NovaTuple_*` structs with `_0`,
+`void *__env` first. Closure parameters take an annotation (`|x: float|`) or the
+binding's function type, and otherwise default to `int`. Tuples lower to generated
+`NovaTuple_*` structs with `_0`,
 `_1`, … fields and destructure with `let (a, b) = pair;`.
 
 Parsed but not lowered yet: general slices and references (only `&mut` array

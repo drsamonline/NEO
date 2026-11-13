@@ -192,8 +192,8 @@ pub enum Expr {
     Tuple(Vec<Expr>),
     /// `[a, b, c]` - an array literal.
     Array(Vec<Expr>),
-    /// `|x, y| body` - a closure.
-    Closure(Vec<String>, Box<Expr>),
+    /// `|x, y: int| body` - a closure, with optional parameter types.
+    Closure(Vec<(String, Option<TypeExpr>)>, Box<Expr>),
 }
 
 impl Expr {

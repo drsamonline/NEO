@@ -19,12 +19,12 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | LSP | ⚠️ real compiler diagnostics; go-to-definition is a string search; `references` TODO | `lsp` tests |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
 | Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
-| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; output is not executed, and WASM still uses placeholders for closures/tuples | end-to-end tests (emit only) |
+| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output is executed in tests, WASM still uses placeholders for closures/tuples | Node, `rustc` and emit tests |
 | Standard library | ✅ all four modules parse and emit C (`use` merges `core` and `io`) | `compiler/tests/stdlib_parse.rs`, `nova-compiler emit stdlib/*/*.nova` |
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 162 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 165 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 
@@ -42,7 +42,7 @@ Each milestone is done only when its acceptance check passes in CI.
 | 8 | Resolve calls, `use`, `mod` across files | a two-file program builds and runs | ✅ done |
 | 9 | Enums + `match` end to end | a `match` program compiles to `switch` and runs | ✅ done |
 | 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | ✅ done |
-| 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ⬜ |
+| 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ✅ done |
 | 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests (`integration_tests/` today imports APIs that do not exist) | ⬜ |
 | 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits and is tested (emit only; generated code is not executed) | ✅ done |
 | 14 | LSP go-to-definition/references from the symbol table | editor navigation works | ⬜ |
@@ -66,9 +66,9 @@ Each milestone is done only when its acceptance check passes in CI.
   enclosing expression's span.
 - Tuples lower to generated `NovaTuple_*` structs (`_0`, `_1`, …) and destructure
   with `let (a, b) = pair;`. Closures are lifted functions plus a heap
-  environment: captures are copied by value at creation, closure parameters are
-  typed `int` (the syntax has no annotation), and a function type is a
-  `NovaClosure*`.
+  environment: captures are copied by value at creation, parameters take their
+  annotation or the binding's function type and otherwise default to `int`, and a
+  function type is a `NovaClosure*`.
 - Generics are monomorphised from concrete call sites: only instantiated functions
   are emitted, and an unbound type parameter falls back to `int`. Generic functions,
   structs, enums and impl methods are supported.

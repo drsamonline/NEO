@@ -990,13 +990,17 @@ impl Lowerer {
                     .typ
                     .as_ref()
                     .map(|typ| self.substitute(&type_display(typ)));
-                // Tell a struct literal which instantiation the binding expects.
+                // Tell a struct literal which instantiation the binding expects,
+                // and a closure what parameter types its binding promises.
                 let previous = self.expected_type.take();
                 if let Some(typ) = &declared {
                     if let Some((base, _)) = typ.split_once('<') {
                         if self.struct_generics.contains_key(base) {
                             self.expected_type = Some(typ.clone());
                         }
+                    }
+                    if typ.starts_with("fn(") {
+                        self.expected_type = Some(typ.clone());
                     }
                 }
                 let value = let_stmt.init.as_ref()
@@ -1214,7 +1218,32 @@ impl Lowerer {
     }
 
     /// Lift a closure to a top-level function plus an environment.
-    fn lower_closure(&mut self, params: &[String], body: &Expr) -> SirExpr {
+    fn lower_closure(
+        &mut self,
+        params: &[(String, Option<nova_common::TypeExpr>)],
+        body: &Expr,
+    ) -> SirExpr {
+        // An annotation wins; otherwise a `let f: fn(int) -> int = |x| …`
+        // annotation supplies the parameter types; the default is `int`.
+        let contextual: Vec<String> = self
+            .expected_type
+            .as_deref()
+            .and_then(parse_function_type)
+            .map(|(types, _)| types)
+            .unwrap_or_default();
+        let param_types: Vec<String> = params
+            .iter()
+            .enumerate()
+            .map(|(index, (_, typ))| match typ {
+                Some(typ) => self.substitute(&type_display(typ)),
+                None => contextual
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| "int".to_string()),
+            })
+            .collect();
+        let params: Vec<String> = params.iter().map(|(name, _)| name.clone()).collect();
+        let params = &params[..];
         self.closure_counter += 1;
         let id = self.closure_counter;
         let env_name = format!("__Env_{id}");
@@ -1245,8 +1274,8 @@ impl Lowerer {
 
         // Sort out the body's type with the parameters and captures in scope.
         self.push_scope();
-        for param in params {
-            self.declare(param, Some("int".to_string()));
+        for (param, typ) in params.iter().zip(param_types.iter()) {
+            self.declare(param, Some(typ.clone()));
         }
         for (name, typ) in &captures {
             self.declare(name, Some(typ.clone()));
@@ -1333,8 +1362,8 @@ impl Lowerer {
             captures: captures.iter().cloned().collect(),
         });
         self.push_scope();
-        for param in params {
-            self.declare(param, Some("int".to_string()));
+        for (param, typ) in params.iter().zip(param_types.iter()) {
+            self.declare(param, Some(typ.clone()));
         }
         let body_expr = match body.unspanned() {
             Expr::Block(block) => self.lower_block_as_expr(block),
@@ -1346,16 +1375,17 @@ impl Lowerer {
 
         let signature = format!(
             "fn({}) -> {}",
-            vec!["int".to_string(); params.len()].join(", "),
+            param_types.join(", "),
             return_type
         );
         self.lifted_closures.push(SirFunction {
             name: function_name.clone(),
             params: params
                 .iter()
-                .map(|param| SirParam {
+                .zip(param_types.iter())
+                .map(|(param, typ)| SirParam {
                     name: param.clone(),
-                    typ: "int".to_string(),
+                    typ: typ.clone(),
                 })
                 .collect(),
             return_type: Some(return_type),
@@ -2449,7 +2479,7 @@ fn collect_names_expr(expr: &Expr, bound: &mut HashSet<String>, out: &mut Vec<St
         }
         Expr::Closure(params, body) => {
             let mut inner = bound.clone();
-            inner.extend(params.iter().cloned());
+            inner.extend(params.iter().map(|(name, _)| name.clone()));
             collect_names_expr(body, &mut inner, out);
         }
         _ => {}
