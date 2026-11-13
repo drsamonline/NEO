@@ -45,3 +45,9 @@ jobs:
           ./target/debug/nova-compiler emit examples/hello.nova --target rust > /tmp/hello.rs
           rustc /tmp/hello.rs -o /tmp/hello-rust
           test "$(/tmp/hello-rust)" = "Hello, NOVA"
+      - name: Generated WebAssembly runs
+        run: |
+          npm install --global wat2wasm
+          ./target/debug/nova-compiler test --parity examples/hello.nova
+      - name: Benchmark does not regress
+        run: BENCH_MAX_RATIO=1.5 ./benches/run.sh 5

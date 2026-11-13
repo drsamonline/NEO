@@ -31,7 +31,8 @@ OPTIONS:
 Generated C calls the NOVA runtime (`nova_runtime.h` / `nova_runtime.c`).
 `emit -o` writes those beside the C; `build` and `run` link them in.
 `--target js|rust|wasm` emits source (WebAssembly text format); only the C backend
-has a build/run path.
+has a build/run path. `test --parity` runs all four when `node`, `rustc` and
+`wat2wasm` are installed (WASM is reported `held` otherwise).
 ";
 
 fn main() {
@@ -259,7 +260,14 @@ fn compile_to(input: &Path, target: Target) -> String {
         Target::C => CBackend::new().generate(&sir),
         Target::JavaScript => JsBackend::new().generate(&sir),
         Target::Rust => RustBackend::new().generate(&sir),
-        Target::WebAssembly => WasmBackend::new().generate(&sir),
+        Target::WebAssembly => {
+            if let Err(feature) = nova_backend_wasm::validate(&sir) {
+                die(&format!(
+                    "the wasm target does not support {feature} yet; use --target c, js or rust"
+                ));
+            }
+            WasmBackend::new().generate(&sir)
+        }
     }
 }
 
@@ -406,10 +414,10 @@ fn parity_harness(input: &Path) -> ! {
         backend: "rust",
         result: run_source_backend(input, &dir, Target::Rust, "rustc"),
     });
-    // WebAssembly text needs an assembler and a runtime; neither is guaranteed.
+    // WebAssembly text needs an assembler and a host; neither is guaranteed.
     outcomes.push(ParityOutcome {
         backend: "wasm",
-        result: Err("no WebAssembly executor or WAT assembler installed".to_string()),
+        result: run_wasm_backend(input, &dir),
     });
 
     println!("parity: {}", input.display());
@@ -503,6 +511,64 @@ fn run_source_backend(
             .output()
             .map_err(|e| format!("cannot run the Rust binary: {e}"))?
     };
+
+    Ok(BackendRun {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        status: output.status.code().unwrap_or(1),
+    })
+}
+
+/// Assemble the WAT with `wat2wasm` and run it on the committed Node host.
+///
+/// Both tools are optional; when either is missing the backend is reported as
+/// `held` rather than silently skipped or counted as passing.
+fn run_wasm_backend(
+    input: &Path,
+    dir: &Path,
+) -> std::result::Result<BackendRun, String> {
+    let assembler = env::var("WAT2WASM").unwrap_or_else(|_| "wat2wasm".to_string());
+    if Command::new(&assembler).output().is_err() {
+        return Err(format!(
+            "`{assembler}` is not installed (set WAT2WASM to its path)"
+        ));
+    }
+    let node_available = Command::new("node")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if !node_available {
+        return Err("`node` is not installed".to_string());
+    }
+
+    let wat_path = dir.join("parity.wat");
+    let wasm_path = dir.join("parity.wasm");
+    fs::write(&wat_path, compile_to(input, Target::WebAssembly))
+        .map_err(|e| format!("cannot write {}: {e}", wat_path.display()))?;
+
+    let assembled = Command::new(&assembler)
+        .arg(&wat_path)
+        .arg("-o")
+        .arg(&wasm_path)
+        .output()
+        .map_err(|e| format!("cannot run `{assembler}`: {e}"))?;
+    if !assembled.status.success() {
+        return Err(format!(
+            "wat2wasm failed: {}",
+            String::from_utf8_lossy(&assembled.stderr).trim()
+        ));
+    }
+
+    let host = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("backends")
+        .join("wasm")
+        .join("host.mjs");
+    let output = Command::new("node")
+        .arg(&host)
+        .arg(&wasm_path)
+        .output()
+        .map_err(|e| format!("cannot run the WASM host: {e}"))?;
 
     Ok(BackendRun {
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),

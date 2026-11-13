@@ -49,8 +49,10 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - Lowerer converts AST to SIR
 - Four backend crates: C, JavaScript, Rust, WebAssembly. C is the reference and
   links the runtime shim; JavaScript and Rust output runs for the exercised
-  subset; the WebAssembly emitter still produces incomplete WAT (no `print`
-  import, undeclared locals, no arrays/closures) and is **held** for parity.
+  subset. WebAssembly runs integers, booleans, string literals, `print`,
+  recursion and `if`/`while`/range-`for` through `backends/wasm/host.mjs`;
+  arrays, structs, tuples and closures are rejected with an explicit error
+  instead of emitting placeholder code.
 - Total: ~3,500+ lines of compiler code
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
@@ -112,7 +114,7 @@ cargo build --release
 │   ├── c/             # C backend (672 lines)
 │   ├── javascript/    # JavaScript backend (408 lines)
 │   ├── rust/          # Rust backend (411 lines)
-│   └── wasm/          # WebAssembly backend (445 lines)
+│   └── wasm/          # WebAssembly backend (WAT emitter + Node host)
 ├── runtime/           # Runtime system (2,359 lines, 33 tests)
 │   ├── src/memory.rs  # Memory utilities (195 lines)
 │   ├── src/types.rs   # Runtime string/array/option types (276 lines)
@@ -156,8 +158,9 @@ cargo build --release
 - **Closures and tuples**: lifted closures with heap environments, typed closure
   parameters and `fn(A) -> B` values; `NovaTuple_*` structs with
   `let (a, b) = pair;` destructuring
-- **Backends**: `emit --target c|js|rust|wasm` selects a generator; JS and Rust
-  output is executed in tests, build/run link C
+- **Backends**: `emit --target c|js|rust|wasm` selects a generator; JS, Rust and
+  WASM output is executed in tests, `test --parity` runs all four when `node` and
+  `wat2wasm` are installed, build/run link C
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -166,8 +169,9 @@ cargo build --release
   (partial integration; see the status section)
 
 ### Coming Soon 🚧
-- WebAssembly execution parity (the emitter still holds closures, locals and
-  arrays; `nova-compiler test --parity` reports it as `held`)
+- WebAssembly support for arrays, structs, tuples and closures (the emitter
+  rejects them explicitly; `nova-compiler test --parity` reports `wasm held`
+  only when `wat2wasm` or `node` is missing)
 - Multi-payload enum variants and value-position match bindings
 - General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not

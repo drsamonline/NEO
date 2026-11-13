@@ -5,6 +5,30 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### WebAssembly parity, core stdlib values, benchmark guard ⭐ NEW
+- **The WebAssembly backend runs real programs.** It now emits declared locals,
+  a linear memory with data segments for string literals, and imports
+  `print_i32` / `print_str`; `backends/wasm/host.mjs` supplies them. Integers,
+  booleans, strings, recursion, `if`, `while` and range-`for` execute with the
+  same stdout and exit status as C, JS and Rust — `test --parity` reports
+  `wasm pass` when `node` and `wat2wasm` are available, and `wasm held` (failing
+  the run) when they are not.
+- **Unsupported WASM constructs fail loudly.** `validate` rejects arrays,
+  structs, tuples, closures, references, string slicing, ranges outside loops
+  and printing floats with `the wasm target does not support … yet` instead of
+  emitting placeholder instructions.
+- **An `if`/`else if` chain as a function's trailing expression now returns its
+  value.** Previously `fn factorial(n) -> int { if n <= 1 { 1 } else { … } }`
+  compiled to a bare statement, so the core stdlib returned `1` for `factorial`
+  and garbage for `sign`/`clamp`. `panic`/`exit` in value position stay
+  statements.
+- **`core` math is verified end-to-end:** `factorial(6)=720`, `fibonacci(10)=55`,
+  `sign(-5)=-1`, `clamp(12,0,10)=10`, `gcd(48,18)=6`.
+- **CI:** assembles and runs the hello program as WebAssembly, and runs
+  `benches/run.sh` with a 1.5× regression threshold against hand-written C.
+- **Tests:** WASM emission/validation unit tests, a WASM runtime test, a parity
+  test and the core stdlib test (175 passing).
+
 #### Actionable diagnostics, LSP end-to-end, first benchmark ⭐ NEW
 - **Semantic errors point at the code and suggest a fix.** Undefined names now
   report `file:line:col`, the cause, and a `help:` line (`declare \`x\` first…`),

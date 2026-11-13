@@ -1473,6 +1473,12 @@ impl Lowerer {
                 // A block's value may be a control-flow construct; lowering it as
                 // an expression would lose its loop/if statements, so reuse the
                 // statement lowering that knows about them.
+                // In a function that returns a value, a trailing `if` is that
+                // function's result: `fn sign(x) -> int { if x < 0 { -1 } else { 1 } }`.
+                // Lowering it as a statement would drop the value on the floor.
+                Expr::If(condition, then_block, else_block) if !self.discard_result => {
+                    stmts.push(self.lower_if_as_return(condition, then_block, else_block));
+                }
                 Expr::If(..) | Expr::While(..) | Expr::For(..) | Expr::Loop(..) | Expr::Block(..) => {
                     stmts.extend(self.lower_statement(&Statement::Expr((**final_expr).clone())));
                 }
@@ -1953,6 +1959,81 @@ impl Lowerer {
                 self.lower_match_chain(scrutinee, arms)
             }
         }
+    }
+
+    /// Lower an `if` whose branches are the enclosing function's result, so each
+    /// branch ends in a `return` instead of an unused expression.
+    fn lower_if_as_return(
+        &mut self,
+        condition: &Expr,
+        then_block: &nova_common::Block,
+        else_block: &Option<nova_common::Block>,
+    ) -> SirStatement {
+        SirStatement::If {
+            condition: self.lower_expr(condition),
+            then_block: self.lower_value_block(then_block),
+            else_block: else_block
+                .as_ref()
+                .map(|block| self.lower_value_block(block)),
+        }
+    }
+
+    /// A block used as a value: its statements run, then its final expression is
+    /// returned. A nested trailing `if` recurses, so `else if` chains work.
+    fn lower_value_block(&mut self, block: &nova_common::Block) -> Vec<SirStatement> {
+        self.push_scope();
+        let mut stmts = Vec::new();
+
+        // `else if` is parsed as an `else` block whose last *statement* is the
+        // nested `if`, not as its final expression. That nested `if` is still the
+        // value of the block, so lower it as a returning if instead of a
+        // statement whose branch values would be discarded.
+        let trailing_if = if block.final_expr.is_none() {
+            match block.statements.last() {
+                Some(Statement::Expr(expr)) => match expr.unspanned() {
+                    Expr::If(condition, then_block, else_block) => {
+                        Some((condition, then_block, else_block))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        let statement_count = block.statements.len();
+        for (index, statement) in block.statements.iter().enumerate() {
+            if trailing_if.is_some() && index + 1 == statement_count {
+                break;
+            }
+            stmts.extend(self.lower_statement(statement));
+        }
+        if let Some((condition, then_block, else_block)) = trailing_if {
+            stmts.push(self.lower_if_as_return(condition, then_block, else_block));
+        }
+
+        if let Some(final_expr) = &block.final_expr {
+            match final_expr.unspanned() {
+                Expr::If(condition, then_block, else_block) => {
+                    stmts.push(self.lower_if_as_return(condition, then_block, else_block));
+                }
+                Expr::Block(inner) => {
+                    stmts.extend(self.lower_value_block(inner));
+                }
+                Expr::Return(value) => {
+                    stmts.push(SirStatement::Return(value.as_ref().map(|v| self.lower_expr(v))));
+                }
+                // A call that never returns (`panic`, `exit`) is a statement, not
+                // a value: `return panic(...)` would not compile.
+                Expr::Call(callee, _) if diverging_call(callee) => {
+                    stmts.extend(self.lower_statement(&Statement::Expr((**final_expr).clone())));
+                }
+                _ => stmts.push(SirStatement::Return(Some(self.lower_expr(final_expr)))),
+            }
+        }
+        self.pop_scope();
+        stmts
     }
 
     fn lower_block_as_expr(&mut self, block: &nova_common::Block) -> SirExpr {
@@ -2603,6 +2684,11 @@ fn payload_field(typ: &str) -> (&'static str, &'static str) {
 }
 
 /// A type as written, including generic arguments: `Result<int, String>`.
+/// Calls that never return a value because they abort the program.
+fn diverging_call(callee: &Expr) -> bool {
+    matches!(callee.unspanned(), Expr::Identifier(name) if name == "panic" || name == "exit")
+}
+
 fn type_display(typ: &nova_common::TypeExpr) -> String {
     if typ.generics.is_empty() {
         typ.name.clone()

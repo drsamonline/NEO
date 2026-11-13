@@ -15,18 +15,18 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | C backend | ✅ runnable output (`int main`), struct `typedef`s and compound literals, enum constants, tagged payload-enum structs, bounds-checked array values, runtime-shim calls | end-to-end tests |
 | C runtime shim | ✅ `nova_runtime.h/.c`, ABI v3 (print, strings, bounds-checked growable arrays, closures, panic/exit, unsupported-builtin trap) | runtime + end-to-end tests |
 | CLI | ✅ `emit` / `build` / `run`, `-o`, `--target c|js|rust|wasm`, `--` args; build/run are C-only | end-to-end tests |
-| Parity harness | ⚠️ `nova-compiler test --parity` compares stdout/exit across C, JS, Rust; WASM reported `held` (no executor, incomplete WAT) | manual run on a CLI program |
+| Parity harness | ✅ `nova-compiler test --parity` compares stdout/exit across C, JS, Rust and WASM; WASM needs `node` + `wat2wasm`, otherwise it is explicitly `held` and the run fails | end-to-end tests, CI `--parity examples/hello.nova` |
 | Package manager | ⚠️ real `init`/`build`/`run`; registry mocked; dependencies recorded but not built | `pkg` tests |
 | LSP | ⚠️ real compiler diagnostics with spans, cause and `help:` fixes; FULL document sync; cache keyed by document text. Go-to-definition is still a string search; `references` TODO | `lsp` unit tests + stdio integration test |
 | Benchmarks | ✅ `benches/run.sh`: recursive fib(35), NOVA→C vs hand-written C, same `-O2`, stdout compared before timing | `benches/README.md` |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
 | Runtime crate (Rust) | ✅ memory, GC, I/O, threading, async compile and test; **not linked to generated C** | `runtime` tests |
-| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output (including arrays) is executed in tests, WASM still uses placeholders for closures/tuples | Node, `rustc` and emit tests |
-| Standard library | ✅ all four modules parse and emit C (`use` merges `core` and `io`) | `compiler/tests/stdlib_parse.rs`, `nova-compiler emit stdlib/*/*.nova` |
+| JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output (including arrays) is executed in tests. WASM executes ints/strings/recursion/loops via `backends/wasm/host.mjs`; arrays, structs, tuples and closures are rejected by `validate` instead of emitted as placeholders | `backends/wasm` tests, Node + `wat2wasm` end-to-end test |
+| Standard library | ✅ all four modules parse and emit C (`use` merges `core` and `io`); `core` math helpers return their values (`factorial`, `fibonacci`, `sign`, `clamp`, `gcd`) | `compiler/tests/stdlib_parse.rs`, `compiler/tests/end_to_end.rs::core_stdlib_math_functions_return_their_values` |
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 170 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 176 passing, 0 failing (`cargo test --workspace`; WASM execution tests need `node` + `wat2wasm`).
 
 ## Milestones, in order
 
@@ -46,7 +46,7 @@ Each milestone is done only when its acceptance check passes in CI.
 | 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | ✅ done |
 | 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ✅ done |
 | 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests (`integration_tests/` today imports APIs that do not exist) | ⬜ |
-| 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits and is tested (emit only; generated code is not executed) | ✅ done |
+| 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits; JS, Rust and WASM output is executed in tests, and `test --parity` compares all four | ✅ done |
 | 14 | LSP go-to-definition/references from the symbol table | editor navigation works | ⬜ |
 | 15 | Debugger reads DWARF (`gimli`) | breakpoints hit real lines with real variables | ⬜ |
 | 16 | Package manager builds dependencies; real or explicit local-only registry | `publish`/`search` stop being mocks | ⬜ |

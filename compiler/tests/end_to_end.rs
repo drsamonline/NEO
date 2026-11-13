@@ -33,6 +33,13 @@ fn node_available() -> bool {
         .unwrap_or(false)
 }
 
+fn wat2wasm_available() -> bool {
+    let tool = std::env::var("WAT2WASM").unwrap_or_else(|_| "wat2wasm".to_string());
+    // The npm wrapper exits non-zero without arguments; being spawnable is what
+    // matters here, so an `Ok` output means the tool exists.
+    Command::new(tool).output().is_ok()
+}
+
 fn rustc_available() -> bool {
     Command::new("rustc")
         .arg("--version")
@@ -784,7 +791,7 @@ fn unsupported_target_is_refused() {
 }
 
 #[test]
-fn parity_harness_compares_c_js_rust_and_holds_wasm() {
+fn parity_harness_compares_c_js_rust_and_wasm() {
     if !node_available() || !rustc_available() {
         eprintln!("skipping: node and rustc are required for the parity harness");
         return;
@@ -805,7 +812,6 @@ fn parity_harness_compares_c_js_rust_and_holds_wasm() {
         .output()
         .expect("run nova-compiler test");
 
-    assert!(!parity.status.success(), "held backend must fail the run");
     let stdout = String::from_utf8_lossy(&parity.stdout);
     for backend in ["c", "js", "rust"] {
         assert!(
@@ -813,7 +819,108 @@ fn parity_harness_compares_c_js_rust_and_holds_wasm() {
             "{backend} should pass parity: {stdout}"
         );
     }
-    assert!(stdout.contains("wasm  held"), "wasm should be held: {stdout}");
+    if wat2wasm_available() {
+        assert!(parity.status.success(), "all four backends should pass: {stdout}");
+        assert!(stdout.contains("wasm  pass"), "{stdout}");
+    } else {
+        // Without an assembler the backend is explicitly held, and that is a
+        // failure of the run rather than a silent skip.
+        assert!(!parity.status.success(), "held backend must fail the run");
+        assert!(stdout.contains("wasm  held"), "wasm should be held: {stdout}");
+    }
+}
+
+#[test]
+fn core_stdlib_math_functions_return_their_values() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    // `use core;` resolves through the source file's ancestors, so the program
+    // must live inside the workspace (not in the system temp directory).
+    let dir = scratch("core-math");
+    let source = workspace_root().join("target").join("core_math.nova");
+    fs::create_dir_all(source.parent().expect("target directory")).expect("create target");
+    fs::write(
+        &source,
+        "use core;\n\nfn main() -> int {\n    print(factorial(6));\n    print(fibonacci(10));\n    print(sign(-5));\n    print(clamp(12, 0, 10));\n    print(gcd(48, 18));\n    return 0;\n}\n",
+    )
+    .expect("write source");
+
+    let binary = dir.join("core_math");
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&source)
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .expect("build core_math");
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run core_math");
+    let _ = fs::remove_file(&source);
+    // An `if`/`else if` chain used as the function's result must return each
+    // branch's value; before this test these printed 1 and garbage.
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "720\n55\n-1\n10\n6\n"
+    );
+    assert_eq!(run.status.code(), Some(0));
+}
+
+#[test]
+fn wasm_output_assembles_and_runs_on_the_host() {
+    if !node_available() || !wat2wasm_available() {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    }
+
+    let dir = scratch("wasm-run");
+    let source = dir.join("sum.nova");
+    fs::write(
+        &source,
+        "fn main() -> int {\n    let total = 0;\n    for i in 0..10 {\n        total = total + i * i;\n    }\n    print(\"sum:\");\n    print(total);\n    return 4;\n}\n",
+    )
+    .expect("write source");
+
+    let wat = dir.join("sum.wat");
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("--target")
+        .arg("wasm")
+        .arg("-o")
+        .arg(&wat)
+        .output()
+        .expect("emit wasm");
+    assert!(emit.status.success(), "{}", String::from_utf8_lossy(&emit.stderr));
+
+    let wasm = dir.join("sum.wasm");
+    let assembler = std::env::var("WAT2WASM").unwrap_or_else(|_| "wat2wasm".to_string());
+    let assembled = Command::new(assembler)
+        .arg(&wat)
+        .arg("-o")
+        .arg(&wasm)
+        .output()
+        .expect("run wat2wasm");
+    assert!(
+        assembled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&assembled.stderr)
+    );
+
+    let host = workspace_root().join("backends/wasm/host.mjs");
+    let run = Command::new("node")
+        .arg(host)
+        .arg(&wasm)
+        .output()
+        .expect("run the WASM host");
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "sum:\n285\n");
+    assert_eq!(run.status.code(), Some(4));
 }
 
 #[test]
