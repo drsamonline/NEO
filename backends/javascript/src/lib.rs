@@ -44,8 +44,17 @@ impl JsBackend {
         }
         
         // Run the entry point: an explicit `main`, or the synthetic `__main`.
-        if program.functions.iter().any(|f| f.name == "main") {
-            self.writeln("main();");
+        if let Some(main) = program.functions.iter().find(|f| f.name == "main") {
+            // A returning `main` becomes the process exit status, as in C.
+            if main
+                .return_type
+                .as_deref()
+                .is_some_and(|rt| !matches!(rt, "void" | "()" | "!" | "unit"))
+            {
+                self.writeln("process.exit(main());");
+            } else {
+                self.writeln("main();");
+            }
         } else if program.functions.iter().any(|f| f.name == "__main") {
             self.writeln("__main();");
         }

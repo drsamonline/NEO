@@ -784,6 +784,39 @@ fn unsupported_target_is_refused() {
 }
 
 #[test]
+fn parity_harness_compares_c_js_rust_and_holds_wasm() {
+    if !node_available() || !rustc_available() {
+        eprintln!("skipping: node and rustc are required for the parity harness");
+        return;
+    }
+
+    let dir = scratch("parity");
+    let source = dir.join("cli.nova");
+    fs::write(
+        &source,
+        "fn main() -> int {\n    let n = 6 * 7;\n    print(\"answer:\");\n    print(n);\n    return 3;\n}\n",
+    )
+    .expect("write source");
+
+    let parity = Command::new(compiler())
+        .arg("test")
+        .arg("--parity")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler test");
+
+    assert!(!parity.status.success(), "held backend must fail the run");
+    let stdout = String::from_utf8_lossy(&parity.stdout);
+    for backend in ["c", "js", "rust"] {
+        assert!(
+            stdout.contains(&format!("{backend:<5} pass")),
+            "{backend} should pass parity: {stdout}"
+        );
+    }
+    assert!(stdout.contains("wasm  held"), "wasm should be held: {stdout}");
+}
+
+#[test]
 fn javascript_and_rust_targets_emit_source() {
     let source = std::env::temp_dir().join("nova-target-emit.nova");
     fs::write(&source, "fn main() {\n    let x = 1;\n    println(x);\n}\n").expect("write source");

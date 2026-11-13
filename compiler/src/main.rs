@@ -21,6 +21,7 @@ USAGE:
     nova-compiler emit <source.nova> [-o FILE]   write the generated C to FILE
     nova-compiler build <source.nova> [-o PATH]  compile and link an executable
     nova-compiler run <source.nova> [-- ARGS...] build, then run the executable
+    nova-compiler test --parity <source.nova>  run one program on every backend and compare
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
@@ -57,6 +58,35 @@ fn main() {
             let (input, output, target, rest) = parse_args(&args[1..]);
             require_c(target, "run");
             run(&input, output.as_deref(), &rest);
+        }
+        Some("test") => {
+            let mut parity = false;
+            let mut input: Option<PathBuf> = None;
+            for argument in &args[1..] {
+                match argument.as_str() {
+                    "--parity" => parity = true,
+                    "-h" | "--help" => {
+                        print!("{USAGE}");
+                        exit(0);
+                    }
+                    flag if flag.starts_with('-') => {
+                        die(&format!("unknown option `{flag}` for `test`"))
+                    }
+                    path => {
+                        if input.is_some() {
+                            die(&format!("unexpected argument `{path}` for `test`"));
+                        }
+                        input = Some(PathBuf::from(path));
+                    }
+                }
+            }
+            let Some(input) = input else {
+                die("`test --parity` needs a source file");
+            };
+            if !parity {
+                die("`test` currently requires `--parity`");
+            }
+            parity_harness(&input);
         }
         Some(flag) if flag.starts_with('-') => die(&format!("unknown option `{flag}`")),
         // Bare path: keep the original behaviour of printing the generated C.
@@ -311,6 +341,163 @@ fn build(input: &Path, output: Option<&Path>) -> PathBuf {
 
     eprintln!("✓ built {} (C: {})", binary.display(), c_path.display());
     binary
+}
+
+/// How one backend fared in the parity harness.
+struct ParityOutcome {
+    backend: &'static str,
+    result: std::result::Result<BackendRun, String>,
+}
+
+struct BackendRun {
+    stdout: String,
+    status: i32,
+}
+
+/// `test --parity`: run one program on every backend and compare stdout/status.
+///
+/// C is the reference unless `<stem>.expected` sits beside the source. A backend
+/// whose toolchain is missing, or WebAssembly (no executor is installed), is
+/// reported as `held` rather than silently skipped.
+fn parity_harness(input: &Path) -> ! {
+    let dir = env::temp_dir().join(format!("nova-parity-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap_or_else(|e| die(&format!("cannot create {}: {e}", dir.display())));
+
+    let expected = fs::read_to_string(input.with_extension("expected")).ok();
+    let mut outcomes = Vec::new();
+
+    // C reference.
+    let c_result = (|| -> std::result::Result<BackendRun, String> {
+        let binary = dir.join("parity-c");
+        let binary = build(input, Some(&binary));
+        let output = Command::new(&binary)
+            .output()
+            .map_err(|e| format!("cannot run the C binary: {e}"))?;
+        Ok(BackendRun {
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            status: output.status.code().unwrap_or(1),
+        })
+    })();
+    outcomes.push(ParityOutcome { backend: "c", result: c_result });
+
+    let (reference_stdout, reference_status) = match &outcomes[0].result {
+        Ok(run) => (run.stdout.clone(), run.status),
+        Err(message) => die(&format!("parity: C reference failed: {message}")),
+    };
+    let expected_stdout = expected.as_deref().unwrap_or(&reference_stdout);
+
+    // JavaScript through Node.
+    outcomes.push(ParityOutcome {
+        backend: "js",
+        result: run_source_backend(input, &dir, Target::JavaScript, "node"),
+    });
+    // Rust through rustc.
+    outcomes.push(ParityOutcome {
+        backend: "rust",
+        result: run_source_backend(input, &dir, Target::Rust, "rustc"),
+    });
+    // WebAssembly text needs an assembler and a runtime; neither is guaranteed.
+    outcomes.push(ParityOutcome {
+        backend: "wasm",
+        result: Err("no WebAssembly executor or WAT assembler installed".to_string()),
+    });
+
+    println!("parity: {}", input.display());
+    let mut held = 0;
+    for outcome in &outcomes {
+        match &outcome.result {
+            Ok(run) => {
+                let stdout_ok = run.stdout == expected_stdout;
+                let status_ok = run.status == reference_status;
+                let state = if stdout_ok && status_ok { "pass" } else { "FAIL" };
+                if state == "FAIL" {
+                    held += 1;
+                }
+                let mut notes = Vec::new();
+                if !stdout_ok {
+                    notes.push(format!(
+                        "stdout differs (expected {:?}, got {:?})",
+                        expected_stdout, run.stdout
+                    ));
+                }
+                if !status_ok {
+                    notes.push(format!(
+                        "exit {} (C exited {})",
+                        run.status,                         reference_status
+                    ));
+                }
+                if notes.is_empty() {
+                    println!("  {:<5} {:<4} exit {}", outcome.backend, state, run.status);
+                } else {
+                    println!("  {:<5} {:<4} {}", outcome.backend, state, notes.join("; "));
+                }
+            }
+            Err(message) => {
+                held += 1;
+                println!("  {:<5} held {}", outcome.backend, message);
+            }
+        }
+    }
+
+    if held > 0 {
+        eprintln!("parity: FAILED ({held} backend(s) not passing)");
+        exit(1);
+    }
+    eprintln!("parity: ok (all 4 backends)");
+    exit(0);
+}
+
+/// Emit `target` source, compile it with `tool` (Node runs source directly;
+/// rustc compiles first), and run the program.
+fn run_source_backend(
+    input: &Path,
+    dir: &Path,
+    target: Target,
+    tool: &str,
+) -> std::result::Result<BackendRun, String> {
+    let available = Command::new(tool)
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if !available {
+        return Err(format!("`{tool}` is not installed"));
+    }
+
+    let extension = if target == Target::JavaScript { "js" } else { "rs" };
+    let source_path = dir.join(format!("parity.{extension}"));
+    let source = compile_to(input, target);
+    fs::write(&source_path, source)
+        .map_err(|e| format!("cannot write {}: {e}", source_path.display()))?;
+
+    let output = if target == Target::JavaScript {
+        Command::new("node")
+            .arg(&source_path)
+            .output()
+            .map_err(|e| format!("cannot run node: {e}"))?
+    } else {
+        let binary = dir.join("parity-rust");
+        let compiled = Command::new("rustc")
+            .arg(&source_path)
+            .arg("-o")
+            .arg(&binary)
+            .output()
+            .map_err(|e| format!("cannot run rustc: {e}"))?;
+        if !compiled.status.success() {
+            return Err(format!(
+                "rustc failed: {}",
+                String::from_utf8_lossy(&compiled.stderr).trim()
+            ));
+        }
+        Command::new(&binary)
+            .output()
+            .map_err(|e| format!("cannot run the Rust binary: {e}"))?
+    };
+
+    Ok(BackendRun {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        status: output.status.code().unwrap_or(1),
+    })
 }
 
 /// `run`: build into a scratch directory (unless `-o` was given), then run the

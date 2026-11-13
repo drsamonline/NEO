@@ -11,8 +11,8 @@
 <a href="https://drsamonline.github.io/NEO/"><img src="https://img.shields.io/badge/Landing%20Page-Visit-3b82f6?style=flat-square" alt="Landing page"></a>
 <a href="https://img.shields.io/badge/Phase%201-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%201-Complete-brightgreen?style=flat-square" alt="Phase 1 Complete"></a>
 <a href="https://img.shields.io/badge/Phase%202-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%202-Complete-brightgreen?style=flat-square" alt="Phase 2 Complete"></a>
-<a href="https://img.shields.io/badge/Phase%203-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%203-Complete-brightgreen?style=flat-square" alt="Phase 3 Complete"></a>
-<a href="https://img.shields.io/badge/Phase%204-Next-yellow"><img src="https://img.shields.io/badge/Phase%204-Next-yellow?style=flat-square" alt="Phase 4 Next"></a>
+<a href="https://img.shields.io/badge/Phase%203-Partial-yellow"><img src="https://img.shields.io/badge/Phase%203-Partial-yellow?style=flat-square" alt="Phase 3 Partial"></a>
+<a href="https://img.shields.io/badge/Phase%204-In%20Progress-yellow"><img src="https://img.shields.io/badge/Phase%204-In%20Progress-yellow?style=flat-square" alt="Phase 4 In Progress"></a>
 <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.0-blue?style=flat-square" alt="Version 0.6.0"></a>
 <a href="backends/"><img src="https://img.shields.io/badge/Backends-4%20targets-orange?style=flat-square" alt="4 backend targets"></a>
 <a href="https://img.shields.io/badge/language-Rust-dea584"><img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square" alt="Rust"></a>
@@ -43,14 +43,19 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 
 ## Current Status
 
-**✅ Phase 1: Compiler Core - COMPLETE**
+**✅ Phase 1: Compiler Core - COMPLETE (C runnable; other backends partial)**
 - Full lexer, parser, semantic analyzer implemented
 - SIR (Semantic Intermediate Representation) defined
 - Lowerer converts AST to SIR
-- 4 backends: C, JavaScript, Rust, WebAssembly
+- Four backend crates: C, JavaScript, Rust, WebAssembly. C is the reference and
+  links the runtime shim; JavaScript and Rust output runs for the exercised
+  subset; the WebAssembly emitter still produces incomplete WAT (no `print`
+  import, undeclared locals, no arrays/closures) and is **held** for parity.
 - Total: ~3,500+ lines of compiler code
 
-**✅ Phase 2: Runtime System - COMPLETE**
+**✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
+- The Rust `runtime/` crate (memory, GC, I/O, threading, async) compiles and is
+  tested, but generated C links only the small `nova_runtime` shim, not this crate.
 - ✅ Memory management (192 lines, arena allocation, GC foundation)
 - ✅ Type system (260 lines, type registry, dynamic values)
 - ✅ Error handling (297 lines, panic handling, backtraces)
@@ -62,13 +67,13 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - ✅ Async runtime (114 lines, futures, channels, delay)
 - Total: 2,881 lines, 30+ tests
 
-**✅ Phase 3: Tooling - COMPLETE**
-- ✅ Package manager (1,674 lines) - CLI with 12 commands, manifest parsing, dependency resolution, registry
-- ✅ Language server (522 lines) - LSP handlers, completions, diagnostics, hover, go-to-definition
-- ✅ Debugger (1,405 lines) - Interactive REPL, breakpoints, session management, target control
+**🔄 Phase 3: Tooling - PARTIAL (crates exist, integration incomplete)**
+- 🟡 Package manager (1,674 lines) - CLI and manifest parsing real; registry mocked and dependencies recorded but not built
+- 🟡 Language server (522 lines) - LSP handlers and real compiler diagnostics; go-to-definition is a string search, `references` TODO
+- 🟡 Debugger (1,405 lines) - REPL/breakpoints/session real; stack frames and DWARF are mocked
 - Total: 3,601 lines across all tools
 
-**🔄 Phase 4: Polish & Integration - NEXT**
+**🔄 Phase 4: Polish & Integration - IN PROGRESS**
 - Standard library implementation
 - LSP-compiler integration for real-time diagnostics
 - Debugger-binary integration
@@ -76,7 +81,8 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - Performance optimization
 - Documentation
 
-See [Development Plan](DEV_PLAN.md) for detailed status.
+See [Development Plan](DEV_PLAN.md) for detailed status. Where this summary and
+`DEV_PLAN.md` disagree, `DEV_PLAN.md` is authoritative.
 
 ## Quick Start
 
@@ -157,12 +163,14 @@ cargo build --release
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
   GC, file I/O, threading, async helpers (not yet linked to generated C)
 - **Tooling**: package manager, language server and debugger crates with tests
+  (partial integration; see the status section)
 
 ### Coming Soon 🚧
+- WebAssembly execution parity (the emitter still holds closures, locals and
+  arrays; `nova-compiler test --parity` reports it as `held`)
+- Multi-payload enum variants and value-position match bindings
 - General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
-- A build/run path in the compiler for JavaScript, Rust and WebAssembly output
-  (JS/Rust output runs, but only through their own toolchains)
 - LSP go-to-definition/references, DWARF debugger, real package registry
 
 ## Documentation

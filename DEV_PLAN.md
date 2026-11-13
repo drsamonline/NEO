@@ -15,6 +15,7 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | C backend | ✅ runnable output (`int main`), struct `typedef`s and compound literals, enum constants, tagged payload-enum structs, bounds-checked array values, runtime-shim calls | end-to-end tests |
 | C runtime shim | ✅ `nova_runtime.h/.c`, ABI v3 (print, strings, bounds-checked growable arrays, closures, panic/exit, unsupported-builtin trap) | runtime + end-to-end tests |
 | CLI | ✅ `emit` / `build` / `run`, `-o`, `--target c|js|rust|wasm`, `--` args; build/run are C-only | end-to-end tests |
+| Parity harness | ⚠️ `nova-compiler test --parity` compares stdout/exit across C, JS, Rust; WASM reported `held` (no executor, incomplete WAT) | manual run on a CLI program |
 | Package manager | ⚠️ real `init`/`build`/`run`; registry mocked; dependencies recorded but not built | `pkg` tests |
 | LSP | ⚠️ real compiler diagnostics; go-to-definition is a string search; `references` TODO | `lsp` tests |
 | Debugger | ⚠️ REPL/breakpoints/session real; stack frames, source lines and DWARF mocked | `dbg` tests |
@@ -24,7 +25,7 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 167 passing, 0 failing (`cargo test --workspace`).
+**Test suite:** 168 passing, 0 failing (`cargo test --workspace`).
 
 ## Milestones, in order
 

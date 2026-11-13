@@ -68,7 +68,7 @@ impl RustBackend {
         });
         if value_main {
             self.writeln("fn main() {");
-            self.writeln("    let _ = __nova_main();");
+            self.writeln("    std::process::exit(__nova_main());");
             self.writeln("}");
         } else if !program.functions.iter().any(|f| f.name == "main")
             && program.functions.iter().any(|f| f.name == "__main")
