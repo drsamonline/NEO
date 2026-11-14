@@ -21,6 +21,8 @@ with `emit --target <c|js|rust|wasm>`. `build` and `run` link C only.
   `tests/parity/*.nova` program.
 
 The parity corpus includes growable arrays, structs/tuples, block expressions and
-closures. C block expressions use GCC/Clang statement expressions. Known
+closures. C block expressions are hoisted into a temporary before the enclosing
+statement, so the output stays standard C rather than requiring a GCC extension.
+Known
 limits: WASM has no float struct fields or non-`int` closure signatures; WASM
 out-of-bounds indexing traps while C prints a runtime error.

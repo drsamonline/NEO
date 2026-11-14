@@ -11,8 +11,9 @@ All notable changes to the NOVA project will be documented in this file.
 ### Added
 #### Block expressions in C, block-bodied closures, parity corpus ⭐ NEW
 - **C lowers block expressions in value positions.** `let x = { let y = 3; y + 4 };`
-  becomes a GCC/Clang statement expression (`({ ...; (value); })`), so blocks can
-  supply a value to a `let`, argument or return without being hoisted. The new
+  is hoisted into a typed temporary and a braced block written before the
+  enclosing statement, so the generated C is standard C rather than a GCC
+  statement expression. Nested blocks get their own temporaries. The new
   `tests/parity/blocks.nova` covers a block with locals and a block containing a
   `print` statement on all four backends.
 

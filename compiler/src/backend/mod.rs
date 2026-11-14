@@ -1,8 +1,10 @@
 //! C Backend - Generates C code from SIR
 
 use crate::sir::*;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::fmt::Write;
+use std::rc::Rc;
 
 /// C code generator backend
 #[derive(Clone)]
@@ -20,6 +22,11 @@ pub struct CBackend {
     /// String-typed parameters and bindings in the current function, so `print`
     /// picks `nova_print_str` instead of `nova_print_int`.
     string_vars: HashSet<String>,
+    /// Portable block lowering: declarations and statements that must be written
+    /// before the statement currently being generated.
+    hoisted: RefCell<Vec<String>>,
+    /// Unique suffix for hoisted block temporaries, shared by cloned contexts.
+    block_counter: Rc<Cell<usize>>,
 }
 
 impl CBackend {
@@ -30,6 +37,8 @@ impl CBackend {
             tagged: Vec::new(),
             current_return_type: None,
             string_vars: HashSet::new(),
+            hoisted: RefCell::new(Vec::new()),
+            block_counter: Rc::new(Cell::new(0)),
         }
     }
 
@@ -317,6 +326,24 @@ impl CBackend {
     }
 
     fn write_statement(&mut self, stmt: &SirStatement, indent: usize) {
+        // Generate into a buffer so block expressions can hoist their
+        // declarations and statements ahead of this statement.
+        let saved = std::mem::take(&mut self.output);
+        let saved_hoisted = self.hoisted.replace(Vec::new());
+        self.write_statement_inner(stmt, indent);
+        let pending = self.hoisted.replace(Vec::new());
+        let generated = std::mem::replace(&mut self.output, saved);
+        let prefix = "    ".repeat(indent);
+        for block in pending {
+            for line in block.lines() {
+                let _ = writeln!(self.output, "{prefix}{line}");
+            }
+        }
+        self.output.push_str(&generated);
+        self.hoisted.replace(saved_hoisted);
+    }
+
+    fn write_statement_inner(&mut self, stmt: &SirStatement, indent: usize) {
         let indent_str = "    ".repeat(indent);
         
         match stmt {
@@ -679,20 +706,50 @@ impl CBackend {
                 }
             }
             SirExpr::Block(statements, final_expr) => {
-                // GCC/Clang statement expression: `({ stmt; value; })`. This is
-                // the only way to reuse a block that may declare locals inside
-                // an arbitrary C expression position.
+                // Standard C has no block expression, so hoist the block ahead
+                // of the enclosing statement and leave only a temporary here.
+                let id = self.block_counter.get();
+                self.block_counter.set(id + 1);
+                let temporary = format!("__block_{id}");
+                let c_type = final_expr
+                    .as_ref()
+                    .map(|value| self.block_value_type(value))
+                    .unwrap_or_else(|| "int".to_string());
+
                 let mut nested = self.clone();
                 nested.output.clear();
+                nested.hoisted.replace(Vec::new());
                 for statement in statements {
                     nested.write_statement(statement, 0);
                 }
                 if let Some(value) = final_expr {
                     let rendered = nested.expr_to_c(value);
-                    let _ = writeln!(nested.output, "({rendered});");
+                    let pending = nested.hoisted.replace(Vec::new());
+                    for block in pending {
+                        nested.output.push_str(&block);
+                    }
+                    let _ = writeln!(nested.output, "{temporary} = {rendered};");
                 }
-                format!("({{ {} }})", nested.output)
+
+                self.hoisted.borrow_mut().push(format!(
+                    "{c_type} {temporary};\n{{\n{}}}\n",
+                    nested.output
+                ));
+                temporary
             }
+        }
+    }
+
+    /// A portable C type for the value produced by a block expression.
+    fn block_value_type(&self, value: &SirExpr) -> String {
+        match value {
+            SirExpr::Typed { typ, .. } => self.c_type(typ),
+            other => match self.print_kind(other) {
+                "str" => "char*".to_string(),
+                "float" => "double".to_string(),
+                "char" => "char".to_string(),
+                _ => "int".to_string(),
+            },
         }
     }
 
