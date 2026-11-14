@@ -1151,6 +1151,35 @@ fn javascript_and_rust_targets_emit_source() {
 }
 
 #[test]
+fn c_closures_print_their_parameters() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    let dir = scratch("closure-print");
+    let source = dir.join("closure_print.nova");
+    fs::write(
+        &source,
+        "fn main() -> int {\n    let show = |s: string| print(s);\n    show(\"ok\");\n    return 0;\n}\n",
+    )
+    .expect("write source");
+
+    let run = Command::new(compiler())
+        .arg("run")
+        .arg(&source)
+        .output()
+        .expect("run nova-compiler");
+    assert!(
+        run.status.success(),
+        "program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "ok\n");
+}
+
+#[test]
 fn stdlib_compose_runs_with_closures() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

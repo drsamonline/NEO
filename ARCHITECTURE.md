@@ -177,7 +177,7 @@ Phase 1 is complete. The Rust runtime crate exists but is not linked into genera
 programs. Phase 3 (tooling) is partial: the package registry is mocked, LSP
 go-to-definition is a string search with `references` missing, and the debugger's
 stack frames/DWARF are mocked. Phase 4 is in progress. `DEV_PLAN.md` is
-authoritative for status and the test suite has 186 passing tests.
+authoritative for status and the test suite has 187 passing tests.
 
 ### Future Architecture
 

@@ -12,6 +12,9 @@ pub struct RustBackend {
     signatures: std::collections::HashMap<String, Vec<String>>,
     /// Struct name -> fields, used for generated closure environments.
     structs: std::collections::HashMap<String, Vec<(String, String)>>,
+    /// Declared return type of the function being written, used when a
+    /// unit-valued builtin is returned from an `int`-inferred closure.
+    current_return_type: String,
 }
 
 impl RustBackend {
@@ -21,6 +24,7 @@ impl RustBackend {
             indent_level: 0,
             signatures: std::collections::HashMap::new(),
             structs: std::collections::HashMap::new(),
+            current_return_type: "void".to_string(),
         }
     }
 
@@ -182,6 +186,10 @@ impl RustBackend {
                 .map(|p| format!("{}: {}", p.name, self.rust_param_type(&p.typ))),
         );
         
+        self.current_return_type = func
+            .return_type
+            .clone()
+            .unwrap_or_else(|| "void".to_string());
         let returns_value = func
             .return_type
             .as_deref()
@@ -241,6 +249,22 @@ impl RustBackend {
                 self.writeln(&format!("{};", expr_str));
             }
             SirStatement::Return(expr) => {
+                // `print` is unit-valued, but an expression-bodied closure with a
+                // `print` body is inferred as returning `int`.
+                if let Some(SirExpr::Call { callee, args }) = expr.as_ref() {
+                    if callee == "print" || callee == "println" {
+                        let values: Vec<String> =
+                            args.iter().map(|arg| self.expr_to_rust(arg)).collect();
+                        self.writeln(&format!("{}({});", callee, values.join(", ")));
+                        if self.current_return_type == "void" {
+                            self.writeln("return;");
+                        } else {
+                            let value = self.default_value_for_type(&self.current_return_type);
+                            self.writeln(&format!("return {value};"));
+                        }
+                        return;
+                    }
+                }
                 let val_str = expr.as_ref().map(|e| self.expr_to_rust(e)).unwrap_or_default();
                 self.writeln(&format!("return {};", val_str));
             }

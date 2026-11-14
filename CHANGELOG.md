@@ -9,6 +9,15 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Closures print in C and WASM, parity corpus ⭐ NEW
+- **The C backend handles `print` inside closure bodies.** An expression-bodied
+  closure with a `print` body is inferred as returning `int`; the return path
+  now writes the runtime print calls and then returns a value of the declared
+  type instead of emitting an undefined `print(...)` call. String parameters and
+  `let` bindings are tracked so `nova_print_str` is chosen for variables, not
+  just literals. Rust has the same unit-valued-return fix. The closure parity
+  program covers printing a string parameter on all four backends.
+
 #### WASM string-returning closures, Rust closures, parity corpus ⭐ NEW
 - **WASM closures can return and print strings.** String literals are stored
   NUL-terminated and the host gains `print_cstr`, so a value crossing an indirect

@@ -1,6 +1,7 @@
 //! C Backend - Generates C code from SIR
 
 use crate::sir::*;
+use std::collections::HashSet;
 use std::fmt::Write;
 
 /// C code generator backend
@@ -15,6 +16,9 @@ pub struct CBackend {
     /// Return type of the function being written, so a trapping builtin can be
     /// followed by a value of the right type.
     current_return_type: Option<String>,
+    /// String-typed parameters and bindings in the current function, so `print`
+    /// picks `nova_print_str` instead of `nova_print_int`.
+    string_vars: HashSet<String>,
 }
 
 impl CBackend {
@@ -24,6 +28,7 @@ impl CBackend {
             struct_names: Vec::new(),
             tagged: Vec::new(),
             current_return_type: None,
+            string_vars: HashSet::new(),
         }
     }
 
@@ -111,6 +116,12 @@ impl CBackend {
                 .clone()
                 .unwrap_or_else(|| "void".to_string()),
         );
+        self.string_vars = func
+            .params
+            .iter()
+            .filter(|param| Self::is_string_type(&param.typ))
+            .map(|param| param.name.clone())
+            .collect();
         if Self::is_entry(&func.name) {
             // C requires `int main`, whatever NOVA declared. The value the NOVA
             // program returns (if any) is returned from here.
@@ -313,6 +324,11 @@ impl CBackend {
                     .as_ref()
                     .map(|t| self.c_type(t))
                     .unwrap_or_else(|| "int".to_string());
+                if typ.as_deref().is_some_and(Self::is_string_type)
+                    || matches!(value, SirExpr::Literal(SirLiteral::String(_)))
+                {
+                    self.string_vars.insert(name.clone());
+                }
                 let _ = write!(self.output, "{}{} {} = ", indent_str, typ_str, name);
                 let _ = writeln!(self.output, "{};", self.expr_to_c(value));
             }
@@ -321,26 +337,27 @@ impl CBackend {
                 // through the runtime, so generated C needs no stdio of its own.
                 if let SirExpr::Call { callee, args } = expr {
                     if (callee == "print" || callee == "println") && !args.is_empty() {
-                        for (i, arg) in args.iter().enumerate() {
-                            if i > 0 {
-                                let _ =
-                                    writeln!(self.output, "{}nova_print_str(\" \");", indent_str);
-                            }
-                            let _ = writeln!(
-                                self.output,
-                                "{}nova_print_{}({});",
-                                indent_str,
-                                self.print_kind(arg),
-                                self.expr_to_c(arg)
-                            );
-                        }
-                        let _ = writeln!(self.output, "{}nova_print_newline();", indent_str);
+                        self.write_print(args, indent);
                         return;
                     }
                 }
                 let _ = writeln!(self.output, "{}{};", indent_str, self.expr_to_c(expr));
             }
             SirStatement::Return(expr) => {
+                // `print` is unit-valued but an expression-bodied closure is
+                // inferred as returning `int`; write the print calls and return
+                // a value the declared signature accepts.
+                if let Some(SirExpr::Call { callee, args }) = expr.as_ref() {
+                    if (callee == "print" || callee == "println") && !args.is_empty() {
+                        self.write_print(args, indent);
+                        if self.current_return_type.as_deref() == Some("void") {
+                            let _ = writeln!(self.output, "{}return;", indent_str);
+                        } else {
+                            let _ = writeln!(self.output, "{}return 0;", indent_str);
+                        }
+                        return;
+                    }
+                }
                 // A builtin the runtime cannot provide traps; after the trap the
                 // function still needs a value of its declared type to compile.
                 if let Some(name) = expr.as_ref().and_then(Self::unsupported_call) {
@@ -635,6 +652,28 @@ impl CBackend {
         }
     }
 
+    fn is_string_type(typ: &str) -> bool {
+        matches!(typ.trim(), "String" | "string" | "str" | "&str")
+    }
+
+    /// Emit the runtime print calls for a `print`/`println` argument list.
+    fn write_print(&mut self, args: &[SirExpr], indent: usize) {
+        let indent_str = "    ".repeat(indent);
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                let _ = writeln!(self.output, "{}nova_print_str(\" \");", indent_str);
+            }
+            let _ = writeln!(
+                self.output,
+                "{}nova_print_{}({});",
+                indent_str,
+                self.print_kind(arg),
+                self.expr_to_c(arg)
+            );
+        }
+        let _ = writeln!(self.output, "{}nova_print_newline();", indent_str);
+    }
+
     /// Which `nova_print_*` runtime function takes this value.
     ///
     /// SIR does not carry static types, so this infers the way the old format
@@ -650,8 +689,13 @@ impl CBackend {
                 SirLiteral::Char(_) => "char",
                 SirLiteral::Unit => "int",
             },
-            // No type information on variables yet; int is the only usable guess.
-            SirExpr::Var(_) => "int",
+            SirExpr::Var(name) => {
+                if self.string_vars.contains(name) {
+                    "str"
+                } else {
+                    "int"
+                }
+            }
             SirExpr::BinOp { op, left, right } => match op {
                 SirBinOp::Add | SirBinOp::Sub | SirBinOp::Mul | SirBinOp::Div | SirBinOp::Mod => {
                     if self.print_kind(left) == "float" || self.print_kind(right) == "float" {

@@ -34,5 +34,8 @@ fn main() -> int {
 
     let same = |s: string| s;
     print(same("ok"));
+
+    let show = |s: string| print(s);
+    show("done");
     return 0;
 }
