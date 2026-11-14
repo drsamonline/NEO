@@ -1,11 +1,13 @@
 // NOVA static site worker: cache the shell, fall back to it offline.
-const CACHE = "nova-site-v1";
+const CACHE = "nova-site-v2";
 const SHELL = [
   "./",
   "./index.html",
   "./404.html",
   "./manifest.webmanifest",
   "./assets/favicon.svg",
+  "./assets/icon-192.png",
+  "./assets/icon-512.png",
   "./assets/logo.svg",
   "./assets/og.svg",
   "./assets/support-portrait.jpg",
