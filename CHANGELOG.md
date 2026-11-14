@@ -34,10 +34,14 @@ All notable changes to the NOVA project will be documented in this file.
   `__env` first and the value is `fn.bind(null, env)`, fixing `compose` and
   capturing closures. Both JS and Rust emit only functions reachable from
   `main`, so unused `core` helpers no longer break compilation.
-- **Parity corpus in CI.** `tests/parity/` programs (growable arrays and
-  closures) join every `examples/*.nova` in a loop that runs
+- **Parity corpus in CI.** `tests/parity/` programs (growable arrays,
+  structs/tuples and closures) join every `examples/*.nova` in a loop that runs
   `nova-compiler test --parity`, so a backend regression fails CI instead of
   being reported as `held`.
+- **Structs and tuples pass on all four backends.** Rust now emits user structs
+  with their real names and constructs generated tuple structs by field; JS
+  represents tuples as `{ _0, _1 }` objects so field access works. The struct
+  parity program prints `3 5 3 5` on C, JS, Rust and WASM.
 
 #### WASM structs/tuples, bounds checks, struct-aware SIR ⭐ NEW
 - **SIR carries the struct type on field access.** `FieldAccess`/`FieldAssign`

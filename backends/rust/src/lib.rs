@@ -219,7 +219,15 @@ impl RustBackend {
     fn generate_statement(&mut self, stmt: &SirStatement) {
         match stmt {
             SirStatement::Let { name, typ, value } => {
-                let rust_type = if let Some(t) = typ {
+                // A tuple literal carries its generated struct name even when
+                // the binding's inferred NOVA type is not recorded.
+                let literal = match value {
+                    SirExpr::Typed { expr, .. } => expr.as_ref(),
+                    other => other,
+                };
+                let rust_type = if let SirExpr::Tuple { name, .. } = literal {
+                    name.clone()
+                } else if let Some(t) = typ {
                     self.rust_type(t)
                 } else {
                     "i32".to_string()
@@ -413,9 +421,13 @@ impl RustBackend {
                 let values: Vec<String> = args.iter().map(|arg| self.expr_to_rust(arg)).collect();
                 format!("(*{})({})", self.expr_to_rust(callee), values.join(", "))
             }
-            SirExpr::Tuple { items, .. } => {
-                let values: Vec<String> = items.iter().map(|item| self.expr_to_rust(item)).collect();
-                format!("({})", values.join(", "))
+            SirExpr::Tuple { name, items } => {
+                let fields: Vec<String> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| format!("_{index}: {}", self.expr_to_rust(item)))
+                    .collect();
+                format!("{} {{ {} }}", name, fields.join(", "))
             }
             SirExpr::StructLiteral { name, fields } => {
                 let fields: Vec<String> = fields
@@ -531,6 +543,9 @@ impl RustBackend {
                 params.join(", "),
                 self.rust_type(&ret)
             );
+        }
+        if self.structs.contains_key(base) {
+            return base.to_string();
         }
         self.type_to_rust(base).to_string()
     }

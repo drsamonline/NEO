@@ -20,6 +20,6 @@ with `emit --target <c|js|rust|wasm>`. `build` and `run` link C only.
 - CI runs the parity harness over every `examples/*.nova` and
   `tests/parity/*.nova` program.
 
-Known limits: WASM has no float struct fields or non-`int` closure signatures;
-WASM out-of-bounds indexing traps while C prints a runtime error; Rust
-struct-focused parity programs are not in the corpus yet.
+The parity corpus includes growable arrays, structs/tuples and closures. Known
+limits: WASM has no float struct fields or non-`int` closure signatures; WASM
+out-of-bounds indexing traps while C prints a runtime error.

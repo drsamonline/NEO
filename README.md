@@ -168,8 +168,8 @@ cargo build --release
   `NovaTuple_*` structs with `let (a, b) = pair;` destructuring
 - **Backends**: `emit --target c|js|rust|wasm` selects a generator; JS, Rust and
   WASM output is executed in tests, `test --parity` runs all four when `node` and
-  `wat2wasm` are installed, and `tests/parity/` adds growable-array and closure
-  programs to the CI corpus; build/run link C
+  `wat2wasm` are installed, and   `tests/parity/` adds growable-array, struct/tuple and closure programs to the
+  CI corpus; build/run link C
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -187,8 +187,6 @@ cargo build --release
 - WASM struct fields cannot hold floats yet, and an out-of-bounds WASM index
   traps while C reports a runtime error, so those programs are not
   stdout-identical
-- Rust struct emission exists, but struct-focused four-backend parity programs
-  are not part of the corpus yet
 - LSP go-to-definition/references, DWARF debugger, real package registry
 
 ## Documentation

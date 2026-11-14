@@ -187,6 +187,6 @@ build/run remain C-only.
 
 Phase 1 is complete; Phase 3 is partial and Phase 4 is in progress. The full
 suite has 184 passing tests. Backend gaps that remain explicit: WASM float struct
-fields and non-`int` closure signatures, WASM out-of-bounds indexing traps versus
-C's runtime error, and no Rust struct-focused parity programs yet. `DEV_PLAN.md`
-is authoritative.
+fields and non-`int` closure signatures, and WASM out-of-bounds indexing traps
+versus C's runtime error. The parity corpus covers growable arrays, structs/tuples
+and closures. `DEV_PLAN.md` is authoritative.

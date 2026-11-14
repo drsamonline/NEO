@@ -204,7 +204,7 @@
     <div class="facts">
       <div><b>4</b><span>back ends</span></div>
       <div><b>184</b><span>tests passing</span></div>
-      <div><b>5</b><span>parity programs in CI</span></div>
+      <div><b>6</b><span>parity programs in CI</span></div>
       <div><b>4</b><span>stdlib modules</span></div>
     </div>
   </header>
@@ -221,8 +221,8 @@
       <div>
         <h3>Four back ends</h3>
         <p>One front end, four targets. C is the reference; JavaScript, Rust and WebAssembly run
-        an exercised subset. Arrays and closures run on all four, with growable arrays and
-        capturing/higher-order closures in the parity corpus.</p>
+        an exercised subset. Arrays, structs/tuples and closures run on all four, with growable
+        arrays, struct/tuple access and capturing/higher-order closures in the parity corpus.</p>
         <span class="ph">backends</span>
       </div>
       <div>
@@ -270,9 +270,9 @@ fn join(strings: [String], separator: String) -&gt; String {
       executes ints, strings, growable int arrays, structs, tuples and <code>int</code> closures.
       The suite has 184 passing tests, and CI runs <code>test --parity</code> over every example and
       parity program. Known gaps are listed in the repository README rather than hidden: WASM float
-      struct fields, non-<code>int</code> WASM closure signatures, LSP references, and DWARF
-      debugging. Claims on this page come from the repository's README and development plan, where
-      the development plan is authoritative.</p>
+      struct fields, non-<code>int</code> WASM closure signatures, WASM out-of-bounds trap/C error
+      differences, LSP references, and DWARF debugging. Claims on this page come from the
+      repository's README and development plan, where the development plan is authoritative.</p>
     </div>
   </section>
 

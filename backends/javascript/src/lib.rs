@@ -326,8 +326,14 @@ impl JsBackend {
                 format!("{}({})", self.expr_to_js(callee), values.join(", "))
             }
             SirExpr::Tuple { items, .. } => {
-                let values: Vec<String> = items.iter().map(|item| self.expr_to_js(item)).collect();
-                format!("[{}]", values.join(", "))
+                // Tuples are field-accessed by name (`_0`, `_1`), matching the
+                // generated `NovaTuple_*` structs on the other backends.
+                let fields: Vec<String> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| format!("_{index}: {}", self.expr_to_js(item)))
+                    .collect();
+                format!("{{ {} }}", fields.join(", "))
             }
             SirExpr::StructLiteral { fields, .. } => {
                 let fields: Vec<String> = fields
