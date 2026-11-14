@@ -26,6 +26,7 @@ impl JsBackend {
         self.writeln("");
         // `print` is the language's line-at-a-time output, as in the C runtime.
         self.writeln("function print(value) { console.log(value); }");
+        self.writeln("function println(value) { print(value); }");
         // Arrays are native JS arrays; the runtime helpers are thin wrappers.
         self.writeln("function nova_array_len(array) { return array.length; }");
         self.writeln("function nova_array_push(array, value) { array.push(value); }");

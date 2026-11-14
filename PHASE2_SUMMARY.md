@@ -1,6 +1,6 @@
 # Phase 2: Runtime System — Status
 
-**Last verified:** 2026-11-12 against the code and `cargo test --workspace`.
+**Last verified:** 2026-11-14 against the code and `cargo test --workspace`.
 
 Phase 2 built the Rust runtime crate under `runtime/`. It compiles and its unit
 tests pass, but it is **not linked into generated NOVA programs**: the C backend
@@ -47,5 +47,6 @@ programs currently use.
 cargo test --workspace   # includes the 33 runtime tests
 ```
 
-The workspace total is 139 passing tests, 0 failing (compiler, runtime, tooling
-and end-to-end tests together).
+The workspace total is 184 passing tests, 0 failing (compiler, runtime, tooling
+and end-to-end tests together). For overall project status, `DEV_PLAN.md` is
+authoritative: Phase 1 complete, Phase 3 partial, Phase 4 in progress.

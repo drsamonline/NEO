@@ -1,11 +1,16 @@
 # Compiler
 
-NOVA source is lowered to C by a four-stage pipeline, then linked with the host C
-compiler:
+NOVA source is lowered through a semantic pipeline and can be emitted for four
+targets:
 
 ```
-source .nova → lexer → parser → semantic analyser → SIR → lowerer → C → cc → executable
+source .nova → lexer → parser → semantic analyser → SIR → lowerer → c | js | rust | wasm
 ```
+
+C is the reference backend: `build` and `run` lower to C and link it with the host
+compiler. `emit --target js|rust|wasm` produces the other three. Closures, arrays
+and tuples are supported on all four targets for the exercised subset, and
+`test --parity` compares C, JS, Rust and WASM output.
 
 ## Usage
 
@@ -59,7 +64,9 @@ cc /tmp/hello.c /tmp/nova_runtime.c -o /tmp/hello
 ```
 
 The shim's ABI lives in `compiler/src/runtime.rs`; `nova_runtime_version()`
-reports version `2`.
+reports version `3`. It includes growable arrays (`nova_array_push`,
+`nova_array_pop`) and closures (`nova_closure_new`, `nova_closure_fn`,
+`nova_closure_env`, `nova_env_new`).
 
 Which function is used comes from the value's type: SIR expressions carry the
 type the lowerer knows (`SirExpr::Typed`), taken from a variable's declaration or
@@ -163,10 +170,23 @@ binding's function type, and otherwise default to `int`. Tuples lower to generat
 `NovaTuple_*` structs with `_0`,
 `_1`, … fields and destructure with `let (a, b) = pair;`.
 
+The same SIR closures are rendered by the other backends: JavaScript binds the
+environment with `fn.bind(null, env)`, Rust uses `Rc<dyn Fn(..) -> ..>` values over
+generated environment structs, and WebAssembly stores `[table index, environment
+pointer]` pairs and calls through `funcref`/`call_indirect` for `int` signatures.
+
 Parsed but not lowered yet: general slices and references (only `&mut` array
 parameters and string range indexes are lowered).
 
-Arrays are `NovaArray` (heap buffer, length and capacity) with `int` elements.
-The JavaScript, Rust and WebAssembly generators live in `backends/` and consume the
-SIR from `nova-common`; `emit --target js|rust|wasm` selects them, while build/run
-remain C-only.
+Arrays are `NovaArray` (heap buffer, length and capacity) with `int` elements. The
+JavaScript, Rust and WebAssembly generators live in `backends/` and consume the
+SIR from `nova-common`; `emit --target js|rust|wasm` selects them, while
+build/run remain C-only.
+
+## Current stage
+
+Phase 1 is complete; Phase 3 is partial and Phase 4 is in progress. The full
+suite has 184 passing tests. Backend gaps that remain explicit: WASM float struct
+fields and non-`int` closure signatures, WASM out-of-bounds indexing traps versus
+C's runtime error, and no Rust struct-focused parity programs yet. `DEV_PLAN.md`
+is authoritative.

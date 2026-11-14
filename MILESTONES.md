@@ -1,5 +1,9 @@
 # NOVA Project Milestones
 
+> Historical milestone log. For current status — Phase 1 complete, Phase 3
+> partial, Phase 4 in progress, 184 passing tests — see `DEV_PLAN.md` and
+> `README.md`.
+
 ## ✅ Milestone 1: Lexer Complete
 **Date**: Completed  
 **Status**: Done  

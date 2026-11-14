@@ -202,10 +202,10 @@
     </div>
 
     <div class="facts">
-      <div><b>~3,500</b><span>LOC compiler core</span></div>
-      <div><b>2,881</b><span>LOC runtime</span></div>
-      <div><b>3,601</b><span>LOC tooling</span></div>
       <div><b>4</b><span>back ends</span></div>
+      <div><b>184</b><span>tests passing</span></div>
+      <div><b>5</b><span>parity programs in CI</span></div>
+      <div><b>4</b><span>stdlib modules</span></div>
     </div>
   </header>
 
@@ -220,8 +220,9 @@
       </div>
       <div>
         <h3>Four back ends</h3>
-        <p>One front end, four targets. C, JavaScript, Rust and WebAssembly — the language does not
-        change shape on the way out.</p>
+        <p>One front end, four targets. C is the reference; JavaScript, Rust and WebAssembly run
+        an exercised subset. Arrays and closures run on all four, with growable arrays and
+        capturing/higher-order closures in the parity corpus.</p>
         <span class="ph">backends</span>
       </div>
       <div>
@@ -264,10 +265,14 @@ fn join(strings: [String], separator: String) -&gt; String {
   <section id="status">
     <h2>Where it stands</h2>
     <div class="note">
-      <p style="margin:0"><b>Phases 1–3 are marked complete; phase 4 is next.</b> Claims on this
-      page are taken from the repository's own README and development plan, and where a piece is a
-      scaffold rather than a finished feature it is marked as one — a language project that
-      describes its roadmap as though it were its release is a project nobody can plan around.</p>
+      <p style="margin:0"><b>Phase 1 is complete, Phase 3 is partial, and Phase 4 is in progress.</b>
+      The C backend is the reference. JavaScript and Rust execute arrays and closures; WebAssembly
+      executes ints, strings, growable int arrays, structs, tuples and <code>int</code> closures.
+      The suite has 184 passing tests, and CI runs <code>test --parity</code> over every example and
+      parity program. Known gaps are listed in the repository README rather than hidden: WASM float
+      struct fields, non-<code>int</code> WASM closure signatures, LSP references, and DWARF
+      debugging. Claims on this page come from the repository's README and development plan, where
+      the development plan is authoritative.</p>
     </div>
   </section>
 
@@ -298,7 +303,7 @@ fn join(strings: [String], separator: String) -&gt; String {
     <div class="wrap">
       <span>NOVA · repository drsamonline/NEO · © 2026 Dr Sohil Momin</span>
       <a href="https://github.com/drsamonline/NEO">GitHub</a>
-      <span class="stamp">design 2026-11-06</span>
+      <span class="stamp">design 2026-11-14</span>
     </div>
   </footer>
 </div>

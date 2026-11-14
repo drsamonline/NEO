@@ -1449,6 +1449,61 @@ fn javascript_output_runs_under_node() {
 }
 
 #[test]
+fn rust_closures_run_and_match_c() {
+    if !rustc_available() {
+        eprintln!("skipping: rustc is not installed");
+        return;
+    }
+
+    let dir = scratch("rust-closures");
+    let source = dir.join("closures.nova");
+    fs::write(
+        &source,
+        "fn apply(f: fn(int) -> int, x: int) -> int {\n    f(x)\n}\n\nfn make_adder(base: int) -> fn(int) -> int {\n    |x| x + base\n}\n\nfn compose(f: fn(int) -> int, g: fn(int) -> int) -> fn(int) -> int {\n    |x| f(g(x))\n}\n\nfn main() -> int {\n    let inc = |x| x + 1;\n    let dbl = |x| x * 2;\n    let both = compose(inc, dbl);\n    print(both(3));\n    let add5 = make_adder(5);\n    print(add5(3));\n    print(apply(|n| n * 2, 21));\n    return 0;\n}\n",
+    )
+    .expect("write source");
+
+    let rust = dir.join("closures.rs");
+    let emit = Command::new(compiler())
+        .arg("emit")
+        .arg(&source)
+        .arg("-o")
+        .arg(&rust)
+        .arg("--target")
+        .arg("rust")
+        .output()
+        .expect("emit rust");
+    assert!(emit.status.success(), "emit failed: {}", String::from_utf8_lossy(&emit.stderr));
+
+    let binary = dir.join("closures-rust");
+    let compile = Command::new("rustc")
+        .arg(&rust)
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .expect("run rustc");
+    assert!(
+        compile.status.success(),
+        "rustc failed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let rust_run = Command::new(&binary).output().expect("run rust binary");
+    assert_eq!(String::from_utf8_lossy(&rust_run.stdout), "7\n8\n42\n");
+
+    if c_compiler_available() {
+        let c_run = Command::new(compiler())
+            .arg("run")
+            .arg(&source)
+            .output()
+            .expect("run C program");
+        assert_eq!(
+            String::from_utf8_lossy(&rust_run.stdout),
+            String::from_utf8_lossy(&c_run.stdout)
+        );
+    }
+}
+
+#[test]
 fn rust_output_compiles_and_runs() {
     if !rustc_available() {
         eprintln!("skipping: rustc is not installed");

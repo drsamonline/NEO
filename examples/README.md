@@ -19,7 +19,7 @@ Recursive Fibonacci sequence calculation demonstrating:
 - While loops
 - Multiple function organization
 
-**Run:** `nova compile examples/fibonacci.nova && ./fibonacci`
+**Run:** `./target/release/nova-compiler run examples/fibonacci.nova`
 
 ### array_ops.nova
 Array manipulation examples showing:
@@ -29,13 +29,10 @@ Array manipulation examples showing:
 - Common array algorithms (sum, max, reverse)
 - Loop patterns for array traversal
 
-> **On the type annotation.** The parser has no array *type* syntax — `parse_type_expr`
-> reads a single name, so `[int]` and `[int; 5]` do not parse. Array parameters and
-> variables are therefore annotated with the plain name `Array`, exactly as `int` and
-> `string` are plain names. The annotation is a name, not a checked type; adding real
-> array types is a parser change, not an example change.
+Array parameters can be written `[int]` or `&mut [int]`; the compiler lowers the
+mutable form as a reference so `array_push` updates the caller's array.
 
-**Run:** `nova compile examples/array_ops.nova && ./array_ops`
+**Run:** `./target/release/nova-compiler run examples/array_ops.nova`
 
 ## Advanced Examples
 
@@ -84,9 +81,10 @@ python3 tools/example-check.py
 ./target/release/nova-compiler emit examples/hello.nova -o hello.c
 ```
 
-`--target js` and `--target rust` emit those generators' output; `--target wasm` is
-rejected rather than silently ignored, and `build`/`run` link C only. The four
-generators live in `backends/`.
+`--target js`, `--target rust` and `--target wasm` emit those generators' output;
+`build`/`run` link C only. The four generators live in `backends/`, and every
+example here is checked with `nova-compiler test --parity` in CI alongside the
+programs in `tests/parity/`.
 
 
 ## Example Output

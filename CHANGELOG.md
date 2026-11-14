@@ -9,6 +9,16 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Rust closures, WASM/JS closure fixes, four-backend parity corpus ⭐ NEW
+- **Rust closures run.** Lifted closure functions take their generated
+  environment struct by reference, closure values are `Rc<dyn Fn(..) -> ..>`,
+  and environment constructors return the struct directly instead of going
+  through the C `void*` copy. This covers non-capturing, capturing, returned and
+  higher-order closures, so `apply`, `make_adder`, `compose` and capturing
+  programs produce the same stdout as C. Rust structs are now emitted too.
+- **`println` works on the JS and Rust backends**, and the JS closure environment
+  helper mirrors the C runtime.
+
 #### WASM growable arrays and closures, four-backend parity corpus ⭐ NEW
 - **WASM arrays are growable.** An array value is a `[len, capacity, data]`
   descriptor, so `array_push` can reallocate the data and update the descriptor
@@ -24,8 +34,8 @@ All notable changes to the NOVA project will be documented in this file.
   `__env` first and the value is `fn.bind(null, env)`, fixing `compose` and
   capturing closures. Both JS and Rust emit only functions reachable from
   `main`, so unused `core` helpers no longer break compilation.
-- **Parity corpus in CI.** `tests/parity/` programs (starting with growable
-  arrays) join every `examples/*.nova` in a loop that runs
+- **Parity corpus in CI.** `tests/parity/` programs (growable arrays and
+  closures) join every `examples/*.nova` in a loop that runs
   `nova-compiler test --parity`, so a backend regression fails CI instead of
   being reported as `held`.
 

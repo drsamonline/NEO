@@ -45,18 +45,23 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 
 ## Current Status
 
-**✅ Phase 1: Compiler Core - COMPLETE (C runnable; other backends partial)**
+**✅ Phase 1: Compiler Core - COMPLETE (C is the reference; JS, Rust and WASM run an exercised subset)**
 - Full lexer, parser, semantic analyzer implemented
 - SIR (Semantic Intermediate Representation) defined
 - Lowerer converts AST to SIR
 - Four backend crates: C, JavaScript, Rust, WebAssembly. C is the reference and
-  links the runtime shim; JavaScript and Rust output runs for the exercised
-  subset. WebAssembly runs integers, booleans, string literals, `print`,
-  recursion, `if`/`while`/range-`for`, growable int arrays, structs/tuples and
-  closures (including capturing and higher-order ones) through
-  `backends/wasm/host.mjs`; array access is bounds-checked and unsupported
-  signatures are rejected instead of emitting placeholder code.
-- Total: ~3,500+ lines of compiler code
+  links the runtime shim. JavaScript and Rust run the exercised subset,
+  including arrays and closures (Rust closures are `Rc<dyn Fn(..) -> ..>` over
+  generated environment structs). WebAssembly runs integers, booleans, string
+  literals, `print`, recursion, `if`/`while`/range-`for`, growable int arrays,
+  structs/tuples and `int` closures through `backends/wasm/host.mjs`; array
+  access is bounds-checked and unsupported signatures are rejected instead of
+  emitting placeholder code.
+- `nova-compiler test --parity` compares stdout and exit status across all four
+  backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
+  program.
+- **184 tests pass** (`cargo test --workspace`; WASM execution tests need
+  `node` and `wat2wasm`).
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
 - The Rust `runtime/` crate (memory, GC, I/O, threading, async) compiles and is
@@ -159,11 +164,12 @@ cargo build --release
 - **Strings**: slicing (`text[a..b]`) and string-literal `match` arms
 - **Generics**: functions, enums, structs and impl methods are monomorphised
 - **Closures and tuples**: lifted closures with heap environments, typed closure
-  parameters and `fn(A) -> B` values; `NovaTuple_*` structs with
-  `let (a, b) = pair;` destructuring
+  parameters and `fn(A) -> B` values on C, JS, Rust and WASM;
+  `NovaTuple_*` structs with `let (a, b) = pair;` destructuring
 - **Backends**: `emit --target c|js|rust|wasm` selects a generator; JS, Rust and
   WASM output is executed in tests, `test --parity` runs all four when `node` and
-  `wat2wasm` are installed, build/run link C
+  `wat2wasm` are installed, and `tests/parity/` adds growable-array and closure
+  programs to the CI corpus; build/run link C
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted
@@ -178,6 +184,11 @@ cargo build --release
 - Multi-payload enum variants and value-position match bindings
 - General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
+- WASM struct fields cannot hold floats yet, and an out-of-bounds WASM index
+  traps while C reports a runtime error, so those programs are not
+  stdout-identical
+- Rust struct emission exists, but struct-focused four-backend parity programs
+  are not part of the corpus yet
 - LSP go-to-definition/references, DWARF debugger, real package registry
 
 ## Documentation
@@ -211,5 +222,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-**Last Updated**: Real-time status tracking enabled
-**Total Implementation**: ~5,000+ lines of production code
+**Last Updated**: 2026-11-14
+**Current stage**: Phase 3 partial, Phase 4 in progress (see [DEV_PLAN.md](DEV_PLAN.md); it is authoritative)
+**Test suite**: 184 passing, 0 failing

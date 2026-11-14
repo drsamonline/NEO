@@ -10,6 +10,8 @@ pub struct RustBackend {
     /// Declared parameter types per function, so array arguments can be passed
     /// as `&mut Vec<_>` at the call site.
     signatures: std::collections::HashMap<String, Vec<String>>,
+    /// Struct name -> fields, used for generated closure environments.
+    structs: std::collections::HashMap<String, Vec<(String, String)>>,
 }
 
 impl RustBackend {
@@ -18,6 +20,7 @@ impl RustBackend {
             output: String::new(),
             indent_level: 0,
             signatures: std::collections::HashMap::new(),
+            structs: std::collections::HashMap::new(),
         }
     }
 
@@ -34,12 +37,32 @@ impl RustBackend {
             })
             .collect();
         
+        self.structs = program
+            .structs
+            .iter()
+            .map(|structure| {
+                (
+                    structure.name.clone(),
+                    structure
+                        .fields
+                        .iter()
+                        .map(|field| (field.name.clone(), field.typ.clone()))
+                        .collect(),
+                )
+            })
+            .collect();
+
         // Add standard imports
         self.writeln("use std::io;");
+        self.writeln("use std::rc::Rc;");
         self.writeln("");
         // `print` writes a value and a newline, matching the C runtime.
         self.writeln("fn print<T: std::fmt::Display>(value: T) {");
         self.writeln("    println!(\"{}\", value);");
+        self.writeln("}");
+        // NOVA's `println` is the same newline-terminated print at this level.
+        self.writeln("fn println<T: std::fmt::Display>(value: T) {");
+        self.writeln("    print(value);");
         self.writeln("}");
         // Arrays are `Vec<i32>`; these mirror the C runtime helpers.
         self.writeln("fn nova_array_len(array: &Vec<i32>) -> i32 { array.len() as i32 }");
@@ -48,6 +71,21 @@ impl RustBackend {
         );
         self.writeln("");
         
+        // Closure environments and user structs are plain Rust structs. Values
+        // are moved into closures, so no derives are needed.
+        for structure in &program.structs {
+            let fields: Vec<String> = structure
+                .fields
+                .iter()
+                .map(|field| format!("    {}: {},", field.name, self.rust_type(&field.typ)))
+                .collect();
+            self.writeln(&format!("struct {} {{", structure.name));
+            self.output.push_str(&fields.join("\n"));
+            self.output.push('\n');
+            self.writeln("}");
+            self.writeln("");
+        }
+
         // Generate globals as static mut (not ideal but works for simple cases)
         for global in &program.globals {
             self.generate_global(global);
@@ -105,9 +143,44 @@ impl RustBackend {
     }
 
     fn generate_function(&mut self, func: &SirFunction) {
-        let params: Vec<String> = func.params.iter()
-            .map(|p| format!("{}: {}", p.name, self.rust_param_type(&p.typ)))
-            .collect();
+        // Environment constructors return the struct directly; the C ABI's
+        // `void*` copy step has no counterpart here.
+        if let Some(struct_name) = func.name.strip_prefix("__env_").map(|id| format!("__Env_{id}")) {
+            if let Some(fields) = self.structs.get(&struct_name).cloned() {
+                let params: Vec<String> = func
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, self.rust_param_type(&p.typ)))
+                    .collect();
+                let values: Vec<String> = fields
+                    .iter()
+                    .map(|(name, _)| format!("{}: {}", name, name))
+                    .collect();
+                self.writeln(&format!(
+                    "fn {}({}) -> {} {{",
+                    func.name,
+                    params.join(", "),
+                    struct_name
+                ));
+                self.indent_level += 1;
+                self.writeln(&format!("{} {{ {} }}", struct_name, values.join(", ")));
+                self.indent_level -= 1;
+                self.writeln("}");
+                return;
+            }
+        }
+
+        let mut params: Vec<String> = Vec::new();
+        if let Some(env_type) = &func.env_type {
+            if self.structs.contains_key(env_type) {
+                params.push(format!("__env: &{}", env_type));
+            }
+        }
+        params.extend(
+            func.params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.rust_param_type(&p.typ))),
+        );
         
         let returns_value = func
             .return_type
@@ -323,8 +396,14 @@ impl RustBackend {
                     format!("if {} {{ {} }}", cond_str, then_str)
                 }
             }
-            SirExpr::Typed { expr, .. } => self.expr_to_rust(expr),
-            SirExpr::Closure { name, .. } => name.clone(),
+            SirExpr::Typed { expr, typ } => {
+                if let SirExpr::Closure { name, env } = expr.as_ref() {
+                    self.closure_expr(name, env.as_deref(), typ)
+                } else {
+                    self.expr_to_rust(expr)
+                }
+            }
+            SirExpr::Closure { name, .. } => format!("Rc::new({name})"),
             SirExpr::EnvAccess { field, .. } => format!("__env.{}", field),
             SirExpr::SizeOf(_) => "0".to_string(),
             SirExpr::Cast { value, typ } => {
@@ -332,7 +411,7 @@ impl RustBackend {
             }
             SirExpr::CallValue { callee, args, .. } => {
                 let values: Vec<String> = args.iter().map(|arg| self.expr_to_rust(arg)).collect();
-                format!("{}({})", self.expr_to_rust(callee), values.join(", "))
+                format!("(*{})({})", self.expr_to_rust(callee), values.join(", "))
             }
             SirExpr::Tuple { items, .. } => {
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_rust(item)).collect();
@@ -415,13 +494,84 @@ impl RustBackend {
         self.rust_type(typ)
     }
 
-    /// The Rust spelling of a NOVA type; arrays become `Vec<i32>`.
+    /// Split a closure environment expression into its constructor and the
+    /// captured variables it is given.
+    fn environment_constructor(&self, env: &SirExpr) -> Option<(String, Vec<String>)> {
+        let expr = match env {
+            SirExpr::Typed { expr, .. } => expr.as_ref(),
+            other => other,
+        };
+        match expr {
+            SirExpr::Call { callee, args } if callee.starts_with("__env_") => Some((
+                callee.clone(),
+                args.iter().map(|arg| self.expr_to_rust(arg)).collect(),
+            )),
+            _ => None,
+        }
+    }
+
+    /// The Rust spelling of a NOVA type; arrays become `Vec<i32>` and function
+    /// types become `Rc<dyn Fn(..) -> ..>`.
     fn rust_type(&self, typ: &str) -> String {
         let base = typ.trim();
         if base.contains('[') || base.eq_ignore_ascii_case("array") {
             return "Vec<i32>".to_string();
         }
+        if base.starts_with("fn(") {
+            let (params, ret) = parse_function_type(base);
+            let params: Vec<String> = params
+                .iter()
+                .map(|param| self.rust_param_type(param))
+                .collect();
+            if is_void_type(&ret) {
+                return format!("Rc<dyn Fn({})>", params.join(", "));
+            }
+            return format!(
+                "Rc<dyn Fn({}) -> {}>",
+                params.join(", "),
+                self.rust_type(&ret)
+            );
+        }
         self.type_to_rust(base).to_string()
+    }
+
+    /// Render a closure value as an `Rc<dyn Fn(..) -> ..>`, binding the
+    /// environment (if any) into the closure.
+    fn closure_expr(&self, name: &str, env: Option<&SirExpr>, signature: &str) -> String {
+        let (params, _) = parse_function_type(signature);
+        let declarations: Vec<String> = params
+            .iter()
+            .enumerate()
+            .map(|(index, typ)| format!("p{index}: {}", self.rust_param_type(typ)))
+            .collect();
+        let arguments: Vec<String> = (0..params.len()).map(|index| format!("p{index}")).collect();
+        let env_call = env.and_then(|env| self.environment_constructor(env));
+        match env_call {
+            Some((constructor, captures)) => format!(
+                "{{ let __env = {}({}); Rc::new(move |{}| {}(&__env, {})) }}",
+                constructor,
+                captures.join(", "),
+                declarations.join(", "),
+                name,
+                arguments.join(", ")
+            ),
+            None if env.is_some() => {
+                let environment = self.expr_to_rust(env.expect("environment"));
+                format!(
+                    "Rc::new(move |{}| {}(&({}), {}))",
+                    declarations.join(", "),
+                    name,
+                    environment,
+                    arguments.join(", ")
+                )
+            }
+            None => format!(
+                "Rc::new(move |{}| {}({}))",
+                declarations.join(", "),
+                name,
+                arguments.join(", ")
+            ),
+        }
     }
 
     fn type_to_rust(&self, typ: &str) -> &'static str {
@@ -458,6 +608,33 @@ impl RustBackend {
         self.output.push_str(line);
         self.output.push('\n');
     }
+}
+
+fn is_void_type(typ: &str) -> bool {
+    matches!(typ.trim(), "" | "void" | "()" | "unit" | "!")
+}
+
+/// Parse `fn(A, B) -> C` into its parameter and result type names.
+fn parse_function_type(signature: &str) -> (Vec<String>, String) {
+    let signature = signature.trim();
+    let Some(rest) = signature.strip_prefix("fn(") else {
+        return (Vec::new(), "void".to_string());
+    };
+    let Some((params, result)) = rest.split_once(')') else {
+        return (Vec::new(), "void".to_string());
+    };
+    let params = params
+        .split(',')
+        .map(str::trim)
+        .filter(|param| !param.is_empty())
+        .map(str::to_string)
+        .collect();
+    let result = result
+        .trim()
+        .strip_prefix("->")
+        .map(str::trim)
+        .unwrap_or("void");
+    (params, result.to_string())
 }
 
 #[cfg(test)]

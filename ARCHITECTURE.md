@@ -155,33 +155,38 @@ Converts AST to SIR:
 
 ## Current Implementation Status
 
-| Phase | Component | Lines | Status |
-|-------|-----------|-------|--------|
-| Frontend | Lexer | 309 | ✅ Complete |
-| Frontend | Parser | 907 | ✅ Complete |
-| Frontend | Semantic Analyzer | 773 | ✅ Complete |
-| Middle-end | SIR | 146 | ✅ Complete |
-| Middle-end | Lowerer | 550 | ✅ Complete |
-| Backend | C | 449 | ✅ Complete |
-| Backend | JavaScript | 343 | ✅ Complete |
-| Backend | Rust | 352 | ✅ Complete |
-| Backend | WebAssembly | 385 | ✅ Complete |
-| **Total** | **Compiler Core** | **~5,000+** | **✅ Phase 1 Done** |
+| Phase | Component | Status |
+|-------|-----------|--------|
+| Frontend | Lexer | ✅ Complete |
+| Frontend | Parser | ✅ Complete for the supported grammar |
+| Frontend | Semantic Analyzer | ✅ Complete for the supported grammar |
+| Middle-end | SIR | ✅ Defined and shared by all backends |
+| Middle-end | Lowerer | ✅ Complete for the supported grammar |
+| Backend | C | ✅ Reference backend (ABI v3 runtime shim) |
+| Backend | JavaScript | ⚠️ Executes the exercised subset, arrays and closures included |
+| Backend | Rust | ⚠️ Executes the exercised subset, arrays and closures included |
+| Backend | WebAssembly | ⚠️ Ints, strings, growable int arrays, structs, tuples and `int` closures |
 
-## Future Architecture (Phase 2+)
+Line counts are deliberately omitted here because they drift; use the source and
+`DEV_PLAN.md`. The parity harness (`nova-compiler test --parity`) is the authority
+on backend coverage.
 
-### Runtime System (Planned)
-- Memory allocator
-- Garbage collector (optional)
-- Standard library runtime support
-- FFI bridge
+## Current Stage
 
-### Tooling (Planned)
-- Package manager with dependency resolution
-- Language server protocol implementation
-- Source-level debugger
+Phase 1 is complete. The Rust runtime crate exists but is not linked into generated
+programs. Phase 3 (tooling) is partial: the package registry is mocked, LSP
+go-to-definition is a string search with `references` missing, and the debugger's
+stack frames/DWARF are mocked. Phase 4 is in progress. `DEV_PLAN.md` is
+authoritative for status and the test suite has 184 passing tests.
+
+### Future Architecture
+
+- Link the Rust runtime crate or replace it with a documented native runtime.
+- More backend coverage: WASM float struct fields and non-`int` closures, Rust
+  struct-focused parity.
+- Real package registry, LSP references, DWARF debugging.
 
 ---
 
-**Last Updated**: Real-time tracking enabled  
-**Architecture Version**: 1.0 (Phase 1 Complete)
+**Last Updated**: 2026-11-14  
+**Architecture Version**: 1.1 (Phase 1 complete, Phase 4 in progress)

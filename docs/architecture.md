@@ -29,13 +29,15 @@ NOVA follows a multi-stage compilation pipeline with a semantic-first approach.
 - **SIR** (146 lines): Semantic Intermediate Representation
 - **Lowerer** (550 lines): AST to SIR conversion
 
-### 3. Backends (~1,500 lines)
-- **C Backend** (449 lines): Generates portable C code
-- **JavaScript Backend** (343 lines): ES6+ JavaScript
-- **Rust Backend** (352 lines): Safe Rust code
-- **WebAssembly Backend** (385 lines): WASM modules
+### 3. Backends
+- **C Backend**: portable C linked with the ABI v3 runtime shim (reference target)
+- **JavaScript Backend**: executable JavaScript; arrays and bound-environment closures
+- **Rust Backend**: executable Rust; `Vec<i32>` arrays and `Rc<dyn Fn(..)>` closures over generated environment structs
+- **WebAssembly Backend**: WAT assembled with `wat2wasm`; growable int arrays, structs, tuples and `int` closures through a `funcref` table
 
-### 4. Runtime System (~1,400 lines) 🆕
+Line counts are omitted because they drift; `DEV_PLAN.md` and the parity harness are authoritative for coverage.
+
+### 4. Runtime System (Rust crate; not linked into generated programs yet)
 - **Memory Management** (195 lines): Allocation, stack buffers
 - **Type System** (276 lines): String, Array, Option types
 - **Error Handling** (224 lines): Error types and handlers
@@ -68,5 +70,6 @@ Compiled NOVA programs can optionally link against the runtime system for:
 
 ---
 
-**Last Updated**: Phase 2 Active Development
-**Total LOC**: ~5,000+ (Compiler: 3,500+, Runtime: 1,380, Backends: 1,529)
+**Last Updated**: 2026-11-14
+**Current stage**: Phase 1 complete, Phase 3 partial, Phase 4 in progress (see `DEV_PLAN.md`)
+**Test suite**: 184 passing
