@@ -60,7 +60,7 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - `nova-compiler test --parity` compares stdout and exit status across all four
   backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
   program.
-- **184 tests pass** (`cargo test --workspace`; WASM execution tests need
+- **185 tests pass** (`cargo test --workspace`; WASM execution tests need
   `node` and `wat2wasm`).
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
@@ -178,9 +178,10 @@ cargo build --release
   (partial integration; see the status section)
 
 ### Coming Soon 🚧
-- WebAssembly closures with non-`int` parameters or results (the emitter
+- WebAssembly closures with floating-point parameters or results (the emitter
   rejects those signatures; the parity harness reports `wasm held` only when
-  `wat2wasm` or `node` is missing)
+  `wat2wasm` or `node` is missing). String-returning closures work: literals are
+  NUL-terminated in linear memory and printed through the host's `print_cstr`
 - Multi-payload enum variants and value-position match bindings
 - General (non-array) reference lowering
 - Growable arrays are implemented; element types other than `int` are not
@@ -222,4 +223,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Last Updated**: 2026-11-14
 **Current stage**: Phase 3 partial, Phase 4 in progress (see [DEV_PLAN.md](DEV_PLAN.md); it is authoritative)
-**Test suite**: 184 passing, 0 failing
+**Test suite**: 185 passing, 0 failing

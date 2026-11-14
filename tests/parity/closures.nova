@@ -27,5 +27,12 @@ fn main() -> int {
 
     let forty = || 42;
     print(forty());
+
+    let greeting = "hi";
+    let say = || greeting;
+    print(say());
+
+    let same = |s: string| s;
+    print(same("ok"));
     return 0;
 }

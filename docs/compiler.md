@@ -11,7 +11,7 @@ js|rust|wasm` produces the other three. The SIR lives in
 `crates/nova-common`; backend crates live in `backends/`.
 
 Current stage: Phase 1 complete, Phase 3 partial, Phase 4 in progress. The suite
-has 184 passing tests, and `nova-compiler test --parity` compares stdout and exit
+has 185 passing tests, and `nova-compiler test --parity` compares stdout and exit
 status across all four backends. CI runs the parity harness over every
 `examples/*.nova` and `tests/parity/*.nova` program.
 

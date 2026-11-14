@@ -31,6 +31,17 @@ const imports = {
       const bytes = new Uint8Array(memory.buffer, pointer, length);
       console.log(decoder.decode(bytes));
     },
+    // Strings whose length is only known at run time (for example a closure
+    // result) are NUL-terminated in linear memory.
+    print_cstr(pointer) {
+      if (!memory) {
+        throw new Error("print_cstr called before the module was instantiated");
+      }
+      const bytes = new Uint8Array(memory.buffer);
+      let end = pointer;
+      while (end < bytes.length && bytes[end] !== 0) end += 1;
+      console.log(decoder.decode(bytes.subarray(pointer, end)));
+    },
   },
 };
 

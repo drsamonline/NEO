@@ -500,7 +500,9 @@ impl WasmBackend {
         let mut next_offset = DATA_BASE;
         for (text, offset) in &mut self.strings {
             *offset = next_offset;
-            next_offset += text.len();
+            // Every literal is NUL-terminated so a value crossing a closure
+            // boundary can be printed without a separate length.
+            next_offset += text.len() + 1;
         }
         // Arrays are bump-allocated after the string data.
         self.heap_start = (next_offset + 3) & !3;
@@ -510,6 +512,7 @@ impl WasmBackend {
 
         self.writeln("(import \"env\" \"print_i32\" (func $print_i32 (param i32)))");
         self.writeln("(import \"env\" \"print_str\" (func $print_str (param i32 i32)))");
+        self.writeln("(import \"env\" \"print_cstr\" (func $print_cstr (param i32)))");
         // Growable arrays: [len, capacity, data]; push copies into a larger
         // block when full, so the descriptor pointer stays valid.
         self.writeln("(func $__array_push (param $arr i32) (param $val i32)");
@@ -585,7 +588,7 @@ impl WasmBackend {
 
         for (text, offset) in self.strings.clone() {
             self.writeln(&format!(
-                "(data (i32.const {offset}) \"{}\")",
+                "(data (i32.const {offset}) \"{}\\00\")",
                 escape_wat_string(&text)
             ));
         }
@@ -1516,6 +1519,12 @@ impl WasmBackend {
                     text.len()
                 ));
             }
+            _ if is_string_expr(arg) => {
+                // The length is not known through an indirect call, so the host
+                // reads the NUL-terminated bytes instead.
+                self.generate_expr(arg);
+                self.writeln("(call $print_cstr)");
+            }
             _ => {
                 self.generate_expr(arg);
                 self.writeln("(call $print_i32)");
@@ -1604,6 +1613,17 @@ fn returns_value(func: &SirFunction) -> bool {
         .as_deref()
         .map(|typ| !typ.is_empty() && typ != "void" && typ != "!")
         .unwrap_or(false)
+}
+
+fn is_string_expr(expr: &SirExpr) -> bool {
+    let typ = match expr {
+        SirExpr::Typed { typ, .. } => Some(typ.as_str()),
+        SirExpr::CallValue { return_type, .. } => Some(return_type.as_str()),
+        _ => None,
+    };
+    typ.is_some_and(|typ| {
+        matches!(typ.trim(), "String" | "string" | "str" | "&str")
+    })
 }
 
 fn is_void_type(typ: &str) -> bool {
@@ -1755,7 +1775,7 @@ mod tests {
 
         assert!(code.contains("(memory 16)"), "{code}");
         assert!(code.contains("(export \"memory\" (memory 0))"), "{code}");
-        assert!(code.contains("(data (i32.const 1024) \"hi\")"), "{code}");
+        assert!(code.contains("(data (i32.const 1024) \"hi\\00\")"), "{code}");
         assert!(
             code.contains("(call $print_str (i32.const 1024) (i32.const 2))"),
             "{code}"

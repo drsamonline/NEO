@@ -26,7 +26,7 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
 | Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
 
-**Test suite:** 184 passing, 0 failing (`cargo test --workspace`; WASM execution tests need `node` + `wat2wasm`).
+**Test suite:** 185 passing, 0 failing (`cargo test --workspace`; WASM execution tests need `node` + `wat2wasm`).
 
 ## Milestones, in order
 
