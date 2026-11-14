@@ -1016,6 +1016,19 @@ fn wasm_closures_run_on_the_host() {
 }
 
 #[test]
+fn wasm_closure_prints_string_parameter() {
+    let Some((stdout, code)) = run_wasm_source(
+        "wasm_print_param",
+        "fn main() -> int {\n    let show = |s: string| print(s);\n    show(\"ok\");\n    return 0;\n}\n",
+    ) else {
+        eprintln!("skipping: node and wat2wasm are required to run WebAssembly");
+        return;
+    };
+    assert_eq!(stdout, "ok\n");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
 fn wasm_string_returning_closures_run_on_the_host() {
     let Some((stdout, code)) = run_wasm_source(
         "wasm_string_closure",

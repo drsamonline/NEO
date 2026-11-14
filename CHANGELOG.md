@@ -10,11 +10,13 @@ All notable changes to the NOVA project will be documented in this file.
 
 ### Added
 #### WASM string-returning closures, Rust closures, parity corpus ⭐ NEW
-- **WASM closures can return strings.** String literals are stored
+- **WASM closures can return and print strings.** String literals are stored
   NUL-terminated and the host gains `print_cstr`, so a value crossing an indirect
   call (`let say = || greeting; print(say())`) prints as text instead of its
-  pointer. The closure parity program also passes a string parameter through a
-  closure, and all four backends print `hi` and `ok`.
+  pointer. The emitter records string-typed parameters and `let` bindings per
+  function, so `print` inside a closure body (`|s: string| print(s)`) also uses
+  `print_cstr`. The closure parity program passes a string parameter through a
+  closure and prints `hi` and `ok` on all four backends.
 
 #### Rust closures, WASM/JS closure fixes, four-backend parity corpus ⭐ NEW
 - **Rust closures run.** Lifted closure functions take their generated

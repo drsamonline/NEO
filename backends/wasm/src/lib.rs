@@ -41,6 +41,9 @@ pub struct WasmBackend {
     closures: HashMap<String, u32>,
     /// Current indirect-call nesting depth, used to pick scratch locals.
     call_depth: usize,
+    /// Names known to hold strings in the current function (parameters and
+    /// `let` bindings), so `print` can choose `print_cstr` over `print_i32`.
+    string_vars: HashSet<String>,
 }
 
 /// Reject programs this backend cannot represent faithfully, so `emit --target
@@ -435,6 +438,7 @@ impl WasmBackend {
             structs: HashMap::new(),
             closures: HashMap::new(),
             call_depth: 0,
+            string_vars: HashSet::new(),
         }
     }
 
@@ -631,7 +635,13 @@ impl WasmBackend {
 
     fn generate_function(&mut self, func: &SirFunction) {
         self.locals.clear();
+        self.string_vars.clear();
         self.params = func.params.iter().map(|p| p.name.clone()).collect();
+        for param in &func.params {
+            if is_string_type(&param.typ) {
+                self.string_vars.insert(param.name.clone());
+            }
+        }
         self.collect_locals(&func.body);
 
         let result_type = if returns_value(func) {
@@ -700,6 +710,11 @@ impl WasmBackend {
             match stmt {
                 SirStatement::Let { name, typ, value } => {
                     self.add_local(name, self.wasm_type(typ.as_deref()));
+                    if typ.as_deref().is_some_and(is_string_type)
+                        || matches!(unspanned_literal(value), Some(SirLiteral::String(_)))
+                    {
+                        self.string_vars.insert(name.clone());
+                    }
                     self.collect_expr_locals(value);
                 }
                 SirStatement::If {
@@ -1502,6 +1517,17 @@ impl WasmBackend {
 
     /// `print`/`println` end the line in NOVA. Strings pass a pointer and length
     /// to the host; everything else is an i32.
+    fn is_string_expr(&self, expr: &SirExpr) -> bool {
+        match expr {
+            SirExpr::Var(name) => self.string_vars.contains(name),
+            SirExpr::Typed { expr, typ } => {
+                is_string_type(typ) || self.is_string_expr(expr)
+            }
+            SirExpr::CallValue { return_type, .. } => is_string_type(return_type),
+            _ => false,
+        }
+    }
+
     fn emit_print(&mut self, args: &[SirExpr]) {
         let Some(arg) = args.first() else {
             return;
@@ -1519,7 +1545,7 @@ impl WasmBackend {
                     text.len()
                 ));
             }
-            _ if is_string_expr(arg) => {
+            _ if self.is_string_expr(arg) => {
                 // The length is not known through an indirect call, so the host
                 // reads the NUL-terminated bytes instead.
                 self.generate_expr(arg);
@@ -1615,15 +1641,8 @@ fn returns_value(func: &SirFunction) -> bool {
         .unwrap_or(false)
 }
 
-fn is_string_expr(expr: &SirExpr) -> bool {
-    let typ = match expr {
-        SirExpr::Typed { typ, .. } => Some(typ.as_str()),
-        SirExpr::CallValue { return_type, .. } => Some(return_type.as_str()),
-        _ => None,
-    };
-    typ.is_some_and(|typ| {
-        matches!(typ.trim(), "String" | "string" | "str" | "&str")
-    })
+fn is_string_type(typ: &str) -> bool {
+    matches!(typ.trim(), "String" | "string" | "str" | "&str")
 }
 
 fn is_void_type(typ: &str) -> bool {

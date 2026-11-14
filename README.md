@@ -60,7 +60,7 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - `nova-compiler test --parity` compares stdout and exit status across all four
   backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
   program.
-- **185 tests pass** (`cargo test --workspace`; WASM execution tests need
+- **186 tests pass** (`cargo test --workspace`; WASM execution tests need
   `node` and `wat2wasm`).
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
@@ -223,4 +223,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Last Updated**: 2026-11-14
 **Current stage**: Phase 3 partial, Phase 4 in progress (see [DEV_PLAN.md](DEV_PLAN.md); it is authoritative)
-**Test suite**: 185 passing, 0 failing
+**Test suite**: 186 passing, 0 failing
