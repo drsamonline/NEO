@@ -22,6 +22,7 @@ USAGE:
     nova-compiler build <source.nova> [-o PATH]  compile and link an executable
     nova-compiler run <source.nova> [-- ARGS...] build, then run the executable
     nova-compiler test --parity <source.nova>  run one program on every backend and compare
+    nova-compiler doctor                       check toolchains and backend readiness
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
@@ -59,6 +60,10 @@ fn main() {
             let (input, output, target, rest) = parse_args(&args[1..]);
             require_c(target, "run");
             run(&input, output.as_deref(), &rest);
+        }
+        Some("doctor") => {
+            reject_extra_args(&args[1..], "doctor");
+            doctor();
         }
         Some("test") => {
             let mut parity = false;
@@ -598,6 +603,78 @@ fn scratch_binary(input: &Path) -> PathBuf {
         die(&format!("cannot create {}: {e}", dir.display()));
     });
     dir.join(default_stem(input))
+}
+
+/// One external command the compiler can use.
+struct ToolStatus {
+    name: &'static str,
+    command: String,
+    available: bool,
+    version: Option<String>,
+    hint: &'static str,
+}
+
+impl ToolStatus {
+    fn detect(name: &'static str, command: String, version_args: &[&str], hint: &'static str) -> Self {
+        let output = Command::new(&command).args(version_args).output();
+        let (available, version) = match output {
+            Ok(output) if output.status.success() => {
+                let text = String::from_utf8_lossy(&output.stdout);
+                let line = text.lines().next().unwrap_or("").trim();
+                (true, (!line.is_empty()).then(|| line.chars().take(72).collect()))
+            }
+            // The npm `wat2wasm` wrapper exits non-zero without arguments but
+            // still proves the command can be spawned.
+            Ok(_) if name == "wat2wasm" => (true, None),
+            Ok(_) => (false, None),
+            Err(_) => (false, None),
+        };
+        Self { name, command, available, version, hint }
+    }
+}
+
+/// `doctor`: report the tools the compiler can use and which backends are ready.
+fn doctor() -> ! {
+    let cc = env::var("CC").unwrap_or_else(|_| "cc".to_string());
+    let tools = [
+        ToolStatus::detect("cc", cc, &["--version"], "install gcc or clang, or set CC"),
+        ToolStatus::detect("node", "node".to_string(), &["--version"], "install Node.js for JS and WASM parity"),
+        ToolStatus::detect("rustc", "rustc".to_string(), &["--version"], "install Rust for the Rust backend"),
+        ToolStatus::detect("wat2wasm", "wat2wasm".to_string(), &[], "npm install --global wat2wasm"),
+    ];
+
+    println!("NOVA doctor\n\ntools");
+    for tool in &tools {
+        let state = if tool.available { "ok" } else { "missing" };
+        println!("  {:<9} {:<8} {}", tool.name, state, tool.command);
+        if let Some(version) = &tool.version {
+            println!("            {version}");
+        }
+        if !tool.available {
+            println!("            {}", tool.hint);
+        }
+    }
+
+    let available = |name: &str| tools.iter().any(|tool| tool.name == name && tool.available);
+    let backends = [
+        ("c", available("cc"), "build and run"),
+        ("js", available("node"), "emit and parity"),
+        ("rust", available("rustc"), "emit and parity"),
+        ("wasm", available("node") && available("wat2wasm"), "emit and parity"),
+    ];
+
+    println!("\nbackends");
+    for (name, ready, use_case) in backends {
+        let state = if ready { "ready" } else { "unavailable" };
+        println!("  {:<5} {:<12} {}", name, state, use_case);
+    }
+
+    if available("cc") {
+        println!("\nrequired toolchain: ok");
+        exit(0);
+    }
+    eprintln!("\nrequired toolchain: missing a C compiler; build and run cannot work");
+    exit(1);
 }
 
 fn default_stem(input: &Path) -> String {

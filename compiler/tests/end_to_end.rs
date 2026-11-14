@@ -63,6 +63,31 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 #[test]
+fn doctor_reports_tools_and_backends() {
+    let output = Command::new(compiler())
+        .arg("doctor")
+        .output()
+        .expect("run nova-compiler doctor");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.success(),
+        c_compiler_available(),
+        "doctor exit status should match C compiler availability:\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for tool in ["cc", "node", "rustc", "wat2wasm"] {
+        assert!(stdout.contains(tool), "doctor did not report `{tool}`:\n{stdout}");
+    }
+    for backend in ["c", "js", "rust", "wasm"] {
+        assert!(
+            stdout.lines().any(|line| line.trim_start().starts_with(&format!("{backend} "))),
+            "doctor did not report the `{backend}` backend:\n{stdout}"
+        );
+    }
+}
+
+#[test]
 fn hello_compiles_links_and_prints() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");

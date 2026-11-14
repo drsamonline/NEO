@@ -59,7 +59,7 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - `nova-compiler test --parity` compares stdout and exit status across all four
   backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
   program.
-- **187 tests pass** (`cargo test --workspace`; WASM execution tests need
+- **188 tests pass** (`cargo test --workspace`; WASM execution tests need
   `node` and `wat2wasm`).
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
@@ -98,6 +98,9 @@ See [Development Plan](DEV_PLAN.md) for detailed status. Where this summary and
 ```bash
 # Build the compiler (Rust toolchain, plus a C compiler on PATH)
 cargo build --release
+
+# Check which toolchains and backends are ready
+./target/release/nova-compiler doctor
 
 # Compile and run a program
 ./target/release/nova-compiler run examples/hello.nova
@@ -209,7 +212,7 @@ cargo build --release
 | Live demo | [drsamonline.github.io/NEO](https://drsamonline.github.io/NEO/) |
 | Author | [Dr Sohil Momin](https://drsamonline.github.io/) |
 | Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
-| Tests | 187 passing, 0 failing; 7 four-backend parity programs |
+| Tests | 188 passing, 0 failing; 7 four-backend parity programs |
 | License | MIT (see [LICENSE](LICENSE)) |
 | Releases | None published yet |
 
@@ -250,4 +253,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Last Updated**: 2026-11-14
 **Current stage**: Phase 3 partial, Phase 4 in progress (see [DEV_PLAN.md](DEV_PLAN.md); it is authoritative)
-**Test suite**: 187 passing, 0 failing
+**Test suite**: 188 passing, 0 failing
