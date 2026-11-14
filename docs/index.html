@@ -2,332 +2,664 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NOVA — a semantic programming platform</title>
-<meta name="description" content="A statically-typed, compiled systems language whose compiler lowers source through a semantic pipeline to C, JavaScript, Rust and WebAssembly. The repository is NEO; the language is NOVA.">
-<meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
-<meta property="og:title" content="NOVA — a semantic programming platform">
-<meta property="og:description" content="One front end, four back ends, and a semantic IR in the middle.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NOVA — compiler workspace</title>
+<meta name="description" content="NOVA is a statically-typed compiled language with one semantic pipeline and four backends: C, JavaScript, Rust and WebAssembly. 187 tests, seven parity programs, no hidden roadmap.">
+<meta name="theme-color" content="#0b0d10">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:title" content="NOVA — compiler workspace">
+<meta property="og:description" content="One semantic pipeline, four backends, 187 passing tests and a parity harness that compares stdout across all of them.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/og.svg">
 <style>
-  /* A compiler pipeline. The page's one idea is the shape of the compiler:
-     source narrows through the front end, then fans out to four back ends. */
   :root {
-    --bg: #050505; --panel: #0d0e10; --ink: #ffffff; --mut: #9b9ea6;
-    --line: #1c1e22; --acc: #60a5fa; --acc-dim: #1e3a8a;
-    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    --sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    --bg: #08090b;
+    --surface: #0f1115;
+    --surface-2: #14171c;
+    --ink: #f4f6fa;
+    --muted: #9aa3b2;
+    --faint: #6b7382;
+    --line: #22262e;
+    --accent: #5b9dff;
+    --accent-ink: #06101f;
+    --good: #48d597;
+    --warn: #f3c969;
+    --bad: #ff7a7a;
+    --radius: 12px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --sidebar: 264px;
   }
-  @media (prefers-color-scheme: light) {
-    :root { --bg: #f7f6f2; --panel: #ffffff; --ink: #14161a; --mut: #5c6470;
-            --line: #e2ddd2; --acc: #1d4ed8; --acc-dim: #bfdbfe; }
+  html[data-theme="light"] {
+    --bg: #f5f4ef;
+    --surface: #ffffff;
+    --surface-2: #f0eee7;
+    --ink: #15181d;
+    --muted: #5b6472;
+    --faint: #7a8290;
+    --line: #dedad0;
+    --accent: #1f5fd0;
+    --accent-ink: #ffffff;
+    --good: #087a4b;
+    --warn: #8a6100;
+    --bad: #b42318;
   }
-  :root[data-theme="dark"] { --bg: #050505; --panel: #0d0e10; --ink: #fff; --mut: #9b9ea6;
-    --line: #1c1e22; --acc: #60a5fa; --acc-dim: #1e3a8a; }
-  :root[data-theme="light"] { --bg: #f7f6f2; --panel: #fff; --ink: #14161a; --mut: #5c6470;
-    --line: #e2ddd2; --acc: #1d4ed8; --acc-dim: #bfdbfe; }
-
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
-         font-size: 16.5px; line-height: 1.62; -webkit-font-smoothing: antialiased; }
-  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 26px; }
-  a { color: var(--acc); text-underline-offset: 3px; }
-  code { font-family: var(--mono); font-size: .86em; background: var(--panel);
-         border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
+  body {
+    margin: 0;
+    overflow-x: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  code, kbd { font-family: var(--mono); font-size: .86em; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .skip {
+    position: absolute; left: 12px; top: -80px; z-index: 100;
+    background: var(--accent); color: var(--accent-ink);
+    padding: 12px 16px; border-radius: 8px; text-decoration: none; font-weight: 600;
+  }
+  .skip:focus { top: 12px; }
 
-  .bar { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--line);
-         background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px); }
-  .bar .wrap { display: flex; align-items: center; gap: 12px; height: 56px; }
-  .mark { width: 24px; height: 24px; }
-  .brand { font-family: var(--mono); font-size: 15px; letter-spacing: .18em; }
-  .repo { font-family: var(--mono); font-size: 10.5px; color: var(--mut); border-left: 1px solid var(--line);
-           padding-left: 12px; letter-spacing: .06em; }
-  .bar nav { margin-left: auto; display: flex; gap: 18px; font-size: 13.5px; }
-  .bar nav a { color: var(--mut); text-decoration: none; }
-  .bar nav a:hover { color: var(--ink); }
-  @media (max-width: 820px) { .bar nav, .repo { display: none; } }
-  .toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px 5px 9px;
-    color: var(--mut); font: inherit; font-size: 12px; line-height: 1; }
-  .toggle:hover { color: var(--ink); border-color: var(--acc); }
-  .toggle svg { width: 13px; height: 13px; }
-  .bar nav + .toggle { margin-left: 0; }
+  .app { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); min-height: 100vh; }
 
-  .hero { padding: 66px 0 0; }
-  .eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase;
-              color: var(--mut); }
-  .eyebrow b { color: var(--acc); font-weight: 400; }
-  h1 { font-size: clamp(34px, 6vw, 62px); line-height: 1.02; letter-spacing: -.04em; margin: 14px 0 0;
-        font-weight: 700; max-width: 18ch; }
-  h1 em { font-style: normal; color: var(--acc); }
-  .lead { font-size: 17.5px; color: var(--mut); max-width: 60ch; margin: 18px 0 0; }
-  .lead b { color: var(--ink); font-weight: 600; }
-  .cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 0; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 19px; border-radius: 4px;
-         font-family: var(--mono); font-size: 13px; text-decoration: none;
-         background: var(--acc); color: #050505; border: 1px solid var(--acc); }
-  :root[data-theme="dark"] .btn { color: #050505; }
-  .btn:hover { filter: brightness(1.08); }
-  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-  .btn.ghost:hover { border-color: var(--acc); color: var(--acc); filter: none; }
+  /* ---------- sidebar ---------- */
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
+    gap: 18px; padding: 20px 16px;
+    background: var(--surface); border-right: 1px solid var(--line);
+    overflow-y: auto;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .brand b { display: block; font-family: var(--mono); letter-spacing: .16em; font-size: 14px; }
+  .brand span { display: block; font-size: 11px; color: var(--faint); letter-spacing: .06em; }
+  .side-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--faint); margin: 4px 8px;
+  }
+  .side-nav { display: grid; gap: 2px; }
+  .side-nav a {
+    display: flex; align-items: center; gap: 10px; min-height: 40px;
+    padding: 8px 10px; border-radius: 8px; color: var(--muted); text-decoration: none; font-size: 14px;
+  }
+  .side-nav a:hover { background: var(--surface-2); color: var(--ink); }
+  .side-nav a[aria-current="true"] { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--ink); }
+  .side-nav .ico { width: 18px; text-align: center; opacity: .85; }
+  .side-card {
+    margin-top: auto; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px; background: var(--surface-2); font-size: 13px;
+  }
+  .side-card b { display: block; font-size: 13px; margin-bottom: 4px; }
+  .side-card p { margin: 0 0 10px; color: var(--muted); }
+  .side-card a { font-size: 13px; }
+  .side-foot { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--faint); }
+  .side-foot a { color: var(--faint); }
 
-  /* ---- the pipeline: narrow in, fan out ---- */
-  .pipe { margin: 44px 0 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
-           padding: 24px 22px; }
-  .front { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: center; }
-  .stage { border: 1px solid var(--line); border-radius: 5px; padding: 8px 12px; font-family: var(--mono);
-            font-size: 12.5px; background: var(--bg); white-space: nowrap; }
-  .stage.src { border-style: dashed; color: var(--mut); }
-  .stage.sir { border-color: var(--acc); color: var(--acc); background: color-mix(in srgb, var(--acc) 10%, var(--bg)); }
-  .sep { color: var(--mut); font-family: var(--mono); font-size: 12px; }
-  .fan { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 20px;
-          padding-top: 20px; border-top: 1px dashed var(--line); position: relative; }
-  .fan::before { content: 'backends'; position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
-                  background: var(--panel); padding: 0 10px; font-family: var(--mono); font-size: 9.5px;
-                  letter-spacing: .16em; text-transform: uppercase; color: var(--mut); }
-  .back { text-align: center; border: 1px solid var(--line); border-radius: 5px; padding: 12px 8px;
-           font-family: var(--mono); font-size: 13px; }
-  .back b { display: block; color: var(--acc); font-weight: 500; }
-  .back span { display: block; font-size: 10px; color: var(--mut); margin-top: 3px; letter-spacing: .08em; }
-  @media (max-width: 700px) { .fan { grid-template-columns: repeat(2, 1fr); } }
+  /* ---------- shell ---------- */
+  .shell { min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 10px;
+    min-height: 60px; padding: 8px 20px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
+  }
+  .menu-btn {
+    display: none; width: 44px; height: 44px; padding: 0; place-items: center;
+    border: 1px solid var(--line); border-radius: 9px;
+    background: var(--surface); color: var(--ink); cursor: pointer;
+  }
+  .crumb { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crumb b { color: var(--ink); font-weight: 500; }
+  .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .icon-btn, .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 44px; padding: 10px 14px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); text-decoration: none; font: inherit;
+    font-size: 14px; cursor: pointer;
+  }
+  .icon-btn { width: 44px; padding: 0; }
+  .icon-btn:hover, .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; }
+  .btn small { font-weight: 400; opacity: .8; }
 
-  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line);
-           border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 34px 0 0; }
-  .facts div { background: var(--panel); padding: 15px 17px; }
-  .facts b { display: block; font-family: var(--mono); font-size: 18px; color: var(--acc); }
-  .facts span { font-size: 12px; color: var(--mut); }
-  @media (max-width: 700px) { .facts { grid-template-columns: repeat(2, 1fr); } }
+  main { width: 100%; max-width: 1240px; margin: 0 auto; padding: 22px 22px 80px; }
+  section { scroll-margin-top: 78px; margin-top: 22px; }
+  .panel {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 20px;
+  }
+  .section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin-bottom: 12px; }
+  .section-head h2 {
+    margin: 0; font-family: var(--mono); font-size: 12px; font-weight: 500;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+  }
+  .section-head p { margin: 0; color: var(--faint); font-size: 13px; }
+  .section-head .right { margin-left: auto; font-size: 12px; color: var(--faint); }
 
-  section { padding: 54px 0 0; }
-  h2 { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
-       color: var(--mut); margin: 0 0 18px; font-weight: 400; display: flex; align-items: center; gap: 12px; }
-  h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  /* ---------- hero ---------- */
+  .hero { display: grid; gap: 18px; margin-top: 6px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 7px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+    font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap;
+  }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+  .pill.warn .dot { background: var(--warn); }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); gap: 18px; align-items: stretch; }
+  h1 {
+    margin: 0; font-size: clamp(34px, 4.6vw, 60px); line-height: 1.02;
+    letter-spacing: -.045em; font-weight: 700; max-width: 16ch;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+  .hero-copy p { margin: 14px 0 0; color: var(--muted); max-width: 58ch; font-size: 17px; }
+  .hero-copy p b { color: var(--ink); }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 11px; }
-  .cards > div { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 18px; }
-  .cards h3 { font-size: 15.5px; margin: 0 0 6px; }
-  .cards p { margin: 0; font-size: 14px; color: var(--mut); }
-  .cards .ph { display: inline-block; margin-top: 9px; font-family: var(--mono); font-size: 9.5px;
-                letter-spacing: .1em; text-transform: uppercase; color: var(--acc);
-                border: 1px solid var(--acc-dim); border-radius: 3px; padding: 2px 7px; }
-  .cards .ph.scaffold { color: var(--mut); border-color: var(--line); }
+  .terminal {
+    display: flex; flex-direction: column; min-height: 230px;
+    background: #07090d; border: 1px solid #1d2430; border-radius: var(--radius); overflow: hidden;
+  }
+  html[data-theme="light"] .terminal { background: #0c1017; }
+  .terminal-bar {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+    border-bottom: 1px solid #1d2430; color: #8d99ab; font-family: var(--mono); font-size: 11px;
+  }
+  .terminal-bar .lights { display: flex; gap: 5px; margin-right: 4px; }
+  .terminal-bar i { width: 9px; height: 9px; border-radius: 50%; background: #2c3544; }
+  .terminal-bar i:first-child { background: #e0655f; }
+  .terminal-bar i:nth-child(2) { background: #d9b44a; }
+  .terminal-bar i:nth-child(3) { background: #4fb477; }
+  .terminal-bar .copy { margin-left: auto; }
+  .copy {
+    display: inline-flex; align-items: center; min-height: 34px; padding: 4px 9px;
+    border: 1px solid #2a3444; border-radius: 7px; background: #10151e;
+    color: #b9c4d4; font-family: var(--mono); font-size: 11px; cursor: pointer;
+  }
+  .copy:hover { border-color: var(--accent); color: #fff; }
+  .terminal pre {
+    margin: 0; padding: 16px; overflow: auto; flex: 1;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.8; color: #dbe6f5;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .terminal .c { color: #6d7c91; }
+  .terminal .g { color: #6fe3a8; }
 
-  pre { margin: 0; background: var(--panel); border: 1px solid var(--line); border-left: 2px solid var(--acc);
-        border-radius: 0 7px 7px 0; padding: 16px 18px; overflow-x: auto;
-        font-family: var(--mono); font-size: 12.5px; line-height: 1.8; color: var(--ink); }
-  pre .c { color: var(--mut); }
-  .snippet-cap { font-family: var(--mono); font-size: 11px; color: var(--mut); margin: 10px 0 0; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .stat { background: var(--surface); padding: 14px 16px; }
+  .stat b { display: block; font-family: var(--mono); font-size: 22px; color: var(--ink); }
+  .stat span { font-size: 12px; color: var(--muted); }
 
-  .note { border-left: 2px solid var(--acc); background: color-mix(in srgb, var(--acc) 8%, transparent);
-           padding: 15px 18px; border-radius: 0 6px 6px 0; font-size: 15.5px; }
-  .note b { color: var(--ink); }
+  /* ---------- pipeline ---------- */
+  .pipeline { display: grid; gap: 14px; }
+  .pipe-row { display: flex; align-items: stretch; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .stage {
+    flex: 1 0 auto; min-width: 104px; text-align: center; padding: 11px 10px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2);
+    font-family: var(--mono); font-size: 12px;
+  }
+  .stage small { display: block; color: var(--faint); font-size: 10px; margin-top: 2px; }
+  .stage.ir { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
+  .arrow { display: grid; place-items: center; color: var(--faint); font-size: 14px; flex: none; width: 18px; }
+  .backends { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .backend {
+    border: 1px solid var(--line); border-radius: 10px; padding: 13px; background: var(--surface-2);
+    display: grid; gap: 6px; align-content: start;
+  }
+  .backend header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .backend b { font-family: var(--mono); font-size: 13px; }
+  .backend p { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .backend code { font-size: 11px; color: var(--faint); overflow-wrap: anywhere; }
+  .tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; color: var(--muted); white-space: nowrap; }
+  .tag.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+  .tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
 
-  .support { border-top: 1px solid var(--line); margin-top: 56px; padding: 30px 0 0; }
-  .support-in { display: grid; grid-template-columns: 84px 1fr; gap: 18px; }
-  .support-in img.portrait { width: 84px; height: 84px; border-radius: 6px; border: 1px solid var(--line); }
-  .support p { margin: 0 0 12px; color: var(--mut); font-size: 14px; max-width: 62ch; }
-  .handles { display: flex; flex-wrap: wrap; gap: 6px; }
-  .handles a, .handles span { font-family: var(--mono); font-size: 11px; text-decoration: none;
-    border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px; color: var(--ink); background: var(--panel); }
-  .handles a:hover { border-color: var(--acc); color: var(--acc); }
-  .qr { width: 84px; height: 84px; border: 1px solid var(--line); background: #fff; border-radius: 4px; margin-top: 10px; }
-  @media (max-width: 620px) { .support-in { grid-template-columns: 1fr; } }
+  /* ---------- tables ---------- */
+  .table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  td code { color: var(--ink); }
 
-  footer { border-top: 1px solid var(--line); margin-top: 38px; padding: 18px 0 48px;
-           font-family: var(--mono); font-size: 11.5px; color: var(--mut); }
-  footer .wrap { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
-  footer a { color: var(--mut); } footer a:hover { color: var(--acc); }
-  .stamp { margin-left: auto; }
+  /* ---------- code + lists ---------- */
+  .split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 16px; }
+  .split > *, .grid-2 > *, .hero-grid > * { min-width: 0; }
+  .code-card { min-width: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .code-card header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-card pre { margin: 0; padding: 14px; overflow: auto; max-width: 100%; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; }
+  .code-card .k { color: var(--accent); }
+  .code-card .s { color: var(--good); }
+  .code-card .c { color: var(--faint); }
+  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .checks li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); }
+  .checks li b { color: var(--ink); font-weight: 600; }
+  .checks .mark { flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+  .checks .mark.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+  .checks .mark.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .mini { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--surface-2); }
+  .mini h3 { margin: 0 0 6px; font-size: 14px; }
+  .mini ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; }
+  .mini li + li { margin-top: 4px; }
+
+  .support-grid { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 18px; align-items: start; }
+  .portrait { width: 96px; height: 96px; border-radius: 10px; border: 1px solid var(--line); object-fit: cover; }
+  .qr { width: 96px; height: 96px; border-radius: 8px; border: 1px solid var(--line); background: #fff; padding: 4px; }
+  .links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+  .links a, .links span { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--ink); text-decoration: none; background: var(--surface); }
+  .links a:hover { border-color: var(--accent); color: var(--accent); }
+
+  footer.site { border-top: 1px solid var(--line); margin-top: 26px; padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; color: var(--faint); }
+  footer.site a { color: var(--faint); }
+  footer.site .stamp { margin-left: auto; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px);
+    background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px;
+    font-family: var(--mono); font-size: 12px; opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; z-index: 80;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .scrim { display: none; }
+
+  @media (max-width: 1080px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .backends { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .split { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar {
+      position: fixed; inset: 0 auto 0 0; width: min(86vw, 320px); z-index: 70;
+      transform: translateX(-102%); transition: transform .22s ease; box-shadow: 0 0 40px rgba(0,0,0,.45);
+    }
+    body.nav-open .sidebar { transform: translateX(0); }
+    .menu-btn { display: inline-grid; }
+    .scrim {
+      position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 60;
+    }
+    body.nav-open .scrim { display: block; }
+    main { padding: 16px 14px 70px; }
+    .topbar { padding: 8px 14px; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 620px) {
+    h1 { font-size: clamp(30px, 9vw, 44px); max-width: none; }
+    .hero-copy p { font-size: 15px; }
+    .panel { padding: 15px; }
+    .backends, .grid-2 { grid-template-columns: 1fr; }
+    .stat b { font-size: 19px; }
+    .support-grid { grid-template-columns: 1fr; }
+    .portrait, .qr { width: 84px; height: 84px; }
+    .top-actions .btn { min-height: 40px; padding: 0 9px; font-size: 11.5px; white-space: nowrap; }
+    .terminal { min-width: 0; }
+    .terminal pre { max-width: 100%; white-space: pre-wrap; word-break: break-word; }
+    footer.site .stamp { margin-left: 0; }
+    .pipe-row { flex-wrap: wrap; overflow: visible; }
+    .stage { flex: 1 1 calc(50% - 18px); }
+    .arrow { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; }
+  }
 </style>
 </head>
 <body>
-
-<div class="bar">
-  <div class="wrap">
-    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
-      <!-- the mark: one source narrowing to a point, then four strokes out -->
-      <path d="M2 5h9l4 7" fill="none" stroke="var(--acc)" stroke-width="1.6" stroke-linejoin="round"/>
-      <path d="M2 19h9l4-7" fill="none" stroke="var(--acc)" stroke-width="1.6" stroke-linejoin="round" opacity=".6"/>
-      <path d="M16 12h6M16 12l-1-5M16 12l-1 5" stroke="var(--acc)" stroke-width="1.4" stroke-linecap="round"/>
-    </svg>
-    <span class="brand">NOVA</span>
-    <span class="repo">repository · drsamonline/NEO</span>
-    <nav>
-      <a href="#pipeline">Pipeline</a>
-      <a href="#what">What is implemented</a>
-      <a href="#status">Where it stands</a>
-    </nav>
-    <button class="toggle" id="theme" type="button" aria-label="Switch colour theme">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-        <circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7"/>
+<a class="skip" href="#main">Skip to content</a>
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
+    <a class="brand" href="./">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2 5h9l4 7" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linejoin="round"/>
+        <path d="M2 19h9l4-7" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linejoin="round" opacity=".55"/>
+        <path d="M16 12h6M16 12l-1-5M16 12l-1 5" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
       </svg>
-      <span id="theme-label">Light</span>
-    </button>
+      <span><b>NOVA</b><span>NEO · compiler workspace</span></span>
+    </a>
+
+    <p class="side-label">Workspace</p>
+    <nav class="side-nav">
+      <a href="#overview" aria-current="true"><span class="ico">◈</span> Overview</a>
+      <a href="#pipeline"><span class="ico">⇣</span> Pipeline</a>
+      <a href="#backends"><span class="ico">▤</span> Backends</a>
+      <a href="#verify"><span class="ico">✓</span> Verification</a>
+      <a href="#build"><span class="ico">⌘</span> Build &amp; run</a>
+      <a href="#roadmap"><span class="ico">◷</span> Roadmap</a>
+      <a href="#support"><span class="ico">♡</span> Support</a>
+    </nav>
+
+    <p class="side-label">Source</p>
+    <nav class="side-nav">
+      <a href="https://github.com/drsamonline/NEO"><span class="ico">↗</span> Repository</a>
+      <a href="https://github.com/drsamonline/NEO/blob/master/DEV_PLAN.md"><span class="ico">↗</span> Development plan</a>
+      <a href="https://github.com/drsamonline/NEO/tree/master/examples"><span class="ico">↗</span> Examples</a>
+      <a href="language/"><span class="ico">↗</span> Language spec</a>
+    </nav>
+
+    <div class="side-card">
+      <b>Pre-release</b>
+      <p>Phase 1 complete. Phase 3 partial, Phase 4 in progress. No fake download buttons — build from source.</p>
+      <a href="#build">Build the compiler →</a>
+    </div>
+    <div class="side-foot">
+      <span>187 tests</span><span>·</span><span>7 parity programs</span><span>·</span><span>MIT</span>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <div class="shell">
+    <header class="topbar">
+      <button class="menu-btn" id="menu" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="crumb"><b>NOVA</b> / compiler workspace</div>
+      <div class="top-actions">
+        <button class="icon-btn" id="theme" type="button" aria-label="Switch colour theme" title="Switch theme">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7"/></svg>
+        </button>
+        <a class="btn primary" href="#build"><span>Get started</span></a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="overview">
+        <div class="pills">
+          <span class="pill"><span class="dot"></span> compiler core complete</span>
+          <span class="pill warn"><span class="dot"></span> tooling partial</span>
+          <span class="pill">4 backends</span>
+          <span class="pill">MIT licensed</span>
+        </div>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <h1>One source. <em>Four backends.</em> No mystery build.</h1>
+            <p>NOVA is a statically-typed compiled language. Its semantic pipeline lowers
+            <b>C, JavaScript, Rust and WebAssembly</b> from the same SIR, and a parity harness
+            proves the outputs agree.</p>
+            <div class="hero-actions">
+              <a class="btn primary" href="#build">Build in 60 seconds</a>
+              <a class="btn ghost" href="#backends">Inspect backends</a>
+              <a class="btn ghost" href="https://github.com/drsamonline/NEO">Source ↗</a>
+            </div>
+          </div>
+          <div class="terminal" aria-label="Build commands">
+            <div class="terminal-bar">
+              <span class="lights"><i></i><i></i><i></i></span>
+              <span>zsh — nova</span>
+              <button class="copy" type="button" data-copy="cargo build --release &amp;&amp; ./target/release/nova-compiler run examples/hello.nova">Copy</button>
+            </div>
+            <pre><span class="c"># build the compiler once</span>
+cargo build --release
+<span class="c"># run a program</span>
+./target/release/nova-compiler run examples/hello.nova
+<span class="g">Hello, NOVA</span>
+<span class="c"># compare all four backends</span>
+nova-compiler test --parity tests/parity/closures.nova
+</pre>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><b>187</b><span>tests passing</span></div>
+          <div class="stat"><b>7</b><span>parity programs in CI</span></div>
+          <div class="stat"><b>4</b><span>backend targets</span></div>
+          <div class="stat"><b>0</b><span>hidden holds in CI</span></div>
+        </div>
+      </section>
+
+      <section id="pipeline">
+        <div class="panel">
+          <div class="section-head">
+            <h2>Pipeline</h2>
+            <p>Everything after the semantic IR is a backend.</p>
+            <span class="right">source → SIR → target</span>
+          </div>
+          <div class="pipeline">
+            <div class="pipe-row">
+              <div class="stage">source<small>.nova</small></div>
+              <div class="arrow">→</div>
+              <div class="stage">lexer<small>tokens + spans</small></div>
+              <div class="arrow">→</div>
+              <div class="stage">parser<small>AST</small></div>
+              <div class="arrow">→</div>
+              <div class="stage">analyser<small>typed checks</small></div>
+              <div class="arrow">→</div>
+              <div class="stage ir">SIR<small>shared IR</small></div>
+              <div class="arrow">→</div>
+              <div class="stage">lowerer<small>target code</small></div>
+            </div>
+            <div class="backends">
+              <div class="backend"><header><b>C</b><span class="tag good">reference</span></header><p>Runtime shim ABI v3; bounds-checked growable arrays.</p><code>--target c</code></div>
+              <div class="backend"><header><b>JavaScript</b><span class="tag good">runs</span></header><p>Arrays and bound-environment closures executed in tests.</p><code>--target js</code></div>
+              <div class="backend"><header><b>Rust</b><span class="tag good">runs</span></header><p><code>Rc&lt;dyn Fn&gt;</code> closures over generated environment structs.</p><code>--target rust</code></div>
+              <div class="backend"><header><b>WebAssembly</b><span class="tag good">runs</span></header><p>Growable int arrays, structs, tuples and int closures.</p><code>--target wasm</code></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="backends">
+        <div class="panel">
+          <div class="section-head">
+            <h2>Backend matrix</h2>
+            <p>What is exercised, not what is planned.</p>
+            <span class="right">parity · CI</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Target</th><th>Execution</th><th>Arrays</th><th>Structs / tuples</th><th>Closures</th><th>Known hold</th></tr></thead>
+              <tbody>
+                <tr><td><code>C</code></td><td>native link</td><td>growable, bounds-checked</td><td>yes</td><td>lifted + env</td><td>—</td></tr>
+                <tr><td><code>JS</code></td><td>node</td><td>native arrays</td><td>objects</td><td>bound env</td><td>—</td></tr>
+                <tr><td><code>Rust</code></td><td>rustc</td><td><code>Vec&lt;i32&gt;</code></td><td>yes</td><td><code>Rc&lt;dyn Fn&gt;</code></td><td>—</td></tr>
+                <tr><td><code>WASM</code></td><td>node + wat2wasm</td><td>growable int</td><td>yes, int fields</td><td>int / string</td><td>float closure signatures; float struct fields</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:10px 0 0;color:var(--faint);font-size:12px">WASM out-of-bounds indexing traps; C reports a runtime error. Those programs are not stdout-identical by design.</p>
+        </div>
+      </section>
+
+      <section id="verify">
+        <div class="split">
+          <div class="panel">
+            <div class="section-head"><h2>Verification</h2><p>Run locally, not just claimed.</p></div>
+            <ul class="checks">
+              <li><span class="mark">✓</span><span><b>187 tests</b> across compiler, backends, runtime, tooling and end-to-end suites.</span></li>
+              <li><span class="mark">✓</span><span><b>7 parity programs</b> compare stdout and exit status across C, JS, Rust and WASM.</span></li>
+              <li><span class="mark">✓</span><span><b>Examples build and run:</b> hello, fibonacci, array operations.</span></li>
+              <li><span class="mark">✓</span><span><b>CLI paths:</b> emit, build, run and test --parity.</span></li>
+              <li><span class="mark warn">!</span><span><b>Tooling is partial:</b> registry mocked, LSP references missing, DWARF mocked.</span></li>
+            </ul>
+          </div>
+          <div class="panel">
+            <div class="section-head"><h2>Program shape</h2><p>One file, no build system required.</p></div>
+            <div class="code-card">
+              <header>fibonacci.nova</header>
+              <pre><span class="k">fn</span> fibonacci(n: int) -&gt; int {
+    <span class="k">if</span> n &lt; 2 {
+        <span class="k">return</span> n;
+    }
+    <span class="k">return</span> fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+<span class="k">fn</span> main() -&gt; int {
+    <span class="k">let</span> i = 0;
+    <span class="k">while</span> i &lt; 10 {
+        print(fibonacci(i));
+        i = i + 1;
+    }
+    <span class="k">return</span> 0;
+}</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="build">
+        <div class="panel">
+          <div class="section-head"><h2>Build &amp; run</h2><p>Prerequisites: Rust toolchain, <code>cc</code>, and for parity <code>node</code> + <code>wat2wasm</code>.</p></div>
+          <div class="grid-2">
+            <div class="mini">
+              <h3>Native build</h3>
+              <ul>
+                <li><code>cargo build --release</code></li>
+                <li><code>nova-compiler run examples/hello.nova</code></li>
+                <li><code>nova-compiler build examples/fibonacci.nova -o fib</code></li>
+                <li><code>nova-compiler emit examples/hello.nova --target wasm</code></li>
+              </ul>
+            </div>
+            <div class="mini">
+              <h3>What is distributed</h3>
+              <ul>
+                <li>Source + Cargo workspace (no binary release yet)</li>
+                <li>Static landing page + language docs (this site)</li>
+                <li>No APK or EXE artifacts are published</li>
+                <li>HTML is the supported web build; native binaries are built locally</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="roadmap">
+        <div class="panel">
+          <div class="section-head"><h2>Roadmap</h2><p>Authoritative status lives in DEV_PLAN.md.</p></div>
+          <div class="grid-2">
+            <div class="mini">
+              <h3>Done</h3>
+              <ul>
+                <li>Lexer, parser, semantic analyser, SIR and lowerer</li>
+                <li>C reference backend with ABI v3 runtime</li>
+                <li>JS / Rust / WASM execution for arrays, structs, tuples and closures</li>
+                <li>Four-backend parity harness in CI</li>
+                <li>Diagnostics with spans and help text in the LSP</li>
+              </ul>
+            </div>
+            <div class="mini">
+              <h3>Next</h3>
+              <ul>
+                <li>PWA/offline docs and faster first load (in progress here)</li>
+                <li>WASM float struct fields and float closure signatures</li>
+                <li>LSP references and go-to-definition</li>
+                <li>Real package registry, DWARF debugging</li>
+                <li>Published binaries and reproducible releases</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="support" class="panel">
+        <div class="section-head"><h2>Support</h2><p>One person's work. No ads, no tracking, no paid tier.</p></div>
+        <div class="support-grid">
+          <div>
+            <img class="portrait" src="assets/support-portrait.jpg" alt="Dr Sohil Momin" loading="lazy" width="96" height="96">
+            <img class="qr" src="assets/upi-qr.svg" alt="UPI payment QR — open amount" loading="lazy" width="96" height="96">
+          </div>
+          <div>
+            <p style="margin:0;color:var(--muted);font-size:14px">If this saved you an afternoon, a contribution keeps the next one coming — any amount, or none.</p>
+            <div class="links">
+              <span>UPI · drsohilboi@ybl</span>
+              <a href="https://ko-fi.com/matneo" rel="noopener noreferrer">Ko-fi</a>
+              <a href="https://paypal.me/drsohilmomin?locale.x=en_GB&amp;country.x=IN" rel="noopener noreferrer">PayPal</a>
+              <a href="https://github.com/sponsors/drsamonline" rel="noopener noreferrer">GitHub Sponsors</a>
+              <a href="https://www.amazon.com/stores/author/B08ZT331LY/allbooks?ccs_id=aed72b9f-71d9-41dc-adee-e9368a317acc" rel="noopener noreferrer">Books</a>
+              <a href="https://drsamonline.github.io/" rel="noopener noreferrer">All projects</a>
+              <a href="mailto:sohilmomin2000@gmail.com">Email</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="site">
+        <span>NOVA · repository drsamonline/NEO · © 2026 Dr Sohil Momin</span>
+        <a href="https://github.com/drsamonline/NEO">GitHub</a>
+        <a href="https://github.com/drsamonline/NEO/blob/master/LICENSE">MIT license</a>
+        <span class="stamp">design 2026-11-14</span>
+      </footer>
+    </main>
   </div>
 </div>
 
-<div class="wrap">
-  <header class="hero">
-    <p class="eyebrow">statically typed · compiled · <b>four back ends</b></p>
-    <h1>A language, and the <em>pipeline</em> that lowers it.</h1>
-    <p class="lead">NOVA is a statically-typed, compiled systems language whose compiler lowers
-    source through a semantic pipeline to <b>C, JavaScript, Rust and WebAssembly</b>. The repository
-    is NEO; the language and toolchain inside it are NOVA.</p>
-    <div class="cta">
-      <a class="btn" href="https://github.com/drsamonline/NEO">View source</a>
-      <a class="btn ghost" href="#what">What is implemented</a>
-    </div>
-
-    <div class="pipe" id="pipeline">
-      <div class="front">
-        <span class="stage src">source .nova</span>
-        <span class="sep">→</span>
-        <span class="stage">lexer</span>
-        <span class="sep">→</span>
-        <span class="stage">parser</span>
-        <span class="sep">→</span>
-        <span class="stage">analyser</span>
-        <span class="sep">→</span>
-        <span class="stage sir">semantic IR</span>
-        <span class="sep">→</span>
-        <span class="stage">lowerer</span>
-      </div>
-      <div class="fan">
-        <div class="back"><b>C</b><span>backend</span></div>
-        <div class="back"><b>JavaScript</b><span>backend</span></div>
-        <div class="back"><b>Rust</b><span>backend</span></div>
-        <div class="back"><b>WebAssembly</b><span>backend</span></div>
-      </div>
-    </div>
-
-    <div class="facts">
-      <div><b>4</b><span>back ends</span></div>
-      <div><b>187</b><span>tests passing</span></div>
-      <div><b>7</b><span>parity programs in CI</span></div>
-      <div><b>4</b><span>stdlib modules</span></div>
-    </div>
-  </header>
-
-  <section id="what">
-    <h2>What is implemented</h2>
-    <div class="cards">
-      <div>
-        <h3>Semantic pipeline</h3>
-        <p>A multi-pass compiler: lexer, recursive-descent parser, semantic analyser, a Semantic
-        Intermediate Representation, a lowerer, and a backend interface.</p>
-        <span class="ph">phase 1 · complete</span>
-      </div>
-      <div>
-        <h3>Four back ends</h3>
-        <p>One front end, four targets. C is the reference; JavaScript, Rust and WebAssembly run
-        an exercised subset. Arrays, structs/tuples and closures run on all four, with growable
-        arrays, struct/tuple access and capturing/higher-order closures in the parity corpus.</p>
-        <span class="ph">backends</span>
-      </div>
-      <div>
-        <h3>Standard library</h3>
-        <p>Written in NOVA itself, module by module — text, core and IO, read as ordinary source
-        rather than as compiler magic.</p>
-        <span class="ph">stdlib</span>
-      </div>
-      <div>
-        <h3>Tooling beside the compiler</h3>
-        <p>A language server, a package manager and a debugger, each its own crate in the same
-        repository.</p>
-        <span class="ph">lsp · pkg · dbg</span>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>What NOVA looks like</h2>
-    <pre><span class="c"># NOVA Standard Library - Text Module</span>
-/// Join array of strings with separator
-fn join(strings: [String], separator: String) -&gt; String {
-    if array_len(strings) == 0 {
-        &quot;&quot;
-    } else {
-        let mut result = strings[0];
-        let mut i = 1;
-        while i &lt; array_len(strings) {
-            result = strcat(result, separator);
-            result = strcat(result, strings[i]);
-            i = i + 1;
-        }
-        result
-    }
-}</pre>
-    <p class="snippet-cap">from <code>stdlib/text/text.nova</code> — the standard library is written in
-    NOVA, not in the compiler's host language</p>
-  </section>
-
-  <section id="status">
-    <h2>Where it stands</h2>
-    <div class="note">
-      <p style="margin:0"><b>Phase 1 is complete, Phase 3 is partial, and Phase 4 is in progress.</b>
-      The C backend is the reference. JavaScript and Rust execute arrays and closures; WebAssembly
-      executes ints, strings, growable int arrays, structs, tuples and <code>int</code> closures.
-      The suite has 187 passing tests, and CI runs <code>test --parity</code> over every example and
-      parity program. Known gaps are listed in the repository README rather than hidden: WASM float
-      struct fields, floating-point WASM closure signatures, WASM out-of-bounds trap/C error
-      differences, LSP references, and DWARF debugging. String-returning WASM closures are
-      covered by the parity corpus. Claims on this page come from the
-      repository's README and development plan, where the development plan is authoritative.</p>
-    </div>
-  </section>
-
-  <section class="support" id="support">
-    <h2>Support the work</h2>
-    <div class="support-in">
-      <div>
-        <img class="portrait" src="assets/support-portrait.jpg" alt="Dr Sohil Momin">
-        <img class="qr" src="assets/upi-qr.svg" alt="UPI payment QR — open amount">
-      </div>
-      <div>
-        <h3 style="margin:0 0 6px;font-size:15px">Free to use, and it stays free</h3>
-        <p>One person's work: no company, no ads, no tracking, no paid tier. If it saved you an
-        afternoon, a contribution keeps the next one coming — any amount, or none.</p>
-        <div class="handles">
-          <span>UPI · drsohilboi@ybl</span>
-          <a href="https://ko-fi.com/matneo" rel="noopener noreferrer">Ko-fi</a>
-          <a href="https://paypal.me/drsohilmomin?locale.x=en_GB&amp;country.x=IN" rel="noopener noreferrer">PayPal</a>
-          <a href="https://www.amazon.com/stores/author/B08ZT331LY/allbooks?ccs_id=aed72b9f-71d9-41dc-adee-e9368a317acc" rel="noopener noreferrer">Books</a>
-          <a href="https://drsamonline.github.io/" rel="noopener noreferrer">All projects</a>
-          <a href="mailto:sohilmomin2000@gmail.com">Email</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <footer>
-    <div class="wrap">
-      <span>NOVA · repository drsamonline/NEO · © 2026 Dr Sohil Momin</span>
-      <a href="https://github.com/drsamonline/NEO">GitHub</a>
-      <span class="stamp">design 2026-11-14</span>
-    </div>
-  </footer>
-</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
-  const root = document.documentElement, btn = document.getElementById('theme');
-  const label = document.getElementById('theme-label'), KEY = 'nova-theme';
+  const root = document.documentElement;
+  const themeBtn = document.getElementById('theme');
+  const KEY = 'nova-theme';
+
   const paint = (mode) => {
     const dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
     root.setAttribute('data-theme', dark ? 'dark' : 'light');
-    label.textContent = dark ? 'Dark' : 'Light';
+    themeBtn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
   };
-  const stored = localStorage.getItem(KEY);
-  paint(stored || 'system');
-  if (!stored) root.removeAttribute('data-theme');
-  btn.addEventListener('click', () => {
+  paint(localStorage.getItem(KEY) || 'dark');
+  themeBtn.addEventListener('click', () => {
     const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    localStorage.setItem(KEY, next); paint(next);
+    localStorage.setItem(KEY, next);
+    paint(next);
   });
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (!localStorage.getItem(KEY)) paint('system');
+
+  const body = document.body;
+  const menu = document.getElementById('menu');
+  const scrim = document.getElementById('scrim');
+  const setNav = (open) => {
+    body.classList.toggle('nav-open', open);
+    menu.setAttribute('aria-expanded', String(open));
+  };
+  menu.addEventListener('click', () => setNav(!body.classList.contains('nav-open')));
+  scrim.addEventListener('click', () => setNav(false));
+  document.querySelectorAll('.side-nav a').forEach((link) => link.addEventListener('click', () => setNav(false)));
+
+  const toast = document.getElementById('toast');
+  let toastTimer;
+  const notify = (message) => {
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 1600);
+  };
+  document.querySelectorAll('[data-copy]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const text = button.getAttribute('data-copy').replace(/&amp;/g, '&');
+      try {
+        await navigator.clipboard.writeText(text);
+        notify('Copied to clipboard');
+      } catch {
+        notify('Copy unavailable — select the command manually');
+      }
+    });
   });
+
+  const links = [...document.querySelectorAll('.side-nav a[href^="#"]')];
+  const sections = links.map((a) => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      links.forEach((link) => link.setAttribute('aria-current', String(link.getAttribute('href') === '#' + entry.target.id)));
+    });
+  }, { rootMargin: '-25% 0px -65% 0px' });
+  sections.forEach((section) => observer.observe(section));
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
 })();
 </script>
 </body>

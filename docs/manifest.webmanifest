@@ -1,0 +1,24 @@
+{
+  "name": "NOVA — compiler workspace",
+  "short_name": "NOVA",
+  "description": "A compiler workspace for the NOVA language: one semantic pipeline, four backends, parity-checked.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#08090b",
+  "theme_color": "#0b0d10",
+  "icons": [
+    {
+      "src": "assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

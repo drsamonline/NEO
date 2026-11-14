@@ -7,7 +7,15 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 
-![Screenshot](docs/shot.png)
+![NOVA compiler workspace](docs/preview-desktop.png)
+
+<details>
+<summary>Mobile layout</summary>
+
+![NOVA on a narrow screen](docs/preview-mobile.png)
+
+</details>
+
 **A statically-typed, compiled systems programming language.** Its compiler lowers NOVA source through a semantic pipeline — lexer, parser, semantic analyser, SIR, lowerer — to four backends: **C, JavaScript, Rust and WebAssembly**, with a runtime, package manager, language server and debugger alongside.
 
 <a href="https://drsamonline.github.io/NEO/"><img src="https://img.shields.io/badge/Landing%20Page-Visit-3b82f6?style=flat-square" alt="Landing page"></a>
@@ -18,26 +26,17 @@
 <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.1-blue?style=flat-square" alt="Version 0.6.1"></a>
 <a href="backends/"><img src="https://img.shields.io/badge/Backends-4%20targets-orange?style=flat-square" alt="4 backend targets"></a>
 <a href="https://img.shields.io/badge/language-Rust-dea584"><img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square" alt="Rust"></a>
+<a href="docs/manifest.webmanifest"><img src="https://img.shields.io/badge/PWA-offline%20ready-5b9dff?style=flat-square" alt="Offline PWA"></a>
+<a href="tests/parity/"><img src="https://img.shields.io/badge/parity-7%20programs-48d597?style=flat-square" alt="7 parity programs"></a>
 
 **[Landing page](https://drsamonline.github.io/NEO/)** · **[Examples](examples/)** · **[Language spec](docs/language/)** · **[Development plan](DEV_PLAN.md)** · **[Architecture](ARCHITECTURE.md)** · **[All projects](https://drsamonline.github.io/)**
 
-<sub>Live demo: not yet available — the project is pre-release (Phase 4 in progress).</sub>
+<sub>Live demo: [the app-like landing page](https://drsamonline.github.io/NEO/) · offline-capable (PWA) · pre-release (Phase 4 in progress).</sub>
 
 </div>
 
 ---
 
-
-Semantic Programming Platform
-
-[![Phase 1 Complete](https://img.shields.io/badge/Phase-1%20Complete-brightgreen)](DEV_PLAN.md)
-[![Phase 2 Complete](https://img.shields.io/badge/Phase-2%20Complete-brightgreen)](DEV_PLAN.md)
-[![Phase 3 Complete](https://img.shields.io/badge/Phase-3%20Complete-brightgreen)](DEV_PLAN.md)
-[![Phase 4 Next](https://img.shields.io/badge/Phase-4%20Next-yellow)](DEV_PLAN.md)
-[![Compiler Core](https://img.shields.io/badge/Compiler-6000%2B%20LOC-blue)](compiler/)
-[![Runtime System](https://img.shields.io/badge/Runtime-2359%20LOC-orange)](runtime/)
-[![Tooling](https://img.shields.io/badge/Tooling-3600%2B%20LOC-orange)](pkg/)
-[![Backends](https://img.shields.io/badge/Backends-4%20Targets-orange)](backends/)
 
 ## Overview
 
@@ -189,6 +188,34 @@ cargo build --release
   traps while C reports a runtime error, so those programs are not
   stdout-identical
 - LSP go-to-definition/references, DWARF debugger, real package registry
+
+## Install & downloads
+
+| Channel | Available? | How |
+|---|---|---|
+| Source (recommended) | ✅ | `git clone https://github.com/drsamonline/NEO.git && cd NEO && cargo build --release` |
+| Static site / PWA (HTML) | ✅ | Open the [live landing page](https://drsamonline.github.io/NEO/) and install it from the browser; it caches its shell and works offline |
+| Native binary (Linux/macOS/Windows) | ⚠️ build locally | `cargo build --release` — no prebuilt binary release is published yet |
+| APK (Android) | ❌ | No Android target or Gradle project exists; the compiler is a host tool, not an app |
+| EXE (Windows installer) | ❌ | No Windows toolchain or packaging pipeline is configured |
+| npm / crates.io package | ❌ | Not published; use the Cargo workspace |
+
+## Project facts
+
+| Field | Value |
+|---|---|
+| Description | Statically-typed compiled language with one semantic pipeline and C, JavaScript, Rust and WebAssembly backends |
+| Repository | [github.com/drsamonline/NEO](https://github.com/drsamonline/NEO) |
+| Live demo | [drsamonline.github.io/NEO](https://drsamonline.github.io/NEO/) |
+| Author | [Dr Sohil Momin](https://drsamonline.github.io/) |
+| Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
+| Tests | 187 passing, 0 failing; 7 four-backend parity programs |
+| License | MIT (see [LICENSE](LICENSE)) |
+| Releases | None published yet |
+
+### Suggested GitHub topics
+
+`compiler` · `programming-language` · `rust` · `webassembly` · `transpiler` · `static-typing` · `language-design` · `pwa` · `developer-tools`
 
 ## Documentation
 
