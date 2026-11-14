@@ -1,0 +1,14 @@
+fn main() -> int {
+    let x = {
+        let y = 3;
+        y + 4
+    };
+    print(x);
+
+    let z = {
+        print("in");
+        2
+    };
+    print(z);
+    return 0;
+}

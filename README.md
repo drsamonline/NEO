@@ -168,8 +168,8 @@ cargo build --release
   `NovaTuple_*` structs with `let (a, b) = pair;` destructuring
 - **Backends**: `emit --target c|js|rust|wasm` selects a generator; JS, Rust and
   WASM output is executed in tests, `test --parity` runs all four when `node` and
-  `wat2wasm` are installed, and   `tests/parity/` adds growable-array, struct/tuple and closure programs to the
-  CI corpus; build/run link C
+  `wat2wasm` are installed, and   `tests/parity/` adds growable-array, struct/tuple, block-expression and closure
+  programs to the CI corpus; build/run link C
 - **Builtins**: compiler-declared `__builtin_*` functions for printing, strings,
   array length, panic and exit
 - **Runtime crate**: memory utilities, runtime types, errors, FFI, reference-counted

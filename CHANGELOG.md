@@ -9,6 +9,13 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Block expressions in C, block-bodied closures, parity corpus ⭐ NEW
+- **C lowers block expressions in value positions.** `let x = { let y = 3; y + 4 };`
+  becomes a GCC/Clang statement expression (`({ ...; (value); })`), so blocks can
+  supply a value to a `let`, argument or return without being hoisted. The new
+  `tests/parity/blocks.nova` covers a block with locals and a block containing a
+  `print` statement on all four backends.
+
 #### Block-bodied closures in C, closure typing, parity corpus ⭐ NEW
 - **C handles block-bodied closures with a trailing expression.** A closure such
   as `|s: string| { print(s); s }` lowers to `return { ...; s }`; the C return path

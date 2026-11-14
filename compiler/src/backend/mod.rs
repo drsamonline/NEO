@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fmt::Write;
 
 /// C code generator backend
+#[derive(Clone)]
 pub struct CBackend {
     output: String,
     /// Names of the program's struct types, so a struct-typed value is emitted
@@ -677,8 +678,20 @@ impl CBackend {
                     format!("({}).{}", self.expr_to_c(object), field)
                 }
             }
-            SirExpr::Block(_, _) => {
-                "// block expr".to_string()
+            SirExpr::Block(statements, final_expr) => {
+                // GCC/Clang statement expression: `({ stmt; value; })`. This is
+                // the only way to reuse a block that may declare locals inside
+                // an arbitrary C expression position.
+                let mut nested = self.clone();
+                nested.output.clear();
+                for statement in statements {
+                    nested.write_statement(statement, 0);
+                }
+                if let Some(value) = final_expr {
+                    let rendered = nested.expr_to_c(value);
+                    let _ = writeln!(nested.output, "({rendered});");
+                }
+                format!("({{ {} }})", nested.output)
             }
         }
     }
