@@ -37,5 +37,11 @@ fn main() -> int {
 
     let show = |s: string| print(s);
     show("done");
+
+    let block = |s: string| {
+        print(s);
+        s
+    };
+    print(block("block"));
     return 0;
 }

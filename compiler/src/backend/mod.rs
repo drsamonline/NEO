@@ -344,6 +344,37 @@ impl CBackend {
                 let _ = writeln!(self.output, "{}{};", indent_str, self.expr_to_c(expr));
             }
             SirStatement::Return(expr) => {
+                // A closure with a block body lowers to `return { ...; value }`.
+                // Write the block's statements, then return its final value.
+                let block = match expr.as_ref() {
+                    Some(SirExpr::Block(statements, final_expr)) => {
+                        Some((statements, final_expr))
+                    }
+                    Some(SirExpr::Typed { expr, .. }) => match expr.as_ref() {
+                        SirExpr::Block(statements, final_expr) => Some((statements, final_expr)),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some((statements, final_expr)) = block {
+                    for statement in statements {
+                        self.write_statement(statement, indent);
+                    }
+                    match final_expr {
+                        Some(value) => {
+                            let _ = writeln!(
+                                self.output,
+                                "{}return {};",
+                                indent_str,
+                                self.expr_to_c(value)
+                            );
+                        }
+                        None => {
+                            let _ = writeln!(self.output, "{}return;", indent_str);
+                        }
+                    }
+                    return;
+                }
                 // `print` is unit-valued but an expression-bodied closure is
                 // inferred as returning `int`; write the print calls and return
                 // a value the declared signature accepts.
@@ -726,7 +757,10 @@ impl CBackend {
             SirExpr::FieldAssign { value, .. } => self.print_kind(value),
             SirExpr::AddressOf(_) | SirExpr::Deref(_) => "int",
             SirExpr::Array(_) | SirExpr::Index { .. } | SirExpr::Tuple { .. } => "int",
-            SirExpr::Closure { .. } | SirExpr::EnvAccess { .. } | SirExpr::CallValue { .. }
+            SirExpr::CallValue { return_type, .. } => {
+                Self::print_kind_for_type(return_type).unwrap_or("int")
+            }
+            SirExpr::Closure { .. } | SirExpr::EnvAccess { .. }
             | SirExpr::Cast { .. } | SirExpr::SizeOf(_) => "int",
             SirExpr::StringSlice { .. } => "str",
             SirExpr::IndexAssign { value, .. } => self.print_kind(value),

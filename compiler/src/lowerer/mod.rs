@@ -194,6 +194,11 @@ impl Lowerer {
                 Some(format!("({})", types.join(", ")))
             }
             Expr::Array(_) => Some("Array".to_string()),
+            // A block expression's type is the type of its trailing expression.
+            Expr::Block(block) => block
+                .final_expr
+                .as_ref()
+                .and_then(|expr| self.expr_type(expr)),
             Expr::Index(_, _) => Some("int".to_string()),
             Expr::Field(object, field) => {
                 let object_type = self.expr_type(object)?;

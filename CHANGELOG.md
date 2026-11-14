@@ -9,6 +9,17 @@ All notable changes to the NOVA project will be documented in this file.
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
 ### Added
+#### Block-bodied closures in C, closure typing, parity corpus ⭐ NEW
+- **C handles block-bodied closures with a trailing expression.** A closure such
+  as `|s: string| { print(s); s }` lowers to `return { ...; s }`; the C return path
+  now writes the block's statements followed by a real `return` instead of an
+  unsupported-expression comment. String-returning closure calls are printed as
+  strings on C as well, using `CallValue.return_type`.
+- **Block expression types are inferred.** `expr_type_raw` now uses a block's
+  trailing expression, so a closure returning a string gets a `String` return
+  type instead of the `int` fallback. The closure parity program covers both a
+  block-bodied string closure and printing its result on all four backends.
+
 #### Closures print in C and WASM, parity corpus ⭐ NEW
 - **The C backend handles `print` inside closure bodies.** An expression-bodied
   closure with a `print` body is inferred as returning `int`; the return path

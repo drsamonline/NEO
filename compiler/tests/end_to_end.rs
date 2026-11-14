@@ -1161,7 +1161,7 @@ fn c_closures_print_their_parameters() {
     let source = dir.join("closure_print.nova");
     fs::write(
         &source,
-        "fn main() -> int {\n    let show = |s: string| print(s);\n    show(\"ok\");\n    return 0;\n}\n",
+        "fn main() -> int {\n    let show = |s: string| print(s);\n    show(\"ok\");\n    let block = |s: string| {\n        print(s);\n        s\n    };\n    print(block(\"block\"));\n    return 0;\n}\n",
     )
     .expect("write source");
 
@@ -1176,7 +1176,7 @@ fn c_closures_print_their_parameters() {
         String::from_utf8_lossy(&run.stdout),
         String::from_utf8_lossy(&run.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&run.stdout), "ok\n");
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "ok\nblock\nblock\n");
 }
 
 #[test]
