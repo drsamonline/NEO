@@ -22,7 +22,7 @@ USAGE:
     nova-compiler build <source.nova> [-o PATH]  compile and link an executable
     nova-compiler run <source.nova> [-- ARGS...] build, then run the executable
     nova-compiler test --parity <source.nova>  run one program on every backend and compare
-    nova-compiler doctor                       check toolchains and backend readiness
+    nova-compiler doctor [--json]              check toolchains and backend readiness
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
@@ -62,8 +62,18 @@ fn main() {
             run(&input, output.as_deref(), &rest);
         }
         Some("doctor") => {
-            reject_extra_args(&args[1..], "doctor");
-            doctor();
+            let mut json = false;
+            for argument in &args[1..] {
+                match argument.as_str() {
+                    "--json" => json = true,
+                    "-h" | "--help" => {
+                        print!("{USAGE}");
+                        exit(0);
+                    }
+                    other => die(&format!("unexpected argument `{other}` for `doctor`")),
+                }
+            }
+            doctor(json);
         }
         Some("test") => {
             let mut parity = false;
@@ -634,7 +644,7 @@ impl ToolStatus {
 }
 
 /// `doctor`: report the tools the compiler can use and which backends are ready.
-fn doctor() -> ! {
+fn doctor(json: bool) -> ! {
     let cc = env::var("CC").unwrap_or_else(|_| "cc".to_string());
     let tools = [
         ToolStatus::detect("cc", cc, &["--version"], "install gcc or clang, or set CC"),
@@ -642,6 +652,13 @@ fn doctor() -> ! {
         ToolStatus::detect("rustc", "rustc".to_string(), &["--version"], "install Rust for the Rust backend"),
         ToolStatus::detect("wat2wasm", "wat2wasm".to_string(), &[], "npm install --global wat2wasm"),
     ];
+
+    let available = |name: &str| tools.iter().any(|tool| tool.name == name && tool.available);
+
+    if json {
+        print_doctor_json(&tools);
+        exit(if available("cc") { 0 } else { 1 });
+    }
 
     println!("NOVA doctor\n\ntools");
     for tool in &tools {
@@ -655,7 +672,6 @@ fn doctor() -> ! {
         }
     }
 
-    let available = |name: &str| tools.iter().any(|tool| tool.name == name && tool.available);
     let backends = [
         ("c", available("cc"), "build and run"),
         ("js", available("node"), "emit and parity"),
@@ -675,6 +691,66 @@ fn doctor() -> ! {
     }
     eprintln!("\nrequired toolchain: missing a C compiler; build and run cannot work");
     exit(1);
+}
+
+fn json_string(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len() + 2);
+    escaped.push('"');
+    for ch in text.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            ch if ch.is_control() => escaped.push_str(&format!("\\u{:04x}", ch as u32)),
+            ch => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
+}
+
+/// A stable machine-readable form for editors and CI. Kept hand-written so the
+/// compiler CLI gains no JSON dependency just for this report.
+fn print_doctor_json(tools: &[ToolStatus]) {
+    let available = |name: &str| tools.iter().any(|tool| tool.name == name && tool.available);
+    println!("{{");
+    println!("  \"tools\": [");
+    for (index, tool) in tools.iter().enumerate() {
+        let version = tool
+            .version
+            .as_deref()
+            .map(json_string)
+            .unwrap_or_else(|| "null".to_string());
+        let comma = if index + 1 == tools.len() { "" } else { "," };
+        println!(
+            "    {{\"name\": {}, \"command\": {}, \"available\": {}, \"version\": {}}}{comma}",
+            json_string(tool.name),
+            json_string(&tool.command),
+            tool.available,
+            version
+        );
+    }
+    println!("  ],");
+    let backends = [
+        ("c", available("cc")),
+        ("js", available("node")),
+        ("rust", available("rustc")),
+        ("wasm", available("node") && available("wat2wasm")),
+    ];
+    println!("  \"backends\": [");
+    for (index, (name, ready)) in backends.iter().enumerate() {
+        let comma = if index + 1 == backends.len() { "" } else { "," };
+        println!(
+            "    {{\"name\": {}, \"ready\": {}}}{comma}",
+            json_string(name),
+            ready
+        );
+    }
+    println!("  ],");
+    println!("  \"ready\": {}", available("cc"));
+    println!("}}");
 }
 
 fn default_stem(input: &Path) -> String {

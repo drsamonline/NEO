@@ -63,6 +63,22 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 #[test]
+fn doctor_json_is_machine_readable() {
+    let output = Command::new(compiler())
+        .args(["doctor", "--json"])
+        .output()
+        .expect("run nova-compiler doctor --json");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.success(), c_compiler_available());
+    assert!(stdout.trim_start().starts_with('{'), "not a JSON object:\n{stdout}");
+    assert!(stdout.trim_end().ends_with('}'));
+    assert!(stdout.contains("\"tools\"") && stdout.contains("\"backends\""));
+    assert!(stdout.contains("\"ready\": true") || stdout.contains("\"ready\": false"));
+    assert!(!stdout.contains("NOVA doctor"), "human text leaked into JSON:\n{stdout}");
+}
+
+#[test]
 fn doctor_reports_tools_and_backends() {
     let output = Command::new(compiler())
         .arg("doctor")
