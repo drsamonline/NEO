@@ -225,6 +225,8 @@ cargo build --release
 
 ## Documentation
 
+![Language specification map](docs/preview-language.png)
+
 - [Development Plan](DEV_PLAN.md) - Current progress and roadmap
 - [Architecture](ARCHITECTURE.md) - System design
 - [Language Tour](website/docs/language-tour.md) - Language features
