@@ -201,9 +201,9 @@ cargo build --release
 |---|---|---|
 | Source (recommended) | ✅ | `git clone https://github.com/drsamonline/NEO.git && cd NEO && cargo build --release` |
 | Static site / PWA (HTML) | ✅ | Open the [live landing page](https://drsamonline.github.io/NEO/) and install it from the browser; it caches its shell and works offline |
-| Native binary (Linux/macOS/Windows) | ⚠️ build locally | `cargo build --release` — no prebuilt binary release is published yet |
+| Native binary (Linux/macOS) | ✅ build locally | `cargo build --release` |
+| Windows executable (experimental) | ⚠️ prebuilt | [nova-compiler-0.6.1-windows-x86_64.exe](dist/nova-compiler-0.6.1-windows-x86_64.exe) · [SHA-256](dist/nova-compiler-0.6.1-windows-x86_64.exe.sha256) · cross-built, unsigned, not executed in this environment |
 | APK (Android) | ❌ | No Android target or Gradle project exists; the compiler is a host tool, not an app |
-| EXE (Windows installer) | ❌ | No Windows toolchain or packaging pipeline is configured |
 | npm / crates.io package | ❌ | Not published; use the Cargo workspace |
 
 ## Project facts
