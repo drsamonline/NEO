@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Language specification · NOVA</title>
+<meta name="description" content="The NOVA language specification map: 25 chapters covering grammar, types, memory, concurrency, packages and the semantic IR. Works offline.">
+<meta name="theme-color" content="#08090b">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../assets/icon-192.png">
+<link rel="manifest" href="../manifest.webmanifest">
+<style>
+  :root {
+    --bg:#08090b; --surface:#0f1115; --surface-2:#14171c; --ink:#f4f6fa;
+    --muted:#9aa3b2; --faint:#6b7382; --line:#22262e; --accent:#5b9dff;
+    --good:#48d597; --radius:12px;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:"Inter","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  }
+  html[data-theme="light"] {
+    --bg:#f5f4ef; --surface:#fff; --surface-2:#f0eee7; --ink:#15181d;
+    --muted:#5b6472; --faint:#7a8290; --line:#dedad0; --accent:#1f5fd0; --good:#087a4b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-underline-offset:3px}
+  :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 22px 70px}
+  header.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .bar{max-width:1180px;margin:0 auto;padding:10px 22px;display:flex;align-items:center;gap:12px;min-height:60px}
+  .brand{display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;font-family:var(--mono);font-size:13px;letter-spacing:.12em}
+  .brand svg{width:24px;height:24px}
+  .crumb{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);text-decoration:none;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--accent)}
+  .icon{width:40px;padding:0}
+  main{padding-top:24px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+  h1{font-size:clamp(32px,5vw,52px);line-height:1.05;letter-spacing:-.04em;margin:8px 0 10px}
+  .lead{color:var(--muted);max-width:70ch;margin:0}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 22px}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--surface)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 18px}
+  .search{flex:1 1 260px;display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 12px;min-height:46px}
+  .search input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;outline:none;padding:11px 0}
+  .search svg{color:var(--faint);flex:none}
+  .count{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap}
+  .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .chapter{display:flex;flex-direction:column;gap:7px;border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:15px;text-decoration:none;color:var(--ink);min-height:138px}
+  .chapter:hover{border-color:var(--accent);background:var(--surface-2)}
+  .chapter[hidden]{display:none}
+  .chapter .num{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--faint)}
+  .chapter h2{font-size:16px;line-height:1.25;margin:0;letter-spacing:-.01em}
+  .chapter p{margin:0;color:var(--muted);font-size:13px;flex:1}
+  .chapter .open{font-family:var(--mono);font-size:10.5px;color:var(--accent)}
+  .empty{display:none;border:1px dashed var(--line);border-radius:10px;padding:22px;color:var(--muted);text-align:center}
+  .empty.show{display:block}
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:16px;display:flex;flex-wrap:wrap;gap:8px 16px;color:var(--faint);font-size:12px}
+  footer a{color:var(--faint)}
+  .note{margin-top:18px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;background:var(--surface);padding:11px 14px;color:var(--muted);font-size:13px}
+  @media (max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:620px){
+    .wrap{padding:0 14px 54px}.bar{padding:8px 14px}.crumb{display:none}
+    .grid{grid-template-columns:1fr}.chapter{min-height:0}
+    h1{font-size:32px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <a class="brand" href="../" aria-label="NOVA home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5h9l4 7M2 19h9l4-7M16 12h6" fill="none" stroke="#5b9dff" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      NOVA
+    </a>
+    <span class="crumb">/ language specification</span>
+    <div class="actions">
+      <button class="btn icon" id="theme" type="button" aria-label="Switch colour theme">◐</button>
+      <a class="btn" href="https://github.com/drsamonline/NEO/tree/master/docs/language">Source ↗</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <main>
+    <p class="eyebrow">NOVA v1.0 · specification map</p>
+    <h1>Language specification</h1>
+    <p class="lead">Every chapter in the language definition, from lexical grammar to the semantic IR. This index is cached by the app shell and opens offline; chapter source files link to the repository.</p>
+    <div class="meta">
+      <span class="pill"><span class="dot"></span> 25 chapters</span>
+      <span class="pill">draft v1.0</span>
+      <span class="pill">works offline</span>
+      <span class="pill">MIT</span>
+    </div>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
+        <input id="filter" type="search" placeholder="Filter chapters — try “memory”, “types”, “packages”" aria-label="Filter specification chapters" autocomplete="off">
+      </label>
+      <span class="count" id="count">25 chapters</span>
+    </div>
+
+    <div class="grid" id="grid">
+      <a class="chapter" href="00_overview.md" data-search="overview philosophy scope terminology">
+        <span class="num">00</span><h2>Language Overview</h2><p>Philosophy, scope, and terminology of NOVA.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="01_lexical_grammar.md" data-search="lexical grammar unicode identifiers whitespace comments tokenization">
+        <span class="num">01</span><h2>Lexical Grammar</h2><p>Unicode handling, identifiers, whitespace, comments, and tokenization.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="02_tokens.md" data-search="tokens identifiers literals operators delimiters keywords">
+        <span class="num">02</span><h2>Tokens</h2><p>Identifiers, literals, operators, delimiters, keywords.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="03_keywords.md" data-search="reserved keywords future words">
+        <span class="num">03</span><h2>Reserved Keywords</h2><p>Core keywords and future reserved words.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="04_identifiers.md" data-search="identifiers naming rules namespaces">
+        <span class="num">04</span><h2>Identifiers</h2><p>Naming rules and namespaces.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="05_literals.md" data-search="literals numeric text boolean null collections">
+        <span class="num">05</span><h2>Literals</h2><p>Numeric, text, boolean, null, collections.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="06_types.md" data-search="type system inference explicit generics traits">
+        <span class="num">06</span><h2>Type System</h2><p>Inference, explicit typing, generics, traits.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="07_functions.md" data-search="functions declaration parameters return values">
+        <span class="num">07</span><h2>Functions</h2><p>Declaration, parameters, return values.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="08_modules.md" data-search="modules imports exports visibility">
+        <span class="num">08</span><h2>Modules</h2><p>Imports, exports, visibility.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="09_control_flow.md" data-search="control flow if match loops early return">
+        <span class="num">09</span><h2>Control Flow</h2><p>If, match, loops, early return.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="10_ownership.md" data-search="ownership model resource lifetime">
+        <span class="num">10</span><h2>Ownership Model</h2><p>Resource lifetime concepts.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="11_memory.md" data-search="memory model stack heap deterministic management">
+        <span class="num">11</span><h2>Memory Model</h2><p>Stack, heap, deterministic management.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="12_errors.md" data-search="error handling result diagnostics">
+        <span class="num">12</span><h2>Error Handling</h2><p>Result types and diagnostics.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="13_concurrency.md" data-search="concurrency tasks channels structured">
+        <span class="num">13</span><h2>Concurrency</h2><p>Tasks, channels, structured concurrency.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="14_attributes.md" data-search="attributes compile-time metadata">
+        <span class="num">14</span><h2>Attributes</h2><p>Compile-time metadata.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="15_generics.md" data-search="generics parameterized types constraints">
+        <span class="num">15</span><h2>Generics</h2><p>Parameterized types and constraints.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="16_interfaces.md" data-search="interfaces behavior contracts">
+        <span class="num">16</span><h2>Interfaces</h2><p>Behavior contracts.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="17_packages.md" data-search="package system manifest dependency resolution">
+        <span class="num">17</span><h2>Package System</h2><p>Manifest and dependency resolution.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="18_domain_packs.md" data-search="domain packs healthcare ai web finance robotics">
+        <span class="num">18</span><h2>Domain Packs</h2><p>Healthcare, AI, Web, Finance, Robotics.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="19_semantic_model.md" data-search="semantic model intent representation">
+        <span class="num">19</span><h2>Semantic Model</h2><p>Intent-first representation.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="20_sir_intro.md" data-search="semantic ir introduction purpose design">
+        <span class="num">20</span><h2>Semantic IR Introduction</h2><p>Purpose and design goals.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="21_style_guide.md" data-search="style guide formatting conventions">
+        <span class="num">21</span><h2>Style Guide</h2><p>Formatting and conventions.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="22_best_practices.md" data-search="best practices guidance authors">
+        <span class="num">22</span><h2>Best Practices</h2><p>Guidance for authors.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="23_glossary.md" data-search="glossary terminology">
+        <span class="num">23</span><h2>Glossary</h2><p>Core terminology.</p><span class="open">Read chapter →</span>
+      </a>
+      <a class="chapter" href="24_rfc_process.md" data-search="rfc process language evolution workflow">
+        <span class="num">24</span><h2>RFC Process</h2><p>Language evolution workflow.</p><span class="open">Read chapter →</span>
+      </a>
+    </div>
+    <div class="empty" id="empty">No chapter matches that filter.</div>
+
+    <p class="note">The chapter files above open their Markdown source. This map is part of the offline app shell; the source text lives in <a href="https://github.com/drsamonline/NEO/tree/master/docs/language">docs/language</a>.</p>
+
+    <footer>
+      <span>NOVA language specification · © 2026 Dr Sohil Momin</span>
+      <a href="../">Back to workspace</a>
+      <a href="https://github.com/drsamonline/NEO/blob/master/LICENSE">MIT</a>
+    </footer>
+  </main>
+</div>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const theme = document.getElementById('theme');
+  const paint = (dark) => {
+    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    theme.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  };
+  paint(localStorage.getItem('nova-theme') !== 'light');
+  theme.addEventListener('click', () => {
+    const dark = root.getAttribute('data-theme') !== 'dark';
+    localStorage.setItem('nova-theme', dark ? 'dark' : 'light');
+    paint(dark);
+  });
+
+  const input = document.getElementById('filter');
+  const cards = [...document.querySelectorAll('.chapter')];
+  const count = document.getElementById('count');
+  const empty = document.getElementById('empty');
+  input.addEventListener('input', () => {
+    const query = input.value.trim().toLowerCase();
+    let shown = 0;
+    cards.forEach((card) => {
+      const match = !query || card.dataset.search.includes(query) || card.textContent.toLowerCase().includes(query);
+      card.hidden = !match;
+      if (match) shown += 1;
+    });
+    count.textContent = `${shown} of ${cards.length} chapters`;
+    empty.classList.toggle('show', shown === 0);
+  });
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('../sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
