@@ -23,10 +23,12 @@ USAGE:
     nova-compiler run <source.nova> [-- ARGS...] build, then run the executable
     nova-compiler test --parity <source.nova>  run one program on every backend and compare
     nova-compiler doctor [--json]              check toolchains and backend readiness
+    nova-compiler version                      print the compiler version
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
         --target <name>   backend to emit: c (default), js, rust, or wasm
+    -V, --version         print the compiler version
     -h, --help            show this help
 
 Generated C calls the NOVA runtime (`nova_runtime.h` / `nova_runtime.c`).
@@ -45,6 +47,10 @@ fn main() {
             exit(1);
         }
         Some("-h") | Some("--help") | Some("help") => print!("{USAGE}"),
+        Some("-V") | Some("--version") | Some("version") => {
+            reject_extra_args(&args[1..], "version");
+            println!("nova-compiler {}", env!("CARGO_PKG_VERSION"));
+        }
         Some("emit") => {
             let (input, output, target, rest) = parse_args(&args[1..]);
             reject_extra_args(&rest, "emit");

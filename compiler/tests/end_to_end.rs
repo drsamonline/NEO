@@ -63,6 +63,23 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 #[test]
+fn version_flag_and_subcommand_agree() {
+    let expected = format!("nova-compiler {}", env!("CARGO_PKG_VERSION"));
+    for arguments in [["--version"], ["-V"], ["version"]] {
+        let output = Command::new(compiler())
+            .args(arguments)
+            .output()
+            .expect("run nova-compiler version");
+        assert!(
+            output.status.success(),
+            "`{arguments:?}` failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+    }
+}
+
+#[test]
 fn doctor_json_is_machine_readable() {
     let output = Command::new(compiler())
         .args(["doctor", "--json"])

@@ -24,6 +24,7 @@ Then, from the repository root:
 
 ```bash
 # Compile and run straight away
+./target/release/nova-compiler --version
 ./target/release/nova-compiler doctor --json
 ./target/release/nova-compiler run examples/hello.nova
 
@@ -187,7 +188,7 @@ build/run remain C-only.
 ## Current stage
 
 Phase 1 is complete; Phase 3 is partial and Phase 4 is in progress. The full
-suite has 189 passing tests. Backend gaps that remain explicit: WASM float struct
+suite has 190 passing tests. Backend gaps that remain explicit: WASM float struct
 fields and non-`int` closure signatures, and WASM out-of-bounds indexing traps
 versus C's runtime error. The parity corpus covers growable arrays, structs/tuples
 and closures. `DEV_PLAN.md` is authoritative.
