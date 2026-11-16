@@ -607,8 +607,10 @@ mod tests {
                     SirStatement::Return(Some(SirExpr::Literal(SirLiteral::Int(0)))),
                 ],
                 span: Span::default(),
+                env_type: None,
             }],
             globals: vec![],
+            structs: vec![],
         };
 
         let c_code = generator.generate(&program);
