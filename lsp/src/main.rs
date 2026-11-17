@@ -14,6 +14,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use thiserror::Error;
 use crate::compiler_integration::{IncrementalCompiler, NovaSymbolKind};
+use nova_common::{Token, TokenKind};
+use nova_compiler::Lexer;
 
 #[derive(Error, Debug)]
 pub enum LspError {
@@ -42,6 +44,99 @@ struct Backend {
     documents: Arc<RwLock<HashMap<Url, Document>>>,
     compile_errors: Arc<RwLock<HashMap<Url, Vec<Diagnostic>>>>,
     compiler: Arc<RwLock<IncrementalCompiler>>,
+}
+
+// ============================================================================
+// Navigation
+// ============================================================================
+//
+// Definition and references work on the compiler's own tokens, so every range is
+// the exact span of an identifier rather than a whole line.
+//
+// What this is not: a resolver. Two identifiers with the same text are treated as
+// the same symbol, so shadowing in nested scopes is not distinguished, and a field
+// name that happens to match a local is not told apart from it. Doing that needs a
+// lossless syntax tree with a scope map — the Stage 4 work in `DEV_PLAN.md`. This
+// is the honest token-level version, and it is exact about *where*, which the
+// previous implementation was not: it returned the whole line, starting at column
+// zero, for any line containing the text `fn name`.
+
+/// Every token of a document, with the compiler's spans.
+fn tokens_of(source: &str) -> Vec<Token> {
+    let mut lexer = Lexer::new(source);
+    let (tokens, _diagnostics) = lexer.tokenize();
+    tokens
+}
+
+/// NOVA counts lines and columns from 1; the protocol counts from 0.
+fn to_lsp(token: &Token) -> Option<Range> {
+    if token.span.start.line == 0 || token.span.start.column == 0 {
+        return None;
+    }
+    let line = (token.span.start.line - 1) as u32;
+    let start = (token.span.start.column - 1) as u32;
+    // The lexeme is the token's own text, so its length is the range's width. It
+    // is counted in characters, which matches the protocol for the ASCII
+    // identifiers that make up almost all of this language; a non-ASCII
+    // identifier is off by the difference between chars and UTF-16 units.
+    let width = token.lexeme.chars().count() as u32;
+    Some(Range {
+        start: Position { line, character: start },
+        end: Position { line, character: start + width },
+    })
+}
+
+/// The identifier the cursor is inside, if any.
+fn identifier_at<'a>(tokens: &'a [Token], position: Position) -> Option<&'a Token> {
+    tokens.iter().find(|token| {
+        if !matches!(token.kind, TokenKind::Identifier(_)) {
+            return false;
+        }
+        let Some(range) = to_lsp(token) else {
+            return false;
+        };
+        if position.line != range.start.line {
+            return false;
+        }
+        // Inclusive of the start, exclusive of the end, so a cursor just past the
+        // last character is not "inside" the name.
+        position.character >= range.start.character && position.character < range.end.character
+    })
+}
+
+/// Whether a token kind introduces a declaration.
+fn introduces_declaration(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Fn
+            | TokenKind::Let
+            | TokenKind::Struct
+            | TokenKind::Enum
+            | TokenKind::Const
+            | TokenKind::Type
+            | TokenKind::Mod
+            // `let mut x` puts `mut` between the keyword and the name.
+            | TokenKind::Mut
+    )
+}
+
+/// The first declaration of `name` in the token stream.
+fn declaration_of(tokens: &[Token], name: &str) -> Option<&Token> {
+    tokens
+        .windows(2)
+        .find(|pair| {
+            matches!(&pair[1].kind, TokenKind::Identifier(text) if text.as_str() == name)
+                && introduces_declaration(&pair[0].kind)
+        })
+        .map(|pair| &pair[1])
+}
+
+/// Every identifier token with this text.
+fn occurrences_of<'a>(tokens: &'a [Token], name: &str) -> Vec<&'a Token> {
+    tokens
+        .iter()
+        .filter(|token| matches!(&token.kind, TokenKind::Identifier(text) if text.as_str() == name))
+        .collect()
 }
 
 impl Backend {
@@ -106,35 +201,36 @@ impl Backend {
     
     /// Find definition of a symbol
     async fn find_definition(&self, uri: &Url, position: Position) -> Option<Location> {
-        // In production, this would use the compiler's symbol table
-        // For now, return a placeholder
-        let symbol = self.find_symbol_at(uri, position).await?;
-        
-        // Search for function/variable definition
         let documents = self.documents.read().await;
-        
-        for (doc_uri, doc) in documents.iter() {
-            for (line_num, line) in doc.content.lines().enumerate() {
-                if line.contains(&format!("fn {}", symbol)) || 
-                   line.contains(&format!("var {}", symbol)) ||
-                   line.contains(&format!("let {}", symbol)) {
-                    return Some(Location {
-                        uri: doc_uri.clone(),
-                        range: Range {
-                            start: Position {
-                                line: line_num as u32,
-                                character: 0,
-                            },
-                            end: Position {
-                                line: line_num as u32,
-                                character: line.len() as u32,
-                            },
-                        },
-                    });
-                }
+
+        // The document the cursor is in first: a declaration is usually there.
+        let current = documents.get(uri)?;
+        let tokens = tokens_of(&current.content);
+        let name = identifier_at(&tokens, position)?.lexeme.clone();
+
+        if let Some(declaration) = declaration_of(&tokens, &name) {
+            return Some(Location {
+                uri: uri.clone(),
+                range: to_lsp(declaration)?,
+            });
+        }
+
+        // Then every other open document, so a name imported from a sibling file
+        // still resolves. This is the same cross-file behaviour as before, now
+        // returning the identifier's span instead of the whole line.
+        for (other_uri, document) in documents.iter() {
+            if other_uri == uri {
+                continue;
+            }
+            let other_tokens = tokens_of(&document.content);
+            if let Some(declaration) = declaration_of(&other_tokens, &name) {
+                return Some(Location {
+                    uri: other_uri.clone(),
+                    range: to_lsp(declaration)?,
+                });
             }
         }
-        
+
         None
     }
 }
@@ -159,12 +255,11 @@ impl LanguageServer for Backend {
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
-                // Not advertised: `references()` below returns `Ok(None)`.
-                // Advertising a capability the server does not implement makes
-                // editors offer "Find All References" and then show nothing.
-                // Flip this to `Some(OneOf::Left(true))` in the same change that
-                // fills in `references()`.
-                references_provider: Some(OneOf::Left(false)),
+                // Token-level, and honest about it: two identifiers with the
+                // same text are treated as one symbol, so shadowing is not
+                // resolved. See the Navigation section for what that costs and
+                // which Stage 4 work would fix it.
+                references_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
                 diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
@@ -367,9 +462,43 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
-    async fn references(&self, _params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        // TODO: Implement reference finding
-        Ok(None)
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri = params.text_document_position.text_document.uri.clone();
+        let position = params.text_document_position.position;
+        let include_declaration = params.context.include_declaration;
+
+        let documents = self.documents.read().await;
+        let Some(document) = documents.get(&uri) else {
+            return Ok(None);
+        };
+
+        let tokens = tokens_of(&document.content);
+        let Some(name) = identifier_at(&tokens, position).map(|token| token.lexeme.clone()) else {
+            return Ok(None);
+        };
+
+        let declaration = declaration_of(&tokens, &name).map(|token| token.span);
+        let mut locations: Vec<Location> = occurrences_of(&tokens, &name)
+            .into_iter()
+            .filter(|token| {
+                // `include_declaration` is the editor's preference, and honouring
+                // it is what stops "rename" from offering to rename the
+                // declaration twice.
+                include_declaration || Some(token.span) != declaration
+            })
+            .filter_map(|token| {
+                to_lsp(token).map(|range| Location { uri: uri.clone(), range })
+            })
+            .collect();
+
+        locations.sort_by_key(|location| (location.range.start.line, location.range.start.character));
+        locations.dedup_by_key(|location| (location.range.start.line, location.range.start.character));
+
+        if locations.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(locations))
+        }
     }
 
     async fn document_symbol(
