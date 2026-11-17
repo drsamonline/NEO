@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Language specification · NOVA</title>
-<meta name="description" content="The NOVA language specification map: 25 chapters covering grammar, types, memory, concurrency, packages and the semantic IR. Works offline.">
+<meta name="description" content="The NOVA language specification map: 25 chapters planned, 1 written. Grammar, types, memory, concurrency, packages and the semantic IR. Works offline.">
 <meta name="theme-color" content="#08090b">
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../assets/icon-192.png">
@@ -55,6 +55,8 @@
   .chapter h2{font-size:16px;line-height:1.25;margin:0;letter-spacing:-.01em}
   .chapter p{margin:0;color:var(--muted);font-size:13px;flex:1}
   .chapter .open{font-family:var(--mono);font-size:10.5px;color:var(--accent)}
+  .chapter .stub{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:1px 5px;align-self:flex-start}
+  .chapter.is-stub h2{color:var(--muted)}
   .empty{display:none;border:1px dashed var(--line);border-radius:10px;padding:22px;color:var(--muted);text-align:center}
   .empty.show{display:block}
   footer{margin-top:26px;border-top:1px solid var(--line);padding-top:16px;display:flex;flex-wrap:wrap;gap:8px 16px;color:var(--faint);font-size:12px}
@@ -88,9 +90,9 @@
   <main>
     <p class="eyebrow">NOVA v1.0 · specification map</p>
     <h1>Language specification</h1>
-    <p class="lead">Every chapter in the language definition, from lexical grammar to the semantic IR. This index is cached by the app shell and opens offline; chapter source files link to the repository.</p>
+    <p class="lead">Every chapter in the language definition, from lexical grammar to the semantic IR. <strong>One of the twenty-five is written.</strong> The rest are stubs, marked below, and each links to a page that says so. What the compiler actually accepts is <a href="../../grammar/grammar.ebnf">the grammar</a> and <a href="../../DEV_PLAN.md">DEV_PLAN.md</a>. This index is cached by the app shell and opens offline.</p>
     <div class="meta">
-      <span class="pill"><span class="dot"></span> 25 chapters</span>
+      <span class="pill"><span class="dot"></span> 1 of 25 written</span>
       <span class="pill">draft v1.0</span>
       <span class="pill">works offline</span>
       <span class="pill">MIT</span>
@@ -108,77 +110,77 @@
       <a class="chapter" href="00_overview.md" data-search="overview philosophy scope terminology">
         <span class="num">00</span><h2>Language Overview</h2><p>Philosophy, scope, and terminology of NOVA.</p><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="01_lexical_grammar.md" data-search="lexical grammar unicode identifiers whitespace comments tokenization">
-        <span class="num">01</span><h2>Lexical Grammar</h2><p>Unicode handling, identifiers, whitespace, comments, and tokenization.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="01_lexical_grammar.md" data-search="lexical grammar unicode identifiers whitespace comments tokenization">
+        <span class="num">01</span><h2>Lexical Grammar</h2><p>Unicode handling, identifiers, whitespace, comments, and tokenization.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="02_tokens.md" data-search="tokens identifiers literals operators delimiters keywords">
-        <span class="num">02</span><h2>Tokens</h2><p>Identifiers, literals, operators, delimiters, keywords.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="02_tokens.md" data-search="tokens identifiers literals operators delimiters keywords">
+        <span class="num">02</span><h2>Tokens</h2><p>Identifiers, literals, operators, delimiters, keywords.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="03_keywords.md" data-search="reserved keywords future words">
-        <span class="num">03</span><h2>Reserved Keywords</h2><p>Core keywords and future reserved words.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="03_keywords.md" data-search="reserved keywords future words">
+        <span class="num">03</span><h2>Reserved Keywords</h2><p>Core keywords and future reserved words.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="04_identifiers.md" data-search="identifiers naming rules namespaces">
-        <span class="num">04</span><h2>Identifiers</h2><p>Naming rules and namespaces.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="04_identifiers.md" data-search="identifiers naming rules namespaces">
+        <span class="num">04</span><h2>Identifiers</h2><p>Naming rules and namespaces.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="05_literals.md" data-search="literals numeric text boolean null collections">
-        <span class="num">05</span><h2>Literals</h2><p>Numeric, text, boolean, null, collections.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="05_literals.md" data-search="literals numeric text boolean null collections">
+        <span class="num">05</span><h2>Literals</h2><p>Numeric, text, boolean, null, collections.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="06_types.md" data-search="type system inference explicit generics traits">
-        <span class="num">06</span><h2>Type System</h2><p>Inference, explicit typing, generics, traits.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="06_types.md" data-search="type system inference explicit generics traits">
+        <span class="num">06</span><h2>Type System</h2><p>Inference, explicit typing, generics, traits.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="07_functions.md" data-search="functions declaration parameters return values">
-        <span class="num">07</span><h2>Functions</h2><p>Declaration, parameters, return values.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="07_functions.md" data-search="functions declaration parameters return values">
+        <span class="num">07</span><h2>Functions</h2><p>Declaration, parameters, return values.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="08_modules.md" data-search="modules imports exports visibility">
-        <span class="num">08</span><h2>Modules</h2><p>Imports, exports, visibility.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="08_modules.md" data-search="modules imports exports visibility">
+        <span class="num">08</span><h2>Modules</h2><p>Imports, exports, visibility.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="09_control_flow.md" data-search="control flow if match loops early return">
-        <span class="num">09</span><h2>Control Flow</h2><p>If, match, loops, early return.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="09_control_flow.md" data-search="control flow if match loops early return">
+        <span class="num">09</span><h2>Control Flow</h2><p>If, match, loops, early return.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="10_ownership.md" data-search="ownership model resource lifetime">
-        <span class="num">10</span><h2>Ownership Model</h2><p>Resource lifetime concepts.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="10_ownership.md" data-search="ownership model resource lifetime">
+        <span class="num">10</span><h2>Ownership Model</h2><p>Resource lifetime concepts.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="11_memory.md" data-search="memory model stack heap deterministic management">
-        <span class="num">11</span><h2>Memory Model</h2><p>Stack, heap, deterministic management.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="11_memory.md" data-search="memory model stack heap deterministic management">
+        <span class="num">11</span><h2>Memory Model</h2><p>Stack, heap, deterministic management.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="12_errors.md" data-search="error handling result diagnostics">
-        <span class="num">12</span><h2>Error Handling</h2><p>Result types and diagnostics.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="12_errors.md" data-search="error handling result diagnostics">
+        <span class="num">12</span><h2>Error Handling</h2><p>Result types and diagnostics.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="13_concurrency.md" data-search="concurrency tasks channels structured">
-        <span class="num">13</span><h2>Concurrency</h2><p>Tasks, channels, structured concurrency.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="13_concurrency.md" data-search="concurrency tasks channels structured">
+        <span class="num">13</span><h2>Concurrency</h2><p>Tasks, channels, structured concurrency.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="14_attributes.md" data-search="attributes compile-time metadata">
-        <span class="num">14</span><h2>Attributes</h2><p>Compile-time metadata.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="14_attributes.md" data-search="attributes compile-time metadata">
+        <span class="num">14</span><h2>Attributes</h2><p>Compile-time metadata.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="15_generics.md" data-search="generics parameterized types constraints">
-        <span class="num">15</span><h2>Generics</h2><p>Parameterized types and constraints.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="15_generics.md" data-search="generics parameterized types constraints">
+        <span class="num">15</span><h2>Generics</h2><p>Parameterized types and constraints.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="16_interfaces.md" data-search="interfaces behavior contracts">
-        <span class="num">16</span><h2>Interfaces</h2><p>Behavior contracts.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="16_interfaces.md" data-search="interfaces behavior contracts">
+        <span class="num">16</span><h2>Interfaces</h2><p>Behavior contracts.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="17_packages.md" data-search="package system manifest dependency resolution">
-        <span class="num">17</span><h2>Package System</h2><p>Manifest and dependency resolution.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="17_packages.md" data-search="package system manifest dependency resolution">
+        <span class="num">17</span><h2>Package System</h2><p>Manifest and dependency resolution.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="18_domain_packs.md" data-search="domain packs healthcare ai web finance robotics">
-        <span class="num">18</span><h2>Domain Packs</h2><p>Healthcare, AI, Web, Finance, Robotics.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="18_domain_packs.md" data-search="domain packs healthcare ai web finance robotics">
+        <span class="num">18</span><h2>Domain Packs</h2><p>Healthcare, AI, Web, Finance, Robotics.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="19_semantic_model.md" data-search="semantic model intent representation">
-        <span class="num">19</span><h2>Semantic Model</h2><p>Intent-first representation.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="19_semantic_model.md" data-search="semantic model intent representation">
+        <span class="num">19</span><h2>Semantic Model</h2><p>Intent-first representation.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="20_sir_intro.md" data-search="semantic ir introduction purpose design">
-        <span class="num">20</span><h2>Semantic IR Introduction</h2><p>Purpose and design goals.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="20_sir_intro.md" data-search="semantic ir introduction purpose design">
+        <span class="num">20</span><h2>Semantic IR Introduction</h2><p>Purpose and design goals.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="21_style_guide.md" data-search="style guide formatting conventions">
-        <span class="num">21</span><h2>Style Guide</h2><p>Formatting and conventions.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="21_style_guide.md" data-search="style guide formatting conventions">
+        <span class="num">21</span><h2>Style Guide</h2><p>Formatting and conventions.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="22_best_practices.md" data-search="best practices guidance authors">
-        <span class="num">22</span><h2>Best Practices</h2><p>Guidance for authors.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="22_best_practices.md" data-search="best practices guidance authors">
+        <span class="num">22</span><h2>Best Practices</h2><p>Guidance for authors.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="23_glossary.md" data-search="glossary terminology">
-        <span class="num">23</span><h2>Glossary</h2><p>Core terminology.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="23_glossary.md" data-search="glossary terminology">
+        <span class="num">23</span><h2>Glossary</h2><p>Core terminology.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
-      <a class="chapter" href="24_rfc_process.md" data-search="rfc process language evolution workflow">
-        <span class="num">24</span><h2>RFC Process</h2><p>Language evolution workflow.</p><span class="open">Read chapter →</span>
+      <a class="chapter is-stub" href="24_rfc_process.md" data-search="rfc process language evolution workflow">
+        <span class="num">24</span><h2>RFC Process</h2><p>Language evolution workflow.</p><span class="stub">not written</span><span class="open">Read chapter →</span>
       </a>
     </div>
     <div class="empty" id="empty">No chapter matches that filter.</div>

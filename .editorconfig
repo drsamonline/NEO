@@ -1,0 +1,38 @@
+# EditorConfig — https://editorconfig.org
+# Covers the whitespace rules a reviewer should not have to think about.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{md,markdown}]
+# Prose and tables read better unwrapped and untrimmed: a hard-wrapped
+# paragraph shows up as a one-line diff when a word changes.
+trim_trailing_whitespace = false
+indent_size = 2
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{json,jsonc}]
+indent_size = 2
+
+[*.{html,css,js,mjs,ts}]
+indent_size = 2
+
+[*.nova]
+indent_size = 4
+
+[*.{ebnf,wat}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[*.{sh,bash}]
+indent_size = 2

@@ -1,0 +1,42 @@
+# CODEOWNERS — https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# One maintainer today, so this file's job is not to divide review work. It is to
+# make the paths that carry the most risk impossible to change without the owner
+# being asked, and to survive the day a second maintainer arrives.
+#
+# Every rule below is a real ownership boundary, not a placeholder: if you add a
+# maintainer, add them to the rule that covers what they maintain.
+
+# Everything, by default.
+*                           @drsamonline
+
+# The grammar is the contract every other layer is checked against. A change here
+# changes the language, so it needs the owner even if the diff is one line.
+/grammar/                   @drsamonline
+/tools/grammar-check.py     @drsamonline
+
+# Anything that emits code, and anything a program is linked against.
+/compiler/src/backend/      @drsamonline
+/backends/                  @drsamonline
+/runtime/                   @drsamonline
+
+# The pipeline the whole project rests on.
+/compiler/src/lexer/        @drsamonline
+/compiler/src/parser/       @drsamonline
+/compiler/src/sema/         @drsamonline
+/compiler/src/lowerer/      @drsamonline
+/crates/nova-common/src/sir/ @drsamonline
+
+# Provenance, release and supply chain.
+/.github/workflows/         @drsamonline
+/MANIFEST.json              @drsamonline
+/Cargo.lock                 @drsamonline
+/NOTICE                     @drsamonline
+/SECURITY.md                @drsamonline
+/LICENSE                    @drsamonline
+
+# The status documents. `DEV_PLAN.md` is the source of truth for what is done, so
+# a change to it is a change to the project's claims about itself.
+/DEV_PLAN.md                @drsamonline
+/CHANGELOG.md               @drsamonline
+/README.md                  @drsamonline
