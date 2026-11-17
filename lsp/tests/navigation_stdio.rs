@@ -99,16 +99,36 @@ impl Drop for Server {
     }
 }
 
-/// The document under test. Columns are chosen so an off-by-one shows up:
-/// `total` is declared at column 4 and first used at column 8.
+/// The document under test.
+///
+/// Every column below is counted, not guessed, and the names do not shadow each
+/// other — a token-level search treats two identifiers with the same text as one
+/// symbol, so a shadowing document would test the limitation rather than the
+/// feature.
+///
+/// ```text
+/// 0  fn total(a: int, b: int) -> int {
+/// 1      return a + b;
+/// 2  }
+/// 3
+/// 4  fn main() -> int {
+/// 5      let start: int = 0;
+/// 6      let sum: int = total(start, 2);
+/// 7      print(sum);
+/// 8      print(start);
+/// 9      return 0;
+/// 10 }
+/// ```
 const SOURCE: &str = "\
 fn total(a: int, b: int) -> int {
     return a + b;
 }
 
 fn main() -> int {
-    let mut total: int = 0;
-    print(total);
+    let start: int = 0;
+    let sum: int = total(start, 2);
+    print(sum);
+    print(start);
     return 0;
 }
 ";
@@ -151,26 +171,22 @@ fn definition_returns_the_identifier_span_not_the_line() {
     let mut server = Server::start();
     open(&mut server, uri);
 
-    // Line 6 (0-based) is `    let mut total: int = 0;` — `total` starts at
-    // character 12. Put the cursor in the middle of the use on line 7 instead:
-    // `    print(total);` — `total` starts at character 10.
+    // Cursor inside `total` on line 6 — `    let sum: int = total(start, 2);`
+    // puts `total` at columns 19..24.
     server.send(&format!(
-        r#"{{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":7,"character":12}}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":6,"character":21}}}}}}"#
     ));
     let response = server.response(2);
     let result = &response["result"];
 
-    assert!(
-        !result.is_null(),
-        "definition should resolve `total`: {response}"
-    );
+    assert!(!result.is_null(), "definition should resolve `total`: {response}");
     assert_eq!(result["uri"].as_str(), Some(uri));
     assert_eq!(
         (
             result["range"]["start"]["line"].as_u64(),
             result["range"]["start"]["character"].as_u64()
         ),
-        (Some(6), Some(12)),
+        (Some(0), Some(3)),
         "definition must point at the identifier, not column 0: {response}"
     );
     assert_eq!(
@@ -178,8 +194,31 @@ fn definition_returns_the_identifier_span_not_the_line() {
             result["range"]["end"]["line"].as_u64(),
             result["range"]["end"]["character"].as_u64()
         ),
-        (Some(6), Some(17)),
+        (Some(0), Some(8)),
         "the range must be the width of `total`: {response}"
+    );
+}
+
+#[test]
+fn definition_resolves_a_local_binding() {
+    let uri = "file:///tmp/nova_lsp_definition_local.nova";
+    let mut server = Server::start();
+    open(&mut server, uri);
+
+    // Cursor inside `start` on line 8 — `    print(start);` puts it at 10..15.
+    server.send(&format!(
+        r#"{{"jsonrpc":"2.0","id":5,"method":"textDocument/definition","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":8,"character":12}}}}}}"#
+    ));
+    let response = server.response(5);
+    let result = &response["result"];
+
+    assert_eq!(
+        (
+            result["range"]["start"]["line"].as_u64(),
+            result["range"]["start"]["character"].as_u64()
+        ),
+        (Some(5), Some(8)),
+        "a local must resolve to its `let`, on line 5 column 8: {response}"
     );
 }
 
@@ -189,10 +228,10 @@ fn references_lists_every_occurrence_with_its_own_span() {
     let mut server = Server::start();
     open(&mut server, uri);
 
-    // `total` appears three times: the unused function name on line 0, the
-    // binding on line 6 and the use on line 7.
+    // `start` appears three times: bound on line 5, passed on line 6, printed on
+    // line 8.
     server.send(&format!(
-        r#"{{"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":7,"character":12}},"context":{{"includeDeclaration":true}}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":8,"character":12}},"context":{{"includeDeclaration":true}}}}}}"#
     ));
     let response = server.response(3);
     let locations = response["result"]
@@ -211,8 +250,8 @@ fn references_lists_every_occurrence_with_its_own_span() {
 
     assert_eq!(
         starts,
-        vec![(0, 3), (6, 12), (7, 10)],
-        "expected the declaration, the binding and the use, in order: {response}"
+        vec![(5, 8), (6, 25), (8, 10)],
+        "expected the binding, the argument and the use, in order: {response}"
     );
 
     // Every range must be the width of the identifier, never a whole line.
@@ -230,7 +269,7 @@ fn references_can_omit_the_declaration() {
     open(&mut server, uri);
 
     server.send(&format!(
-        r#"{{"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":7,"character":12}},"context":{{"includeDeclaration":false}}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":8,"character":12}},"context":{{"includeDeclaration":false}}}}}}"#
     ));
     let response = server.response(4);
     let locations = response["result"].as_array().expect("array");
@@ -238,7 +277,7 @@ fn references_can_omit_the_declaration() {
     assert_eq!(
         locations.len(),
         2,
-        "with includeDeclaration:false the binding and the use remain, the \
-         function declaration does not: {response}"
+        "with includeDeclaration:false the argument and the use remain, the \
+         binding does not: {response}"
     );
 }
