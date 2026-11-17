@@ -1,0 +1,10 @@
+64.60
+
+# Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
+# LCOV LF/LH records in `.github/workflows/coverage.yml`.
+#
+# This may only go up. If a change genuinely lowers it, lower the floor in the
+# same commit and say in the message why the drop is acceptable — do not lower it
+# quietly in a later commit, which is how a ratchet becomes decoration.
+#
+# First measured 2026-11-18: 7,675 of 11,880 lines.
