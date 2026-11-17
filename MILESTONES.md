@@ -1,8 +1,11 @@
 # NOVA Project Milestones
 
-> Historical milestone log. For current status — Phase 1 complete, Phase 3
-> partial, Phase 4 in progress, 184 passing tests — see `DEV_PLAN.md` and
-> `README.md`.
+> **Superseded.** This is the original 12-milestone narrative. Its line counts
+> and test numbers come from an early snapshot and are wrong — it says 184
+> passing tests (the workspace runs 199), a 907-line parser (1,506) and 1,529
+> lines of backends (3,085, and one of the four was deleted). Its milestone
+> numbering does not match `DEV_PLAN.md`'s. Kept for the history only;
+> `DEV_PLAN.md` is the only plan.
 
 ## ✅ Milestone 1: Lexer Complete
 **Date**: Completed  

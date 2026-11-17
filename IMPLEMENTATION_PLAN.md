@@ -1,7 +1,9 @@
 # NOVA Compiler Implementation Plan
 
-> Historical implementation plan. Current status lives in `DEV_PLAN.md`
-> (Phase 1 complete, Phase 3 partial, Phase 4 in progress; 184 passing tests).
+> **Superseded.** An 8-phase implementation plan written before the backends
+> worked. Its 184-test figure is from an early snapshot; the workspace runs 199.
+> Its phase numbering matches neither `DEV_PLAN.md` nor `MILESTONES.md`. Kept for
+> the history only; `DEV_PLAN.md` is the only plan.
 
 ## Overview
 Complete implementation of the NOVA compiler from semantic analysis to executable generation, with strict error fixing at each stage and QA as the final phase.

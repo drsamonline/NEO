@@ -1,7 +1,8 @@
 # Files Created/Modified in This Session
 
-> Historical log from an early compiler session. It is not a current status
-> document; see `DEV_PLAN.md` and `README.md` for the present stage.
+> **Superseded.** A log from an early compiler session, kept for the history. It
+> is not a status document and its "Next Steps" list is long since done. See
+> `DEV_PLAN.md` for the present stage.
 
 ## Core Implementation Files
 
