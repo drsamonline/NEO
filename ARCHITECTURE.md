@@ -10,7 +10,7 @@ Source Code → Lexer → Parser → AST → Semantic Analyzer → SIR → Lower
 
 ## Compilation Pipeline
 
-### 1. Lexer (309 lines) ✅
+### 1. Lexer (340 lines) ✅
 **Location**: `compiler/src/lexer/mod.rs`
 
 Transforms source code into tokens:
@@ -24,7 +24,7 @@ Transforms source code into tokens:
 
 ---
 
-### 2. Parser (907 lines) ✅
+### 2. Parser (1,506 lines) ✅
 **Location**: `compiler/src/parser/mod.rs`
 
 Recursive descent parser building AST:
@@ -38,14 +38,14 @@ Recursive descent parser building AST:
 
 ---
 
-### 3. Semantic Analyzer (773 lines) ✅
+### 3. Semantic Analyzer (1,707 lines) ✅
 **Location**: `compiler/src/sema/`
 
 Type checking and name resolution:
 - **checker.rs** (176 lines): Type system enforcement
 - **resolver.rs** (130 lines): Name/scope resolution
-- **types.rs** (96 lines): Type definitions
-- **mod.rs** (369 lines): Main analyzer logic
+- **types.rs** (99 lines): Type definitions
+- **mod.rs** (1,302 lines): Main analyzer logic
 
 Performs:
 - Symbol table construction
@@ -58,7 +58,7 @@ Performs:
 
 ---
 
-### 4. SIR - Semantic Intermediate Representation (146 lines) ✅
+### 4. SIR - Semantic Intermediate Representation (465 lines) ✅
 **Location**: `compiler/src/sir/mod.rs`
 
 Language-agnostic intermediate representation:
@@ -72,7 +72,7 @@ Language-agnostic intermediate representation:
 
 ---
 
-### 5. Lowerer (550 lines) ✅
+### 5. Lowerer (3,190 lines) ✅
 **Location**: `compiler/src/lowerer/mod.rs`
 
 Converts AST to SIR:
@@ -130,7 +130,7 @@ coverage, and `DEV_PLAN.md` says which feature stops where.
 
 ```
 /workspace
-├── compiler/              # Main compiler crate (~3,500 LOC)
+├── compiler/              # Main compiler crate (8,931 LOC)
 │   └── src/
 │       ├── lexer/        # Tokenization
 │       ├── parser/       # AST construction
@@ -142,7 +142,7 @@ coverage, and `DEV_PLAN.md` says which feature stops where.
 │       ├── diagnostics/  # Error reporting
 │       └── cli/          # Command-line interface
 │
-├── backends/             # Target code generators (1,529 LOC)
+├── backends/             # JS, Rust and WASM generators (3,085 LOC)
 │   ├── c/               # C backend
 │   ├── javascript/      # JS backend
 │   ├── rust/            # Rust backend
