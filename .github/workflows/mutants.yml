@@ -1,0 +1,75 @@
+name: Mutants
+
+# G7 in DEV_PLAN.md: mutation testing.
+#
+# Coverage says a line was executed. It cannot say the assertion would have
+# noticed if the line were wrong. `cargo-mutants` changes the code in small ways
+# and asks whether any test fails — a mutant that survives is a test that asserts
+# nothing about the code it covers.
+#
+# Weekly, not per pull request. Mutating the lowerer and the C backend means
+# hundreds of builds; this is the most expensive gate in the plan and it does not
+# belong in the path of every commit.
+#
+# Advisory to start: the first run's surviving mutants are a map of where the
+# tests are weak, not a list of things to fix before merging. It becomes blocking
+# when the survivors have been triaged.
+
+on:
+  schedule:
+    - cron: "0 6 * * 6"      # Saturdays, 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      shard:
+        description: "Shard to run, as k/n"
+        required: false
+        default: "1/1"
+
+permissions:
+  contents: read
+
+jobs:
+  mutants:
+    name: Do the tests notice when the code is wrong?
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
+
+      # Two files, chosen because they are where a silent mistake costs the most:
+      # the lowerer decides what the program means, and the C backend decides what
+      # is written out. A surviving mutant in either is a test that would not have
+      # caught a real bug.
+      - name: Mutate
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          shard="${{ github.event.inputs.shard || '1/1' }}"
+          cargo mutants \
+            --file compiler/src/lowerer/mod.rs \
+            --file compiler/src/backend/mod.rs \
+            --timeout 120 \
+            --shard "$shard" \
+            --output /tmp/mutants.out
+          echo "exit: $?"
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f /tmp/mutants.out/mutants.out ] || [ -f /tmp/mutants.out ]; then
+            echo "mutants output:"
+            find /tmp/mutants.out -name '*.txt' -o -name 'caught.txt' -o -name 'missed.txt' 2>/dev/null | head
+          fi
+          for file in caught missed unviable timeout; do
+            if [ -f "/tmp/mutants.out/$file.txt" ]; then
+              echo "$file: $(wc -l < "/tmp/mutants.out/$file.txt")"
+            fi
+          done
+          echo
+          echo "A missed mutant is a line the tests execute but do not check."
+          echo "Triage the survivors, add a test for each real one, and this job can"
+          echo "become blocking. Until then it is a map of where the suite is weak."

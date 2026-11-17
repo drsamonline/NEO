@@ -1,0 +1,53 @@
+# cargo-deny: licences, security advisories, duplicate and banned crates, and
+# where dependencies come from.
+#
+# `NOTICE` tells a reader every dependency is permissively licensed. This file is
+# what makes that claim stay true: the allow-list below is the licence policy, and
+# a new dependency under a licence that is not on it fails the build rather than
+# arriving in a pull request nobody checked.
+
+[graph]
+# Everything, on every target: a dependency that is only reachable on Windows is
+# still a dependency this project ships.
+targets = []
+all-features = true
+
+[advisories]
+# A yanked crate is a warning, not a failure — yanking means "do not start using
+# this", and a lockfile that already uses it still builds. Vulnerabilities are
+# left at their default, which is to fail.
+yanked = "warn"
+
+[licenses]
+# The policy. Every entry here is a licence this project is willing to ship under.
+# Adding one is a decision; that is the point.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+# Guesses below this confidence are reported rather than silently accepted.
+confidence-threshold = 0.9
+
+[bans]
+# Duplicates are a warning: two versions of a crate cost build time and are worth
+# seeing, but they are not a correctness problem.
+multiple-versions = "warn"
+# A wildcard version is a decision that dependencies may drift, and nothing here
+# needs one.
+wildcards = "deny"
+
+[sources]
+# Only crates.io. A dependency that arrives from a git URL or an unknown registry
+# is a supply-chain decision, not an implementation detail.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

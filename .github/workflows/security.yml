@@ -1,0 +1,60 @@
+name: Security
+
+# `NOTICE` tells a reader that every dependency is permissively licensed. This is
+# what keeps that claim true, and what turns a supply-chain change into a review
+# instead of a surprise.
+#
+# Checks run: licences against the policy in `deny.toml`, RustSec advisories,
+# duplicate and wildcard dependencies, and that every crate comes from crates.io.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 5 * * 1"      # Mondays, 05:00 UTC — advisories appear without a push
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deny:
+    name: Licences, advisories and sources
+    runs-on: ubuntu-latest
+    env:
+      # Pinned by version and digest for the same reason the actions are pinned by
+      # SHA: an unpinned download is the hole this job exists to close.
+      CARGO_DENY_VERSION: "0.21.0"
+      CARGO_DENY_SHA256: "a2170b854ff697e79e39c4c538981c9c1bdd803addbae6719a4cb66b4585a903"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - name: Install cargo-deny
+        run: |
+          set -eu
+          asset="cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl"
+          curl -sSL -o /tmp/cargo-deny.tar.gz \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/${asset}.tar.gz"
+          echo "${CARGO_DENY_SHA256}  /tmp/cargo-deny.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/cargo-deny.tar.gz -C /tmp
+          echo "/tmp/${asset}" >> "$GITHUB_PATH"
+          "/tmp/${asset}/cargo-deny" --version
+
+      # `cargo deny` reads the workspace through `cargo metadata`, so the
+      # toolchain above is a real dependency of this job, not a formality.
+      - name: Licences
+        run: cargo deny check licenses
+
+      - name: Sources — only crates.io
+        run: cargo deny check sources
+
+      - name: Banned and duplicate crates
+        run: cargo deny check bans
+
+      - name: RustSec advisories
+        # Advisories change without this repository changing, so a failure here is
+        # news about the ecosystem rather than about a pull request. It is
+        # reported separately so it can never be confused with a broken build.
+        continue-on-error: true
+        run: cargo deny check advisories
