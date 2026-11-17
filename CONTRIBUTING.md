@@ -48,6 +48,13 @@ python3 tools/example-check.py      # every examples/**/*.nova is a NOVA program
 cargo build --workspace --all-targets
 cargo test --workspace
 for f in examples/**/*.nova; do ./target/debug/nova-compiler run "$f" > /dev/null; done
+```
+
+If you changed code generation, run the benchmark too — it is not part of the
+per-pull-request set, because a wall-clock ratio on a shared runner is mostly
+noise:
+
+```bash
 BENCH_MAX_RATIO=1.5 ./benches/run.sh 5
 ```
 
