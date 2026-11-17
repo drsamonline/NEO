@@ -121,7 +121,7 @@ fn introduces_declaration(kind: &TokenKind) -> bool {
 }
 
 /// The first declaration of `name` in the token stream.
-fn declaration_of(tokens: &[Token], name: &str) -> Option<&Token> {
+fn declaration_of<'a>(tokens: &'a [Token], name: &str) -> Option<&'a Token> {
     tokens
         .windows(2)
         .find(|pair| {
