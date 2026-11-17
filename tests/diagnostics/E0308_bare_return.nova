@@ -1,0 +1,10 @@
+// A bare `return` in a function that must produce a value.
+//
+//~ ERROR E0308
+fn flag() -> bool {
+    return;
+}
+
+fn main() -> int {
+    return 0;
+}

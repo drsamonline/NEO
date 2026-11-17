@@ -87,7 +87,7 @@ in place they are the acceptance check for everything else.
 |---|---|---|
 | **G1 Sanitisers** ✅ in place | generated C built with `-fsanitize=address,undefined -fno-sanitize-recover=all`, then run — `.github/workflows/accuracy.yml` | out-of-bounds access, use-after-free, signed overflow, misaligned access in backend output |
 | **G2 WASM validation** ✅ in place | `wasm-tools validate --features=wasm1 out.wat` for every WASM-emitting program — `accuracy.yml`, wasm-tools pinned by version and SHA-256 | malformed modules, wrong arity, invalid indices — independent of the host |
-| **G3 Diagnostic snapshots** | `.stderr` golden files per case, blessed by a flag, with `//~ ERROR` annotations in the source | a diagnostic silently changing its code, span or help text |
+| **G3 Diagnostic snapshots** ✅ in place | `.stderr` goldens per case in `tests/diagnostics/`, with `//~ ERROR` annotations in the source; `tools/diagnostic-check.py`, blessed with `--bless` or a `workflow_dispatch` input | a diagnostic silently changing its code, span or help text |
 | **G4 Differential corpus** | generated NOVA programs run on all four backends, stdout compared | backend divergence on inputs nobody wrote by hand |
 | **G5 Fuzz** | `cargo-fuzz` on lexer and parser, 60s per target per PR, longer nightly | panics, hangs, stack overflow on malformed input |
 | **G6 Coverage** | `cargo llvm-cov` with a ratchet that may only go up | tests that assert nothing, untested branches |
@@ -124,10 +124,20 @@ The highest-value work in the repository, and nothing else starts until it is in
   counted as *held*, and the count is printed — a backend that starts rejecting
   the whole corpus cannot pass quietly. **Still to do:** the upstream WebAssembly
   `testsuite` as a submodule, for the subset the backend claims to support.
-- **G3 Diagnostic snapshots.** One directory, one file per case, `.stderr` files
-  blessed by a flag. Adopt rustc's model: the source carries `//~ ERROR` line
-  annotations *and* there is a `.stderr` file, and the redundancy is deliberate —
-  the annotation catches a wrong span, the file catches an unmentioned diagnostic.
+- **G3 Diagnostic snapshots.** ✅ In place: `tests/diagnostics/`, eight cases,
+  `tools/diagnostic-check.py`. rustc's model with the redundancy kept — the
+  `.stderr` golden pins the exact text, span and help; the `//~ ERROR` annotation
+  says which codes are *expected*, so an extra diagnostic on a line nobody
+  touched fails instead of being re-blessed unnoticed. A separate step fails if a
+  case that should fail has a golden saying `exit: 0`, because `--bless` would
+  otherwise turn a regression into a new expected value.
+
+  Found while building it: **the CLI never printed error codes.** Every
+  `Diagnostic` carried a `code`, `docs/errors.md` documented three of them, and
+  `compiler/src/main.rs` printed only `diag.message` — so `E0308` existed
+  everywhere except in front of the person who needed to search for it. The CLI
+  now prints `[Exxxx]` and the diagnostic's `notes`, and does the same for parse
+  and lexical diagnostics.
 - **G4 Differential corpus.** A generator that emits valid NOVA programs from the
   grammar, runs each on all four backends and compares stdout. Seven hand-written
   programs become a few hundred generated ones.

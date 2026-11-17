@@ -1,0 +1,71 @@
+name: Diagnostics
+
+# G3 in DEV_PLAN.md: the compiler's diagnostics are part of its interface, and
+# nothing pinned them. This checks each case in `tests/diagnostics/` against a
+# `.stderr` golden and against the `//~ ERROR` annotation in the source.
+#
+# Blessing is a `workflow_dispatch` input rather than a local-only step, because
+# the goldens have to be produced by the compiler, and the compiler runs here.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      bless:
+        description: "Rewrite the .stderr goldens from the compiler's current output"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  goldens:
+    name: Diagnostics match their goldens
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - run: cargo build -p nova-compiler
+
+      - name: Check
+        if: github.event.inputs.bless != 'true'
+        run: python3 tools/diagnostic-check.py
+
+      # A bless run does not fail: its job is to produce the new goldens. It
+      # prints each one base64-encoded so it can be read out of this log and
+      # committed, which is how a golden gets written without a local compiler.
+      - name: Bless
+        if: github.event.inputs.bless == 'true'
+        run: |
+          set -eu
+          python3 tools/diagnostic-check.py --bless
+          echo
+          echo "Copy each block into the file it names, then commit."
+          for golden in tests/diagnostics/*.stderr; do
+            echo "GOLDEN $golden"
+            base64 -w0 "$golden"
+            echo
+            echo "END $golden"
+          done
+
+      - name: A case that stopped producing a diagnostic is a failure, not a blessing
+        if: github.event.inputs.bless != 'true'
+        run: |
+          set -eu
+          # Every case except `ok_*` must exit non-zero. `--bless` will happily
+          # record `exit: 0` for a case that stopped failing, which would turn a
+          # regression into a new expected value.
+          fail=0
+          for golden in tests/diagnostics/*.stderr; do
+            case "$(basename "$golden")" in
+              ok_*) continue ;;
+            esac
+            if grep -qx 'exit: 0' "$golden"; then
+              echo "::error file=$golden::this case is expected to fail but its golden says exit: 0"
+              fail=1
+            fi
+          done
+          exit "$fail"

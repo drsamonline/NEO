@@ -1,0 +1,7 @@
+// A name nothing declares. E0002 is the only code the analyser has for this.
+//
+//~ ERROR E0002
+fn main() -> int {
+    print(missing);
+    return 0;
+}

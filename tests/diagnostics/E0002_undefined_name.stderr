@@ -1,0 +1,6 @@
+exit: 1
+---
+<case>: semantic errors:
+  <case>:5:11: [E0002] undefined name `missing`
+    help: declare `missing` first (`let missing = ...` or `fn missing(...)`), or check the spelling
+error: semantic analysis failed

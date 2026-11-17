@@ -234,6 +234,12 @@ fn compile_to(input: &Path, target: Target) -> String {
         eprintln!("{name}: lexical errors:");
         for diag in diagnostics.iter() {
             eprintln!("  {}", diag.message);
+            for note in &diag.notes {
+                eprintln!("    note: {note}");
+            }
+            for help in &diag.helps {
+                eprintln!("    help: {help}");
+            }
         }
         die("lexical analysis failed");
     }
@@ -245,6 +251,12 @@ fn compile_to(input: &Path, target: Target) -> String {
             eprintln!("{name}: parse errors:");
             for diag in diagnostics.iter() {
                 eprintln!("  {}", diag.message);
+                for note in &diag.notes {
+                    eprintln!("    note: {note}");
+                }
+                for help in &diag.helps {
+                    eprintln!("    help: {help}");
+                }
             }
             die("parsing failed");
         }
@@ -260,13 +272,25 @@ fn compile_to(input: &Path, target: Target) -> String {
     if analyzer.analyze(&program).is_err() {
         eprintln!("{name}: semantic errors:");
         for diag in analyzer.diagnostics.iter() {
-            // `file:line:col: cause` so editors and CI logs can jump to the name.
+            // `file:line:col: [Exxxx] cause` so editors and CI logs can jump to
+            // the name, and so the code documented in `docs/errors.md` is the
+            // code a user actually sees. It used to be dropped here: every
+            // diagnostic carried a code and the CLI printed only the message, so
+            // `E0308` existed everywhere except in front of the person who needed
+            // to search for it.
+            let code = match &diag.code {
+                Some(code) => format!("[{code}] "),
+                None => String::new(),
+            };
             match &diag.span {
                 Some(span) => eprintln!(
-                    "  {name}:{}:{}: {}",
+                    "  {name}:{}:{}: {code}{}",
                     span.start.line, span.start.column, diag.message
                 ),
-                None => eprintln!("  {name}: {}", diag.message),
+                None => eprintln!("  {name}: {code}{}", diag.message),
+            }
+            for note in &diag.notes {
+                eprintln!("    note: {note}");
             }
             for help in &diag.helps {
                 eprintln!("    help: {help}");

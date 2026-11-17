@@ -1,0 +1,12 @@
+// Three arguments to a two-argument function. The `help:` line prints the full
+// parameter list, which is what tells you which call you meant.
+//
+//~ ERROR E0061
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn main() -> int {
+    print(add(1, 2, 3));
+    return 0;
+}
