@@ -2,6 +2,8 @@
 name = "nova-dbg"
 version.workspace = true
 edition = "2021"
+license.workspace = true
+publish.workspace = true
 description = "NOVA Debugger - Interactive debugging for NOVA programs"
 authors = ["NOVA Team"]
 

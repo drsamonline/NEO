@@ -91,7 +91,7 @@ in place they are the acceptance check for everything else.
 | **G4 Differential corpus** ✅ in place | `tools/corpus-gen.py` generates programs from a seed and writes the output they must produce, computed independently in Python; `corpus.yml` runs `test --parity`, which checks both agreement between backends and agreement with that oracle | backend divergence on inputs nobody wrote by hand — and four backends that agree and are all wrong |
 | **G5 Fuzz** ✅ in place, advisory | `cargo-fuzz` on lexer, parser and the whole front end — 60s per target per PR, 10 minutes weekly — `fuzz.yml`, seeded from `examples/` and `tests/parity/` | panics, hangs, stack overflow on malformed input |
 | **G6 Coverage** ✅ in place | `cargo llvm-cov` → LCOV, line coverage compared to `coverage-floor.txt`, which may only go up — `coverage.yml` | tests that assert nothing, untested branches |
-| **G7 Mutation** | `cargo-mutants` on the lowerer and C backend, weekly | tests that pass for the wrong reason |
+| **G7 Mutation** ✅ in place, advisory | `cargo-mutants` on the lowerer and C backend, Saturdays — `mutants.yml` | tests that pass for the wrong reason |
 
 ---
 
@@ -122,8 +122,14 @@ The highest-value work in the repository, and nothing else starts until it is in
   backend accepts is validated with `wasm-tools validate --features=wasm1`.
   wasm-tools is pinned by version and SHA-256. A program the backend rejects is
   counted as *held*, and the count is printed — a backend that starts rejecting
-  the whole corpus cannot pass quietly. **Still to do:** the upstream WebAssembly
-  `testsuite` as a submodule, for the subset the backend claims to support.
+  the whole corpus cannot pass quietly.
+
+  **Correction.** Earlier revisions of this plan listed "add the WebAssembly
+  `testsuite` as a submodule" as the remaining part of this stage. That was wrong:
+  the spec `testsuite` is `.wast` scripts that test a WASM *engine*, and NOVA is a
+  WASM *producer*. There is nothing for it to run. `wasm-tools validate` is the
+  right check for a producer, and it is already in place. The `testsuite` would
+  only become relevant if NOVA grew its own WASM runtime.
 - **G3 Diagnostic snapshots.** ✅ In place: `tests/diagnostics/`, eight cases,
   `tools/diagnostic-check.py`. rustc's model with the redundancy kept — the
   `.stderr` golden pins the exact text, span and help; the `//~ ERROR` annotation
@@ -184,7 +190,10 @@ belongs with the LSP navigation work in Stage 5.
 - **G6 Coverage** with a ratchet. ✅ `coverage.yml` computes line coverage from
   LCOV `LF`/`LH` records rather than the summary table, whose column order is a
   presentation detail a gate should not depend on.
-- **G7 Mutation** weekly, starting with the lowerer and the C backend.
+- **G7 Mutation** weekly. ✅ `mutants.yml` mutates `compiler/src/lowerer/mod.rs`
+  and `compiler/src/backend/mod.rs` on Saturdays, shardable by dispatch input.
+  Advisory until the survivors are triaged: the first run is a map of where the
+  suite is weak, not a list of things to fix before merging.
 - Replace the wall-clock benchmark with instruction counts (`iai-callgrind` /
   Gungraun), which are stable enough to gate on.
 - **Compiler-speed benchmark** ✅ in place: `benches/compiler.sh` times `emit`
@@ -264,7 +273,7 @@ plan should borrow rather than invent.
 | Hand-rolled lexer | `logos` (if lexer speed becomes the bottleneck) | Not needed yet — the current lexer is fine and has no dependency |
 | Hand-maintained docs site | `mdBook` + `mdbook-linkcheck` | `docs/language/` is already markdown; the HTML is hand-written |
 | No editor syntax highlighting | `tree-sitter-nova` grammar | Gives editors highlighting and the LSP a fallback parser for free |
-| Supply chain unguarded | `cargo-deny` + `cargo-audit` + SBOM | Licence and advisory gate; feeds `NOTICE` |
+| Supply chain unguarded | ✅ `cargo-deny` — licences, sources, bans, advisories (`security.yml`) | Licence and advisory gate; `deny.toml` is now the policy `NOTICE` claims. **SBOM generation is still open.** |
 | MSRV undeclared | `rust-version` in `[workspace.package]` + `cargo-msrv` | A pin that means something |
 
 ---

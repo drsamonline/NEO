@@ -19,6 +19,16 @@ resolver = "2"
 [workspace.package]
 version = "0.6.1"
 edition = "2021"
+# The repository is MIT (`LICENSE`). Declaring it per package matters: a crate
+# with no `license` field is legally ambiguous for anyone who vendors it, and a
+# root `LICENSE` file does not automatically attach to each crate's metadata.
+license = "MIT"
+repository = "https://github.com/drsamonline/NEO"
+# Nothing here is on crates.io, and the README says so. Declaring it per package
+# matters beyond bookkeeping: cargo-deny treats an undeclared crate as publishable
+# and then refuses a path-only dependency, because crates.io does not allow one.
+publish = false
+
 
 [workspace.lints.rust]
 # In an `unsafe fn` the body is not implicitly unsafe in edition 2024, and being

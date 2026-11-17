@@ -12,8 +12,11 @@ pub const DEFAULT_REGISTRY: &str = "https://registry.nova-lang.org";
 
 #[derive(Error, Debug)]
 pub enum RegistryError {
+    /// The registry is not implemented, so nothing here can reach a network.
+    /// This variant exists for the day it is, and carries a message rather than a
+    /// wrapped HTTP error, because there is no HTTP client in this crate.
     #[error("Network error: {0}")]
-    Network(#[from] reqwest::Error),
+    Network(String),
     
     #[error("Invalid registry URL: {0}")]
     InvalidUrl(#[from] url::ParseError),
@@ -60,25 +63,33 @@ pub struct SearchResult {
     pub score: f64,
 }
 
-/// Registry client
+/// Registry client.
+///
+/// There is no HTTP client in this crate. Every method that could talk to a
+/// registry either returns mock data or fails explicitly, because the registry is
+/// not implemented — and carrying a full HTTP stack (and its dependency tree) for
+/// a feature that is mocked was the wrong trade. It also brought the only
+/// non-permissive licence in the tree in with it.
 pub struct Registry {
     base_url: String,
-    client: reqwest::blocking::Client,
 }
 
 impl Registry {
     /// Create a new registry client
     pub fn new(url: &str) -> Result<Self, RegistryError> {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent(format!("nova-pkg/{}", env!("CARGO_PKG_VERSION")))
-            .build()?;
-        
         Ok(Registry {
             base_url: url.trim_end_matches('/').to_string(),
-            client,
         })
     }
     
+    /// The registry this client was configured with.
+    ///
+    /// Public because it is the one thing about this type that is real: the URL
+    /// is remembered, and every method that would use it says it cannot.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     /// Search for packages
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, RegistryError> {
         // For now, return mock results since we don't have a real registry
@@ -120,36 +131,26 @@ impl Registry {
         Ok(())
     }
     
-    /// Download a package
+    /// Download a package.
+    ///
+    /// Not implemented. It used to build a URL under `base_url` and call it, which
+    /// meant a user with a dependency got a connection error against a host that
+    /// does not exist — a worse answer than this one, which names the real state.
     pub fn download(&self, name: &str, version: &str) -> Result<Vec<u8>, RegistryError> {
-        let url = format!("{}/packages/{}/{}/download", self.base_url, name, version);
-        
-        let response = self.client.get(&url).send()?;
-        
-        if !response.status().is_success() {
-            if response.status() == reqwest::StatusCode::NOT_FOUND {
-                return Err(RegistryError::NotFound(format!("{}@{}", name, version)));
-            }
-            return Err(RegistryError::RegistryError(format!(
-                "HTTP {}",
-                response.status()
-            )));
-        }
-        
-        let bytes = response.bytes()?;
-        Ok(bytes.to_vec())
+        Err(RegistryError::RegistryError(format!(
+            "cannot download {}@{}: the NOVA package registry is not implemented. \
+             Use a path dependency in `nova.toml` instead",
+            name, version
+        )))
     }
     
-    /// Verify API token
-    pub fn verify_token(&self, token: &str) -> Result<bool, RegistryError> {
-        let url = format!("{}/api/verify", self.base_url);
-        
-        let response = self.client
-            .get(&url)
-            .bearer_auth(token)
-            .send()?;
-        
-        Ok(response.status().is_success())
+    /// Verify an API token.
+    ///
+    /// Not implemented, for the same reason as [`Registry::download`].
+    pub fn verify_token(&self, _token: &str) -> Result<bool, RegistryError> {
+        Err(RegistryError::RegistryError(
+            "cannot verify a token: the NOVA package registry is not implemented".to_string(),
+        ))
     }
 }
 
