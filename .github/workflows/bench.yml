@@ -35,10 +35,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
 
-      - name: Run
+      - name: How fast the emitted code runs
         run: |
           BENCH_MAX_RATIO="${{ github.event.inputs.max_ratio || '1.5' }}" \
             ./benches/run.sh "${{ github.event.inputs.runs || '5' }}"
+
+      # The other half of "performance", and the half nobody measured: how long
+      # the compiler takes to emit. Recorded, not gated — a wall-clock number on
+      # a shared runner is a trend, and the trend across runs is the signal.
+      - name: How fast the compiler emits
+        if: always()
+        run: bash benches/compiler.sh "${{ github.event.inputs.runs || '5' }}"
 
       - name: What the numbers mean
         if: always()
