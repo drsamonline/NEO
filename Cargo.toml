@@ -24,6 +24,10 @@ edition = "2021"
 # root `LICENSE` file does not automatically attach to each crate's metadata.
 license = "MIT"
 repository = "https://github.com/drsamonline/NEO"
+# Nothing here is on crates.io, and the README says so. Declaring it per package
+# matters beyond bookkeeping: cargo-deny treats an undeclared crate as publishable
+# and then refuses a path-only dependency, because crates.io does not allow one.
+publish = false
 
 
 [workspace.lints.rust]
