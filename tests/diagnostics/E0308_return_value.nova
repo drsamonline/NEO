@@ -1,0 +1,11 @@
+// `return 1` from a function declared `-> bool`. This is milestone 4 of the
+// original plan, and the case that proves return-type checking exists.
+//
+//~ ERROR E0308
+fn flag() -> bool {
+    return 1;
+}
+
+fn main() -> int {
+    return 0;
+}

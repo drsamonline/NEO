@@ -1,0 +1,10 @@
+// The block's final expression is the return value, and it has the wrong type.
+//
+//~ ERROR E0308
+fn flag() -> bool {
+    1
+}
+
+fn main() -> int {
+    return 0;
+}

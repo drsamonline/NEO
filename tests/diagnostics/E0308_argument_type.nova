@@ -1,0 +1,12 @@
+// A float passed where an int is declared. `int` -> `float` is the only implicit
+// conversion, so this direction is an error.
+//
+//~ ERROR E0308
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn main() -> int {
+    print(add(1.5, 2));
+    return 0;
+}

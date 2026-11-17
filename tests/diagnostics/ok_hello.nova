@@ -1,0 +1,9 @@
+// No annotation: a valid program must produce no diagnostics at all.
+//
+// This case exists so that a diagnostic which starts firing on correct code is
+// caught. Without it, every other case would still pass while the compiler
+// began rejecting programs it used to accept.
+fn main() -> int {
+    print("Hello, NOVA");
+    return 0;
+}
