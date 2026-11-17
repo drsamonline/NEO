@@ -85,8 +85,8 @@ in place they are the acceptance check for everything else.
 
 | Gate | Command | Catches |
 |---|---|---|
-| **G1 Sanitisers** | generated C built with `-fsanitize=address,undefined -fno-sanitize-recover=all`, then run | out-of-bounds access, use-after-free, signed overflow, misaligned access in backend output |
-| **G2 WASM validation** | `wasm-tools validate --features=wasm1 out.wat` for every WASM-emitting program | malformed modules, wrong arity, invalid indices — independent of the host |
+| **G1 Sanitisers** ✅ in place | generated C built with `-fsanitize=address,undefined -fno-sanitize-recover=all`, then run — `.github/workflows/accuracy.yml` | out-of-bounds access, use-after-free, signed overflow, misaligned access in backend output |
+| **G2 WASM validation** ✅ in place | `wasm-tools validate --features=wasm1 out.wat` for every WASM-emitting program — `accuracy.yml`, wasm-tools pinned by version and SHA-256 | malformed modules, wrong arity, invalid indices — independent of the host |
 | **G3 Diagnostic snapshots** | `.stderr` golden files per case, blessed by a flag, with `//~ ERROR` annotations in the source | a diagnostic silently changing its code, span or help text |
 | **G4 Differential corpus** | generated NOVA programs run on all four backends, stdout compared | backend divergence on inputs nobody wrote by hand |
 | **G5 Fuzz** | `cargo-fuzz` on lexer and parser, 60s per target per PR, longer nightly | panics, hangs, stack overflow on malformed input |
@@ -112,13 +112,18 @@ number appears in a CI run id.
 
 The highest-value work in the repository, and nothing else starts until it is in.
 
-- **G1 Sanitisers.** Add a CI job that compiles every parity program's generated C
-  with `-fsanitize=address,undefined` and runs it. Expect it to find real bugs on
-  the first run: a hand-written growable buffer with bounds checks is exactly
-  where off-by-one lives.
-- **G2 WASM validation.** Replace the `wat2wasm`-only step with
-  `wasm-tools validate`, and add the upstream WebAssembly `testsuite` as a
-  submodule for the subset the backend claims to support.
+- **G1 Sanitisers.** ✅ In place as `accuracy.yml`. Every program under
+  `examples/` and `tests/parity/` is emitted, compiled with
+  `-fsanitize=address,undefined -fno-sanitize-recover=all` and run. Leak
+  detection is off for now: the shim's growable array never frees its buffer, so
+  LeakSanitizer would fail every program that pushes. That is a real limitation
+  and its own milestone, not something this gate should hide.
+- **G2 WASM validation.** ✅ In place as `accuracy.yml`. Every program the WASM
+  backend accepts is validated with `wasm-tools validate --features=wasm1`.
+  wasm-tools is pinned by version and SHA-256. A program the backend rejects is
+  counted as *held*, and the count is printed — a backend that starts rejecting
+  the whole corpus cannot pass quietly. **Still to do:** the upstream WebAssembly
+  `testsuite` as a submodule, for the subset the backend claims to support.
 - **G3 Diagnostic snapshots.** One directory, one file per case, `.stderr` files
   blessed by a flag. Adopt rustc's model: the source carries `//~ ERROR` line
   annotations *and* there is a `.stderr` file, and the redundancy is deliberate —
@@ -156,9 +161,10 @@ fails if `docs/errors.md` lists a code the compiler does not emit.
 - **G6 Coverage** with a ratchet.
 - **G7 Mutation** weekly, starting with the lowerer and the C backend.
 - Replace the wall-clock benchmark with instruction counts (`iai-callgrind` /
-  Gungraun), which are stable enough to gate on. Also add a **compiler-speed**
-  benchmark — the project currently measures only the speed of the code it emits,
-  never the speed of emitting it.
+  Gungraun), which are stable enough to gate on.
+- **Compiler-speed benchmark** ✅ in place: `benches/compiler.sh` times `emit`
+  over the corpus and `bench.yml` records it. It measures the compiler, not the
+  code the compiler produces.
 
 **Done when:** no fuzz target has found a panic in 24 hours of accumulated runtime,
 and coverage may not fall.

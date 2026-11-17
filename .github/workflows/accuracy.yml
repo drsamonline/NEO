@@ -1,0 +1,151 @@
+name: Accuracy gates
+
+# The two checks that ask whether the *output* is correct, as opposed to whether
+# the compiler builds. Both are required: a backend that emits code which
+# compiles, runs and prints the right answer on the programs in this repository
+# can still emit memory-unsafe C or malformed WebAssembly.
+#
+# See DEV_PLAN.md, "Gates", G1 and G2.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # G1 — the C backend's output is run under AddressSanitizer and
+  # UndefinedBehaviorSanitizer. This is the only check in the repository that
+  # looks at what the emitted C does to memory.
+  sanitizers:
+    name: Generated C under ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - run: cargo build -p nova-compiler
+
+      - name: Every generated C program is memory-safe and free of undefined behaviour
+        env:
+          # Leak detection is off on purpose. The runtime shim's growable array
+          # never frees its buffer, so LeakSanitizer would fail every program that
+          # pushes — a real limitation, tracked separately, and not what this gate
+          # is for. Turning it on is its own milestone; see DEV_PLAN.md.
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          set -uo pipefail
+          nova=./target/debug/nova-compiler
+          work="$(mktemp -d)"
+          fail=0
+          checked=0
+
+          while IFS= read -r program; do
+            name="$(basename "$program" .nova)"
+            dir="$work/$name"
+            mkdir -p "$dir"
+
+            if ! "$nova" emit "$program" -o "$dir/$name.c" 2>"$dir/emit.log"; then
+              echo "::error file=$program::emit failed"
+              cat "$dir/emit.log"
+              fail=1
+              continue
+            fi
+
+            # -O1 so the sanitisers still see the program's shape, and -g so a
+            # report names a line in the generated C.
+            if ! cc -std=c99 -g -O1 \
+                 -fsanitize=address,undefined -fno-sanitize-recover=all \
+                 -fno-omit-frame-pointer \
+                 "$dir/$name.c" "$dir/nova_runtime.c" -o "$dir/$name" -lm; then
+              echo "::error file=$program::generated C did not compile with sanitisers"
+              fail=1
+              continue
+            fi
+
+            if ! "$dir/$name" >"$dir/stdout" 2>"$dir/sanitizer.log"; then
+              echo "::error file=$program::failed under ASan/UBSan"
+              sed -n '1,40p' "$dir/sanitizer.log"
+              fail=1
+              continue
+            fi
+
+            checked=$((checked + 1))
+          done < <(find examples tests/parity -name '*.nova' | sort)
+
+          echo "checked $checked program(s) under ASan + UBSan"
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::no programs were checked — the find returned nothing"
+            exit 1
+          fi
+          exit "$fail"
+
+  # G2 — the WASM backend's output is handed to a WebAssembly validator, not
+  # only to `wat2wasm` and the Node host. `wat2wasm` accepts some malformed
+  # modules and the host exercises only the paths a program happens to take, so
+  # neither is a conformance check.
+  wasm-validation:
+    name: Emitted WASM validates
+    runs-on: ubuntu-latest
+    env:
+      WASM_TOOLS_VERSION: "1.263.0"
+      # Pinned for the same reason the actions are: an unpinned download is a
+      # supply-chain hole, and a silent upstream change would make this gate
+      # pass or fail for reasons unrelated to the compiler.
+      WASM_TOOLS_SHA256: "21c036c1740a0552124c79c6e2170cb61c5b016005671a6d5bc06cf642165431"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - run: cargo build -p nova-compiler
+
+      - name: Install wasm-tools
+        run: |
+          set -eu
+          url="https://github.com/bytecodealliance/wasm-tools/releases/download/v${WASM_TOOLS_VERSION}/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux.tar.gz"
+          curl -sSL -o /tmp/wasm-tools.tar.gz "$url"
+          echo "${WASM_TOOLS_SHA256}  /tmp/wasm-tools.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/wasm-tools.tar.gz -C /tmp
+          /tmp/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux/wasm-tools --version
+
+      - name: Every emitted module is well-formed
+        run: |
+          set -uo pipefail
+          wt="/tmp/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux/wasm-tools"
+          nova=./target/debug/nova-compiler
+          work="$(mktemp -d)"
+          fail=0
+          validated=0
+          held=0
+
+          while IFS= read -r program; do
+            name="$(basename "$program" .nova)"
+            out="$work/$name.wat"
+
+            # A program the backend cannot express is rejected by `validate` in
+            # `backends/wasm` and `emit` fails with a message naming the feature.
+            # That is the documented contract, so it is a skip, not a failure —
+            # but the count is printed so a backend that suddenly rejects
+            # everything cannot pass quietly.
+            if ! "$nova" emit "$program" --target wasm -o "$out" 2>"$work/$name.log"; then
+              held=$((held + 1))
+              echo "held: $program"
+              continue
+            fi
+
+            if ! "$wt" validate --features=wasm1 "$out"; then
+              echo "::error file=$program::emitted WebAssembly does not validate"
+              fail=1
+              continue
+            fi
+            validated=$((validated + 1))
+          done < <(find examples tests/parity -name '*.nova' | sort)
+
+          echo "validated $validated module(s), held $held"
+          if [ "$validated" -eq 0 ]; then
+            echo "::error::no module validated — the wasm backend rejected the entire corpus"
+            exit 1
+          fi
+          exit "$fail"
