@@ -14,6 +14,11 @@
 //! `nova_compiler::frontend::semantic_analyzer`, and none of those modules
 //! exist. The crate was also not a workspace member, so nothing noticed.
 
+#![forbid(unsafe_code)]
+// This crate has no `unsafe` in it, and this line keeps it that way: a
+// future `unsafe` block fails the build instead of arriving in review.
+// The runtime crate is the one exception and says why in its own source.
+
 use nova_backend_js::JsBackend;
 use nova_backend_rust::RustBackend;
 use nova_backend_wasm::WasmBackend;

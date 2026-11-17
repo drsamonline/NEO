@@ -6,6 +6,17 @@
 //! - Memory management utilities
 //! - Basic type implementations
 //! - Runtime error handling
+//!
+//! # `unsafe` in this crate
+//!
+//! Every other crate in the workspace is `#![forbid(unsafe_code)]`. This one
+//! is not, because it is the only crate that talks to C: `ffi.rs` wraps
+//! `libc::malloc`/`free`/`realloc` and turns raw pointers into references, and
+//! none of that can be expressed without `unsafe`. Each block and each
+//! `unsafe fn` carries a `# Safety` section or a `// SAFETY:` note stating the
+//! obligation it relies on. If a change here can be written without `unsafe`,
+//! it should be — `memory.rs` and `error.rs` used `static mut` and now use an
+//! `AtomicBool` and a `Mutex` instead.
 //! - FFI support foundations
 //! - Garbage collection infrastructure
 //! - I/O operations (files, streams, directories)

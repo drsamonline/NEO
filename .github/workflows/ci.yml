@@ -75,5 +75,7 @@ jobs:
           for program in examples/*.nova tests/parity/*.nova; do
             ./target/debug/nova-compiler test --parity "$program"
           done
-      - name: Benchmark does not regress
-        run: BENCH_MAX_RATIO=1.5 ./benches/run.sh 5
+      # The benchmark moved to `bench.yml`. A 1.5x wall-clock ratio gate on a
+      # shared runner measures the runner, not the compiler, and it failed for
+      # reasons nobody could act on. It now runs on a schedule and on demand,
+      # where a noisy result can be re-run instead of blocking a merge.

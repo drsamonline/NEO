@@ -7,31 +7,34 @@
 // Module State
 // ============================================================================
 
-static mut INITIALIZED: bool = false;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Whether the memory subsystem has been initialised.
+///
+/// An `AtomicBool` rather than `static mut`. A `static mut` needs an `unsafe`
+/// block at every access and provides no synchronisation, so two threads calling
+/// `init()` at the same time is a data race — undefined behaviour, not merely a
+/// lost write. The flag stands in for "the allocator and GC are set up", and a
+/// reader that observes it must observe that setup too, so the ordering is
+/// `SeqCst` rather than `Relaxed`.
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Initialize the memory management system
 pub fn init() {
-    unsafe {
-        if !INITIALIZED {
-            // Future: Initialize custom allocator, GC, etc.
-            INITIALIZED = true;
-        }
-    }
+    // Future: initialise the custom allocator and the GC *before* flipping the
+    // flag, so a thread that sees `true` also sees the setup it implies.
+    INITIALIZED.store(true, Ordering::SeqCst);
 }
 
 /// Shutdown the memory management system
 pub fn shutdown() {
-    unsafe {
-        if INITIALIZED {
-            // Future: Cleanup allocations, run finalizers, etc.
-            INITIALIZED = false;
-        }
-    }
+    // Future: run finalisers and release allocations before clearing the flag.
+    INITIALIZED.store(false, Ordering::SeqCst);
 }
 
 /// Check if memory system is initialized
 pub fn is_initialized() -> bool {
-    unsafe { INITIALIZED }
+    INITIALIZED.load(Ordering::SeqCst)
 }
 
 // ============================================================================

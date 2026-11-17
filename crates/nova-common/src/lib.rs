@@ -1,5 +1,10 @@
 //! NOVA Common - Shared types and utilities for the NOVA compiler ecosystem
 
+#![forbid(unsafe_code)]
+// This crate has no `unsafe` in it, and this line keeps it that way: a
+// future `unsafe` block fails the build instead of arriving in review.
+// The runtime crate is the one exception and says why in its own source.
+
 pub mod span;
 pub mod token;
 pub mod ast;

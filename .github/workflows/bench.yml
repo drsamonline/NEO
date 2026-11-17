@@ -1,0 +1,55 @@
+name: Benchmarks
+
+# Not on pull requests.
+#
+# `benches/run.sh` compares NOVA→C against hand-written C and fails above a 1.5x
+# ratio. That ratio was checked on every push, on a shared GitHub runner, where
+# the noise between two identical runs is routinely larger than the regression it
+# is meant to catch. The gate fired for reasons nobody could act on and blocked
+# merges that had nothing to do with performance.
+#
+# Here it runs where a noisy result is cheap to deal with: on a schedule, and on
+# demand. A failure means "look at this", not "this pull request is broken".
+on:
+  schedule:
+    - cron: "0 3 * * 1"      # Mondays, 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      max_ratio:
+        description: "Fail above this NOVA/C ratio"
+        required: false
+        default: "1.5"
+      runs:
+        description: "Timed runs per binary (best of)"
+        required: false
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: NOVA→C vs hand-written C
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - name: Run
+        run: |
+          BENCH_MAX_RATIO="${{ github.event.inputs.max_ratio || '1.5' }}" \
+            ./benches/run.sh "${{ github.event.inputs.runs || '5' }}"
+
+      - name: What the numbers mean
+        if: always()
+        run: |
+          cat <<'TXT'
+          A ratio is only meaningful next to the machine that produced it. If this
+          job fails, re-run it before believing the number: two consecutive runs
+          on the same commit disagree by more than 1.5x often enough that a single
+          red result is not evidence.
+
+          The bench compares NOVA→C against hand-written C with the same `cc -O2`.
+          The compiler has no optimisation levels, so the gap measures code
+          generation quality, not the backend's optimiser.
+          TXT
