@@ -1,4 +1,4 @@
-64.60
+64.33
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -7,4 +7,10 @@
 # same commit and say in the message why the drop is acceptable — do not lower it
 # quietly in a later commit, which is how a ratchet becomes decoration.
 #
-# First measured 2026-11-18: 7,675 of 11,880 lines.
+# First measured 2026-11-18: 7,675 of 11,880 lines = 64.60%.
+#
+# Lowered to 64.33% (7,671 of 11,924) when the language server gained navigation.
+# The new code is exercised — four stdio tests drive it — but those tests spawn
+# `nova-lsp` as a child process, and llvm-cov instruments the test binary, not the
+# child. Code covered only through a subprocess is real coverage that this
+# measurement cannot see, which is a limitation of the metric, not of the tests.
