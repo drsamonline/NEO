@@ -88,7 +88,7 @@ in place they are the acceptance check for everything else.
 | **G1 Sanitisers** ✅ in place | generated C built with `-fsanitize=address,undefined -fno-sanitize-recover=all`, then run — `.github/workflows/accuracy.yml` | out-of-bounds access, use-after-free, signed overflow, misaligned access in backend output |
 | **G2 WASM validation** ✅ in place | `wasm-tools validate --features=wasm1 out.wat` for every WASM-emitting program — `accuracy.yml`, wasm-tools pinned by version and SHA-256 | malformed modules, wrong arity, invalid indices — independent of the host |
 | **G3 Diagnostic snapshots** ✅ in place | `.stderr` goldens per case in `tests/diagnostics/`, with `//~ ERROR` annotations in the source; `tools/diagnostic-check.py`, blessed with `--bless` or a `workflow_dispatch` input | a diagnostic silently changing its code, span or help text |
-| **G4 Differential corpus** | generated NOVA programs run on all four backends, stdout compared | backend divergence on inputs nobody wrote by hand |
+| **G4 Differential corpus** ✅ in place | `tools/corpus-gen.py` generates programs from a seed and writes the output they must produce, computed independently in Python; `corpus.yml` runs `test --parity`, which checks both agreement between backends and agreement with that oracle | backend divergence on inputs nobody wrote by hand — and four backends that agree and are all wrong |
 | **G5 Fuzz** | `cargo-fuzz` on lexer and parser, 60s per target per PR, longer nightly | panics, hangs, stack overflow on malformed input |
 | **G6 Coverage** | `cargo llvm-cov` with a ratchet that may only go up | tests that assert nothing, untested branches |
 | **G7 Mutation** | `cargo-mutants` on the lowerer and C backend, weekly | tests that pass for the wrong reason |
@@ -138,9 +138,15 @@ The highest-value work in the repository, and nothing else starts until it is in
   everywhere except in front of the person who needed to search for it. The CLI
   now prints `[Exxxx]` and the diagnostic's `notes`, and does the same for parse
   and lexical diagnostics.
-- **G4 Differential corpus.** A generator that emits valid NOVA programs from the
-  grammar, runs each on all four backends and compares stdout. Seven hand-written
-  programs become a few hundred generated ones.
+- **G4 Differential corpus.** ✅ In place: `tools/corpus-gen.py` (seeded,
+  reproducible, `--dump <seed>` to reproduce a failure) and `corpus.yml`.
+  Parity alone would miss four backends that agree and are all wrong, so each
+  generated program ships a `.expected` computed in Python and `test --parity`
+  checks the C reference against it. **The subset is deliberately narrow** —
+  integers, `+`/`-`, comparison, `if`/`else`, `while`, calls, `print`, `return` —
+  because that is what every backend claims, so a failure is a compiler bug
+  rather than a documented limitation. No `/`, `%` or `*`: division rounds
+  differently across C, JavaScript and Rust, and multiplication overflows.
 
 **Done when:** G1–G4 are required checks and green, and at least one real bug has
 been found and fixed by each of G1 and G2.
@@ -270,6 +276,9 @@ plan should borrow rather than invent.
 ## Known limitations (deliberate, documented)
 
 - `int` → `float` is the only implicit conversion.
+- Source may be UTF-8, including in comments, identifiers and string literals.
+  Non-ASCII *output* is compared byte-for-byte across backends by
+  `tests/parity/unicode_string.nova`.
 - Expression spans are recorded for expressions the parser returns from
   `parse_expr`; an operand inside a larger expression falls back to the enclosing
   span.

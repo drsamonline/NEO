@@ -112,7 +112,13 @@ impl Lexer {
                 break;
             }
         }
-        let ident: String = self.source[start..self.pos].to_string();
+        // `self.chars`, not `self.source`. `pos` is an index into the `Vec<char>`
+        // and `self.source` is a `String`, so slicing the String with char indices
+        // is only correct while the file is pure ASCII. One non-ASCII character —
+        // in a comment, in a string, in an identifier — shifts every later slice by
+        // the difference between the byte and char lengths, and every token after
+        // it gets the wrong text.
+        let ident: String = self.chars[start..self.pos].iter().collect();
         Self::keyword_or_ident(&ident)
     }
 
@@ -150,7 +156,7 @@ impl Lexer {
             } else { break; }
         }
 
-        let num_str: String = self.source[start..self.pos].chars().filter(|c| *c != '_').collect();
+        let num_str: String = self.chars[start..self.pos].iter().filter(|c| **c != '_').collect();
         if is_float {
             TokenKind::Float(num_str.parse::<f64>().unwrap_or_else(|_| {
                 self.diagnostics.error(format!("Invalid float: {}", num_str));
@@ -176,7 +182,7 @@ impl Lexer {
         while let Some(ch) = self.current_char() {
             if valid(ch) || ch == '_' { self.advance(); } else { break; }
         }
-        let num_str: String = self.source[start..self.pos].chars().filter(|c| *c != '_').collect();
+        let num_str: String = self.chars[start..self.pos].iter().filter(|c| **c != '_').collect();
         TokenKind::Integer(i64::from_str_radix(&num_str, radix).unwrap_or_else(|_| {
             self.diagnostics.error(format!("Invalid {} literal", name));
             0
