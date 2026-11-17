@@ -59,8 +59,12 @@ impl Parser {
     
     fn error_at_current(&mut self, message: &str) {
         let token = self.peek();
+        // `token.lexeme`, not `{:?}` of `token.kind`. The Debug form leaked a
+        // Rust representation into user-facing output — `Expected expression at
+        // 'Identifier("n ma")'` — which names the compiler's internals instead of
+        // the source text the person is looking at.
         self.diagnostics.push(Diagnostic::error(
-            format!("{} at '{:?}'", message, token.kind),
+            format!("{} at '{}'", message, token.lexeme),
         ).with_span(token.span.clone()));
     }
     

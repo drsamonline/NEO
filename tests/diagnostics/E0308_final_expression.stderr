@@ -1,0 +1,5 @@
+exit: 1
+---
+<case>: semantic errors:
+  <case>:5:5: [E0308] function `flag` returns `bool`, but its final expression is `int`
+error: semantic analysis failed

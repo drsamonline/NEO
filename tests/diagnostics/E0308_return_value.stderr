@@ -1,0 +1,6 @@
+exit: 1
+---
+<case>: semantic errors:
+  <case>:6:12: [E0308] function `flag` returns `bool`, but this return value is `int`
+    help: return a `bool` value, or change the declared return type
+error: semantic analysis failed

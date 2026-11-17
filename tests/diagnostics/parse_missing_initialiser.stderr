@@ -1,0 +1,7 @@
+exit: 1
+---
+<case>: parse errors:
+  Expected ';' after expression at 'Identifier("n ma")'
+  Expected ';' after expression at 'Identifier("n")'
+  Expected expression at 'RBrace'
+error: parsing failed

@@ -1,0 +1,6 @@
+exit: 1
+---
+<case>: semantic errors:
+  <case>:10:11: [E0061] function `add` takes 2 arguments, but 3 were given
+    help: `add` expects (int, int)
+error: semantic analysis failed
