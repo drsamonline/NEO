@@ -1,0 +1,188 @@
+name: Release
+
+# A tag is the only thing that publishes. Nothing here runs on a branch push, so a
+# red build can never produce a release artifact.
+#
+# No third-party actions: `gh` is preinstalled on every GitHub runner, so the
+# release is created and uploaded with the CLI rather than with an action whose
+# SHA would need pinning and bumping. The only actions used are the two already
+# pinned in ci.yml.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write      # the one workflow that needs it; every other is read-only
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # a half-uploaded release is worse than a slow one
+
+jobs:
+  # Nothing is published until the same checks CI runs on a branch have passed on
+  # the tag. A tag that does not build must not produce an artifact.
+  verify:
+    name: Verify the tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - name: The tag matches the crate version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          crate="$(python3 -c 'import tomllib;print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["version"])')"
+          file="$(cat VERSION)"
+          echo "tag=$tag crate=$crate VERSION=$file"
+          test "$tag" = "$crate" || { echo "::error::tag $tag does not match Cargo.toml $crate"; exit 1; }
+          test "$tag" = "$file"  || { echo "::error::tag $tag does not match VERSION $file"; exit 1; }
+
+      - name: The grammar still describes the compiler
+        run: python3 tools/grammar-check.py
+
+      - name: Every shipped example is a NOVA program
+        run: python3 tools/example-check.py
+
+      - run: cargo build --workspace --all-targets
+      - run: cargo test --workspace
+
+      - name: Every example builds and runs
+        run: |
+          cargo build -p nova-compiler
+          while IFS= read -r example; do
+            ./target/debug/nova-compiler run "$example" > /dev/null
+          done < <(find examples -name '*.nova' | sort)
+
+      - name: Every backend agrees
+        run: |
+          npm install --global wat2wasm
+          for program in examples/*.nova tests/parity/*.nova; do
+            ./target/debug/nova-compiler test --parity "$program"
+          done
+
+  # One job creates the release, so three parallel builders cannot race to create
+  # it. They only ever upload to a release that already exists.
+  create-release:
+    name: Create the release
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          # Notes come from CHANGELOG.md: the section for this version if it is
+          # there, otherwise a pointer, never an invented summary.
+          python3 - "$tag" > notes.md <<'PY'
+          import re, sys
+          tag = sys.argv[1].lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## \[?{re.escape(tag)}\]?.*?$(.*?)(?=^## |\Z)",
+                        text, re.S | re.M)
+          if m and m.group(1).strip():
+              print(m.group(1).strip())
+          else:
+              print(f"See [CHANGELOG.md](CHANGELOG.md). No `{tag}` section was found.")
+          PY
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists; uploading into it"
+          else
+            gh release create "$tag" --draft --title "NOVA $tag" --notes-file notes.md
+          fi
+
+  build:
+    name: Build ${{ matrix.os }}
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Git Bash on Windows, so one script covers all three runners.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - name: Build
+        run: cargo build --release --workspace
+
+      - name: Package
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          case "${{ runner.os }}" in
+            Linux)   target="x86_64-linux" ;;
+            macOS)   target="$(uname -m)-macos" ;;
+            Windows) target="x86_64-windows" ;;
+          esac
+          stage="nova-${tag}-${target}"
+          mkdir -p "dist/$stage"
+          # The four binaries, the runtime the generated C needs, the licence, the
+          # notices and the docs a user needs to know what they have.
+          for bin in nova-compiler nova-pkg nova-lsp nova-dbg; do
+            src="target/release/$bin"
+            # `set -e` treats `[ -f x ] && cmd` as a failing statement when the
+            # test is false, so this is an if, not a short-circuit.
+            if [ -f "$src.exe" ]; then src="$src.exe"; fi
+            if [ -f "$src" ]; then cp "$src" "dist/$stage/"; fi
+          done
+          # `nova_runtime.h` and `nova_runtime.c` are not shipped as files: they
+          # are embedded in the compiler (compiler/src/runtime.rs) and written
+          # beside the generated C on every `emit`. Nothing to copy.
+          cp LICENSE NOTICE README.md CHANGELOG.md "dist/$stage/"
+          cp -r examples stdlib "dist/$stage/"
+          cd dist
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            python3 -c "import shutil;shutil.make_archive('$stage','zip','$stage')"
+            archive="$stage.zip"
+          else
+            tar -czf "$stage.tar.gz" "$stage"
+            archive="$stage.tar.gz"
+          fi
+          python3 -c "
+          import hashlib,sys
+          h=hashlib.sha256(open('$archive','rb').read()).hexdigest()
+          open('$archive.sha256','w').write(f'{h}  $archive\n')
+          print(h, '$archive')
+          "
+          echo "ARCHIVE=dist/$archive" >> "$GITHUB_ENV"
+
+      - name: Smoke-test the packaged compiler
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          stage="$(ls -d dist/nova-${tag}-* | head -1)"
+          exe="$stage/nova-compiler"
+          if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
+          "$exe" --version
+          # A release that cannot compile hello world is not a release.
+          printf 'fn main() -> int {\n    print("release ok");\n    return 0;\n}\n' > /tmp/smoke.nova
+          "$exe" emit /tmp/smoke.nova -o /tmp/smoke.c
+          grep -q "release ok" /tmp/smoke.c
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          gh release upload "$tag" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+
+  # The draft stays a draft until every platform has uploaded. Publishing is the
+  # one step that cannot be undone, so it happens only after all three succeeded.
+  publish:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flip the draft to published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
