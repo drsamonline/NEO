@@ -2,6 +2,7 @@
 name = "nova-lsp"
 version.workspace = true
 edition = "2021"
+license.workspace = true
 description = "NOVA Language Server Protocol implementation"
 authors = ["NOVA Team"]
 

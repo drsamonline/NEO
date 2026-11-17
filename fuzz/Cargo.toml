@@ -3,6 +3,7 @@ name = "nova-fuzz"
 version = "0.0.0"
 edition = "2021"
 publish = false
+license = "MIT"
 
 [package.metadata]
 cargo-fuzz = true

@@ -2,6 +2,7 @@
 name = "nova-backend-js"
 version.workspace = true
 edition = "2021"
+license.workspace = true
 description = "JavaScript backend for the Nova compiler"
 
 [dependencies]

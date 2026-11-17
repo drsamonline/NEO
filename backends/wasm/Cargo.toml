@@ -2,6 +2,7 @@
 name = "nova-backend-wasm"
 version.workspace = true
 edition = "2021"
+license.workspace = true
 description = "WebAssembly backend for the Nova compiler"
 
 [dependencies]

@@ -19,6 +19,12 @@ resolver = "2"
 [workspace.package]
 version = "0.6.1"
 edition = "2021"
+# The repository is MIT (`LICENSE`). Declaring it per package matters: a crate
+# with no `license` field is legally ambiguous for anyone who vendors it, and a
+# root `LICENSE` file does not automatically attach to each crate's metadata.
+license = "MIT"
+repository = "https://github.com/drsamonline/NEO"
+
 
 [workspace.lints.rust]
 # In an `unsafe fn` the body is not implicitly unsafe in edition 2024, and being

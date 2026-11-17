@@ -2,6 +2,7 @@
 name = "nova-pkg"
 version.workspace = true
 edition = "2021"
+license.workspace = true
 description = "NOVA Package Manager - Dependency resolution and project management"
 authors = ["NOVA Team"]
 

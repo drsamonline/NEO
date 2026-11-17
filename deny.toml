@@ -27,6 +27,9 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    # 0BSD: public-domain-equivalent, no attribution required. Pulled in
+    # transitively; allowing it is a decision, which is why it is written down.
+    "0BSD",
     "ISC",
     "Zlib",
     "Unicode-3.0",

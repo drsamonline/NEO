@@ -2,6 +2,7 @@
 name = "nova-integration-tests"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 description = "Cross-crate tests: NOVA source through the front end and every backend"
 publish = false
 
