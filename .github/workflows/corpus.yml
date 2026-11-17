@@ -1,0 +1,88 @@
+name: Generated corpus
+
+# G4 in DEV_PLAN.md. `test --parity` over `examples/` and `tests/parity/` is nine
+# hand-written programs. This generates programs from a seeded generator and
+# checks each one two ways:
+#
+#   1. every backend agrees with the others (the parity harness), and
+#   2. the C reference agrees with an output computed in Python, independently of
+#      the compiler — `test --parity` reads a `.expected` sidecar when one exists.
+#
+# Without (2), four backends that agree and are all wrong would pass.
+#
+# The generator emits a deliberately narrow subset — integers, `+`/`-`,
+# comparison, `if`/`else`, `while`, calls, `print`, `return` — which is the
+# intersection every backend claims. A failure here is a compiler bug, not a
+# documented limitation.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "How many programs to generate"
+        required: false
+        default: "20"
+      seed_base:
+        description: "First seed"
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  differential:
+    name: Generated programs agree with an independent oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - run: cargo build -p nova-compiler
+
+      # `test --parity` runs the WASM backend through `wat2wasm` and the Node
+      # host. Without the assembler it reports WASM as `held`, which the harness
+      # counts as a failure — so the corpus would report nine passes and a
+      # spurious one.
+      - run: npm install --global wat2wasm
+
+      - name: Generate
+        run: |
+          python3 tools/corpus-gen.py \
+            --out /tmp/corpus \
+            --count "${{ github.event.inputs.count || '20' }}" \
+            --seed-base "${{ github.event.inputs.seed_base || '1' }}"
+
+      - name: Every generated program agrees across all four backends
+        run: |
+          set -uo pipefail
+          nova=./target/debug/nova-compiler
+          fail=0
+          ran=0
+
+          for program in /tmp/corpus/*.nova; do
+            if "$nova" test --parity "$program" > /tmp/parity.out 2>&1; then
+              ran=$((ran + 1))
+              continue
+            fi
+            fail=1
+            echo "::error file=$program::parity failed for $(basename "$program")"
+            echo "----- parity output -----"
+            cat /tmp/parity.out
+            # The program is ~35 lines; printing it makes the log self-contained
+            # instead of pointing at a temp file that is gone when the run ends.
+            echo "----- program -----"
+            cat "$program"
+            echo "----- expected -----"
+            cat "${program%.nova}.expected"
+            echo "-------------------------"
+          done
+
+          echo "passed $ran of $(ls /tmp/corpus/*.nova | wc -l) generated program(s)"
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::no generated program passed — the generator or the compiler is broken"
+            exit 1
+          fi
+          exit "$fail"
