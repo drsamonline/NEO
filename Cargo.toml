@@ -17,6 +17,13 @@ resolver = "2"
 version = "0.6.1"
 edition = "2021"
 
+[workspace.lints.rust]
+# In an `unsafe fn` the body is not implicitly unsafe in edition 2024, and being
+# explicit about which operations rely on the caller's contract is the whole
+# point of the `# Safety` sections in `runtime/src/ffi.rs`. Only `runtime` opts
+# in today; the other crates have no `unsafe` to reason about.
+unsafe_op_in_unsafe_fn = "deny"
+
 [workspace.metadata.nova]
 status = "integration-complete"
 

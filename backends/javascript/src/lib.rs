@@ -2,6 +2,11 @@
 //! 
 //! This module converts SIR (Semantic Intermediate Representation) to JavaScript code.
 
+#![forbid(unsafe_code)]
+// This crate has no `unsafe` in it, and this line keeps it that way: a
+// future `unsafe` block fails the build instead of arriving in review.
+// The runtime crate is the one exception and says why in its own source.
+
 use nova_common::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
 use nova_common::sir::SirBinOp::*;
 

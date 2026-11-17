@@ -2,6 +2,8 @@
 //! 
 //! Provides error types and handling mechanisms for NOVA programs.
 
+use std::sync::{Mutex, MutexGuard};
+
 // ============================================================================
 // Error Types
 // ============================================================================
@@ -91,29 +93,45 @@ pub type NovaResult<T> = Result<T, NovaError>;
 // Error Handlers
 // ============================================================================
 
-static mut ERROR_HANDLER: Option<fn(&NovaError)> = None;
+/// The process-wide error handler.
+///
+/// A `Mutex` rather than `static mut`. `report_error` is callable from any
+/// thread, and a `static mut` read there is a data race; the value behind this
+/// lock is a single `Copy` function pointer, so the lock is never held across
+/// anything that can block for long.
+static ERROR_HANDLER: Mutex<Option<fn(&NovaError)>> = Mutex::new(None);
+
+/// The handler slot, with lock poisoning ignored.
+///
+/// A handler that panics poisons the lock. Poisoning exists to warn that a
+/// protected invariant may be half-updated; the only thing protected here is one
+/// `Copy` function pointer, which cannot be left half-written. Recovering with
+/// `into_inner` keeps error reporting alive after a panic inside a handler,
+/// which is exactly when you still want it.
+fn handler_slot() -> MutexGuard<'static, Option<fn(&NovaError)>> {
+    ERROR_HANDLER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Initialize error handling system
 pub fn init() {
-    unsafe {
-        ERROR_HANDLER = None;
-    }
+    *handler_slot() = None;
 }
 
 /// Set custom error handler
 pub fn set_handler(handler: fn(&NovaError)) {
-    unsafe {
-        ERROR_HANDLER = Some(handler);
-    }
+    *handler_slot() = Some(handler);
 }
 
 /// Report an error (calls handler if set)
 pub fn report_error(error: &NovaError) {
     eprintln!("NOVA Error: {}", error);
-    unsafe {
-        if let Some(handler) = ERROR_HANDLER {
-            handler(error);
-        }
+    // Copy the pointer out and drop the guard before calling it, so a handler
+    // that reports another error cannot deadlock against this lock.
+    let handler = *handler_slot();
+    if let Some(handler) = handler {
+        handler(error);
     }
 }
 
