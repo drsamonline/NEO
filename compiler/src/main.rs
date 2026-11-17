@@ -399,7 +399,7 @@ fn compile_to_c(input: &Path) -> String {
 fn compile_to(input: &Path, target: Target) -> String {
     let source = fs::read_to_string(input)
         .unwrap_or_else(|e| die(&format!("cannot read {}: {e}", input.display())));
-    let name = input.display();
+    let name = input.display().to_string();
 
     let mut lexer = Lexer::new(&source);
     let (tokens, diagnostics) = lexer.tokenize();
@@ -408,7 +408,7 @@ fn compile_to(input: &Path, target: Target) -> String {
             eprintln!("{name}: lexical errors:");
         }
         for diag in diagnostics.iter() {
-            emit_diagnostic(name, diag);
+            emit_diagnostic(&name, diag);
         }
         die("lexical analysis failed");
     }
@@ -421,7 +421,7 @@ fn compile_to(input: &Path, target: Target) -> String {
                 eprintln!("{name}: parse errors:");
             }
             for diag in diagnostics.iter() {
-                emit_diagnostic(name, diag);
+                emit_diagnostic(&name, diag);
             }
             die("parsing failed");
         }
@@ -439,7 +439,7 @@ fn compile_to(input: &Path, target: Target) -> String {
             eprintln!("{name}: semantic errors:");
         }
         for diag in analyzer.diagnostics.iter() {
-            emit_diagnostic(name, diag);
+            emit_diagnostic(&name, diag);
         }
         die("semantic analysis failed");
     }
