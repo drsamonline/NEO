@@ -1,0 +1,90 @@
+name: Fuzz
+
+# G5 in DEV_PLAN.md. The generated corpus in `corpus.yml` only produces inputs
+# that are valid NOVA programs, by construction. A fuzzer produces the other kind:
+# bytes that are not a program at all, which is where a lexer or parser panics,
+# hangs, or recurses until the stack runs out.
+#
+# Advisory for now, on purpose. This compiler has never been fuzzed, so the first
+# runs are expected to find things — and a brand-new gate that starts red tells
+# nobody anything actionable. It becomes blocking once a weekly 10-minute run is
+# clean; see DEV_PLAN.md.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 0"      # Sundays, 04:00 UTC — the longer run
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Seconds per target"
+        required: false
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz the front end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+
+      # cargo-fuzz needs a nightly compiler for `-Zsanitizer=address`, which is
+      # what turns a memory error in the compiler into a crash rather than a
+      # wrong answer.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+        with:
+          toolchain: nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      # Without seeds, a random-byte fuzzer spends its whole budget failing to
+      # produce a valid program and never reaches the parser.
+      - name: Seed the corpus from the repository's own programs
+        run: bash fuzz/seed.sh
+
+      - name: Fuzz
+        id: fuzz
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          seconds="${{ github.event.inputs.seconds || '60' }}"
+          # The scheduled run gets ten minutes; a pull request gets one.
+          if [ "${{ github.event_name }}" = "schedule" ]; then seconds=600; fi
+
+          fail=0
+          for target in lex parse frontend; do
+            echo "::group::fuzz $target for ${seconds}s"
+            cargo +nightly fuzz run "$target" -- \
+              -max_total_time="$seconds" \
+              -rss_limit_mb=4096 \
+              -print_final_stats=1 || fail=1
+            echo "::endgroup::"
+          done
+          exit "$fail"
+
+      - name: Report what it found
+        if: always()
+        run: |
+          shopt -s nullglob
+          found=0
+          for artifact in fuzz/artifacts/*/*; do
+            found=$((found + 1))
+            echo "::error file=$artifact::fuzz input that crashes the compiler"
+            echo "----- $artifact (hex) -----"
+            xxd "$artifact" | head -40
+            echo "----- as text -----"
+            head -c 2000 "$artifact" || true
+            echo
+            echo "----------------------------"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "no crash artifacts"
+          else
+            echo "$found crash artifact(s). A reproducer worth keeping belongs in"
+            echo "tests/diagnostics/ or tests/parity/ as a named case, not here."
+          fi

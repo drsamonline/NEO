@@ -11,6 +11,9 @@ members = [
     "backends/wasm",
     "integration_tests",
 ]
+# `fuzz/` is its own workspace with its own lockfile: cargo-fuzz needs a nightly
+# sanitizer profile that must not leak into the build everyone else uses.
+exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
