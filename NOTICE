@@ -1,0 +1,67 @@
+# NOTICE
+
+NOVA — Semantic Programming Platform
+Copyright © 2026 Dr Sohil Momin
+
+This product is licensed under the MIT licence. The full text is in `LICENSE`.
+
+## Third-party software
+
+NOVA's Rust workspace depends on the crates below. Each is distributed under a
+permissive licence, checked against crates.io on 2026-11-17. None is copyleft.
+
+### Direct dependencies
+
+| Crate | Licence | Used by |
+|---|---|---|
+| `serde` | MIT OR Apache-2.0 | pkg, lsp, dbg, nova-common |
+| `serde_json` | MIT OR Apache-2.0 | pkg, lsp, dbg |
+| `thiserror` | MIT OR Apache-2.0 | pkg, lsp, dbg, nova-common |
+| `anyhow` | MIT OR Apache-2.0 | workspace |
+| `tokio` | MIT | lsp, dbg |
+| `toml` | MIT OR Apache-2.0 | pkg |
+| `reqwest` | MIT OR Apache-2.0 | pkg |
+| `url` | MIT OR Apache-2.0 | pkg |
+| `sha2` | MIT OR Apache-2.0 | pkg |
+| `base64` | MIT OR Apache-2.0 | pkg |
+| `clap` | MIT OR Apache-2.0 | pkg, dbg |
+| `semver` | MIT OR Apache-2.0 | pkg |
+| `lsp-types` | MIT | lsp |
+| `tower-lsp` | MIT OR Apache-2.0 | lsp |
+| `gdbstub` | MIT OR Apache-2.0 | dbg |
+| `rustyline` | MIT | dbg |
+
+### Transitive dependencies
+
+`Cargo.lock` pins the full tree, which includes further MIT and Apache-2.0
+crates. Run `cargo tree` to list them.
+
+## Obligations when you redistribute a binary
+
+The MIT and Apache-2.0 licences both require you to carry their notices with any
+binary you distribute. If you build and ship `nova-compiler`, `nova-lsp`,
+`nova-pkg` or `nova-dbg`, you must reproduce the copyright notice and permission
+notice for every dependency in the tree, not just the ones in the table above.
+
+Generate that bundle rather than assembling it by hand:
+
+```bash
+cargo install cargo-about
+cargo about generate about.hbs > THIRD_PARTY_LICENSES.html
+```
+
+The Windows binary in `dist/` is a prebuilt artifact of this project. It is
+distributed under the same MIT licence as the source, with the third-party
+notices above applying to it in the same way.
+
+## The NOVA standard library and examples
+
+Everything under `stdlib/`, `examples/`, `tests/` and `docs/` is original work
+for this project and carries the same MIT licence. No text or data from a
+third-party source is bundled.
+
+## Trademarks
+
+"NOVA" and "NEO" are used here as the names of this project. No third-party
+trademark is claimed or implied. The project is not affiliated with any product
+of the same name.

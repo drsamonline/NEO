@@ -116,18 +116,17 @@ cargo build --release
 
 ```
 /workspace
-├── compiler/           # Main compiler (~3,500 LOC)
+├── compiler/           # Main compiler (8,931 LOC)
 │   ├── src/lexer/     # Tokenization (340 lines)
-│   ├── src/parser/    # Recursive descent parser (1,435 lines)
-│   ├── src/sema/      # Semantic analysis (1,501 lines)
-│   ├── src/sir/       # IR definition (212 lines)
-│   ├── src/lowerer/   # AST→SIR lowering (1,619 lines)
-│   └── src/backend/   # C code generation (497 lines)
-├── backends/          # Standalone target generators (1,936 lines)
-│   ├── c/             # C backend (672 lines)
-│   ├── javascript/    # JavaScript backend (408 lines)
-│   ├── rust/          # Rust backend (411 lines)
-│   └── wasm/          # WebAssembly backend (WAT emitter + Node host)
+│   ├── src/parser/    # Recursive descent parser (1,506 lines)
+│   ├── src/sema/      # Semantic analysis (1,302 lines)
+│   ├── src/lowerer/   # AST→SIR lowering (3,190 lines)
+│   └── src/backend/   # C code generation (846 lines) — the one the CLI uses
+├── crates/nova-common/ # Shared AST, tokens, spans, diagnostics, SIR (1,603 lines)
+├── backends/          # Generators for the other three targets (3,085 lines)
+│   ├── javascript/    # JavaScript backend (478 lines)
+│   ├── rust/          # Rust backend (748 lines)
+│   └── wasm/          # WebAssembly backend, WAT emitter + Node host (1,859 lines)
 ├── runtime/           # Runtime system (2,359 lines, 33 tests)
 │   ├── src/memory.rs  # Memory utilities (195 lines)
 │   ├── src/types.rs   # Runtime string/array/option types (276 lines)
@@ -140,7 +139,7 @@ cargo build --release
 │   └── src/async_rt/  # Futures and delay (114 lines)
 ├── pkg/               # Package manager (1,780 lines)
 │   └── src/           # CLI, manifest, resolver, registry
-├── lsp/               # Language server (931 lines)
+├── lsp/               # Language server (988 lines)
 │   └── src/main.rs    # LSP handlers, completions, diagnostics
 ├── dbg/               # Debugger (1,733 lines)
 │   └── src/           # REPL, breakpoints, sessions, target control
@@ -149,6 +148,10 @@ cargo build --release
 ├── examples/          # Example programs
 └── tests/             # Test suite
 ```
+
+Line counts above are `wc -l` output, last checked on 2026-11-17. Regenerate them
+with `wc -l` rather than by hand; a stale table is how this one drifted from
+3,500 to 8,931.
 
 ## Features
 
@@ -215,7 +218,7 @@ cargo build --release
 | Live demo | [drsamonline.github.io/NEO](https://drsamonline.github.io/NEO/) |
 | Author | [Dr Sohil Momin](https://drsamonline.github.io/) |
 | Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
-| Tests | 193 passing, 0 failing; 7 four-backend parity programs |
+| Tests | 193 passing, 0 failing in the workspace crates; 4 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
 | License | MIT (see [LICENSE](LICENSE)) |
 | Releases | None published yet |
 
@@ -229,6 +232,7 @@ cargo build --release
 
 - [Development Plan](DEV_PLAN.md) - Current progress and roadmap
 - [Architecture](ARCHITECTURE.md) - System design
+- [Language spec status](docs/language/README.md) - what is specified and what is still unwritten
 - [Language Tour](website/docs/language-tour.md) - Language features
 - [Getting Started](website/docs/getting-started.md) - Installation guide
 - [FAQ](FAQ.md) - Common questions
