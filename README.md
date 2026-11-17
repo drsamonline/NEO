@@ -235,6 +235,7 @@ with `wc -l` rather than by hand; a stale table is how this one drifted from
 - [Language spec status](docs/language/README.md) - what is specified and what is still unwritten
 - [Language Tour](website/docs/language-tour.md) - Language features
 - [Getting Started](website/docs/getting-started.md) - Installation guide
+- [Error codes](docs/errors.md) - every diagnostic code the compiler emits
 - [FAQ](FAQ.md) - Common questions
 
 <!-- support:sweep -->

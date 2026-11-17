@@ -1,5 +1,8 @@
 // NOVA static site worker: cache the shell, fall back to it offline.
-const CACHE = "nova-site-v3";
+// Bump this whenever a cached file changes. The service worker serves the old
+// copy until the name moves, so a content edit without a bump is invisible to
+// anyone who has already visited.
+const CACHE = "nova-site-v4";
 const SHELL = [
   "./",
   "./index.html",
