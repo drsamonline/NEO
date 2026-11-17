@@ -160,16 +160,18 @@ wrong answer three milestones later.
 A compiler's diagnostics are its interface. Right now they are a `String` and
 three codes, and editors re-parse stderr.
 
-- `--error-format=json` — one JSON object per diagnostic, with level, code, span,
-  message, notes and helps. This is what the LSP should consume instead of
-  re-deriving diagnostics from a second compiler pass.
-- `nova-compiler --explain Exxxx` — the long form of `docs/errors.md`, printed by
-  the binary, so the documentation and the compiler cannot drift.
-- Generate the error-code list from the source into `docs/errors.md` in CI, and
-  fail if the page and the code disagree.
+- `--error-format=json` — ✅ one JSON object per diagnostic on stdout, one per
+  line, nothing on stderr. `code` and `span` are `null` rather than absent.
+- `nova-compiler explain [Exxxx]` — ✅ the long form, printed by the binary.
+- `tools/error-code-check.py` — ✅ fails if the emitted codes, the described
+  codes and `docs/errors.md` are not the same set.
+- `tools/diagnostic-check.py` — ✅ now also runs every case with
+  `--error-format=json` and asserts the contract: valid JSON per line, no stderr,
+  and the codes matching the `//~ ERROR` annotations.
 
-**Done when:** the LSP gets its diagnostics from `--error-format=json`, and CI
-fails if `docs/errors.md` lists a code the compiler does not emit.
+**Remaining:** the LSP still re-derives diagnostics instead of reading
+`--error-format=json`. That is the one line of this stage not yet crossed, and it
+belongs with the LSP navigation work in Stage 5.
 
 ### Stage 3 — Harden the front end (1 week)
 

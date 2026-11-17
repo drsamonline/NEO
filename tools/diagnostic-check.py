@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
 import re
 import shutil
@@ -91,6 +92,64 @@ def run_case(nova: str, case: Path) -> tuple[int, str]:
         return proc.returncode, normalise(proc.stderr, rel)
     finally:
         shutil.rmtree(outdir, ignore_errors=True)
+
+
+def run_case_json(nova: str, case: Path) -> tuple[int, list[str], str]:
+    """Run the same case with `--error-format=json`.
+
+    Returns (exit code, stdout lines, stderr). The contract under test: in JSON
+    mode stdout carries one JSON object per diagnostic and nothing else, and
+    stderr is empty — an editor reading stdout never has to skip a human header
+    line.
+    """
+    rel = case.relative_to(ROOT).as_posix()
+    outdir = Path(tempfile.mkdtemp(prefix="nova-diag-json-"))
+    try:
+        proc = subprocess.run(
+            [nova, "emit", rel, "-o", str(outdir / "out.c"), "--error-format=json"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        lines = [line for line in proc.stdout.splitlines() if line.strip()]
+        return proc.returncode, lines, proc.stderr
+    finally:
+        shutil.rmtree(outdir, ignore_errors=True)
+
+
+def check_json(nova: str, case: Path, expected_codes: set[str], should_fail: bool) -> list[str]:
+    """Problems with the machine-readable form of this case, if any."""
+    problems: list[str] = []
+    code, lines, stderr = run_case_json(nova, case)
+
+    if stderr.strip():
+        problems.append(f"--error-format=json wrote to stderr: {stderr.strip()[:200]!r}")
+
+    seen: set[str] = set()
+    for index, line in enumerate(lines):
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as error:
+            problems.append(f"stdout line {index + 1} is not JSON ({error}): {line[:120]!r}")
+            continue
+        if not isinstance(payload, dict):
+            problems.append(f"stdout line {index + 1} is not a JSON object")
+            continue
+        for key in ("level", "code", "message", "file", "span", "notes", "helps"):
+            if key not in payload:
+                problems.append(f"stdout line {index + 1} has no `{key}` key")
+        if payload.get("code"):
+            seen.add(payload["code"])
+
+    if seen != expected_codes:
+        problems.append(
+            f"JSON codes {sorted(seen) or '[]'} != annotated {sorted(expected_codes) or '[]'}"
+        )
+    if should_fail and code == 0:
+        problems.append("JSON mode exited 0 on a case that should fail")
+    if not should_fail and lines:
+        problems.append("JSON mode produced diagnostics for a valid program")
+    return problems
 
 
 def golden_text(code: int, stderr: str) -> str:
@@ -191,6 +250,10 @@ def main() -> int:
                 problems.append(f"golden exit {want_code}, compiler exited {code}")
             if want_stderr != stderr:
                 problems.append("golden text differs from the compiler's output")
+
+        # The machine-readable form is part of the contract too: the LSP is
+        # meant to read it instead of re-deriving diagnostics on its own.
+        problems += check_json(nova, case, expected_codes, should_fail=bool(levels))
 
         if problems:
             failures += 1
