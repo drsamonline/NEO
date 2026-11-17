@@ -1,6 +1,6 @@
 [package]
 name = "nova-lsp"
-version = "0.3.0"
+version.workspace = true
 edition = "2021"
 description = "NOVA Language Server Protocol implementation"
 authors = ["NOVA Team"]

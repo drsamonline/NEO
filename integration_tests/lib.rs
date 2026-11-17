@@ -1,247 +1,203 @@
-// NOVA Compiler Integration Tests
-// Tests spanning compiler → runtime → stdlib pipeline
+//! Cross-crate integration tests: NOVA source in, generated code out.
+//!
+//! Everything here goes through the same path the CLI uses —
+//! `Lexer` → `Parser` → `SemanticAnalyzer` → `Lowerer` → backend — so a break in
+//! the handover between two crates fails here and not only in the CLI's
+//! end-to-end tests.
+//!
+//! The unit tests in each crate check one layer. `compiler/tests/end_to_end.rs`
+//! checks source to a linked binary. This crate sits between them: source to
+//! emitted text, for every backend, with no C compiler and no `node` needed.
+//!
+//! These tests previously did not compile at all: they imported
+//! `nova_compiler::frontend::lexer`, `nova_compiler::middle::sir` and
+//! `nova_compiler::frontend::semantic_analyzer`, and none of those modules
+//! exist. The crate was also not a workspace member, so nothing noticed.
 
-use nova_compiler::frontend::lexer::Lexer;
-use nova_compiler::frontend::parser::Parser;
-use nova_compiler::frontend::semantic_analyzer::SemanticAnalyzer;
-use nova_compiler::middle::sir::SIRGenerator;
-use nova_compiler::backend::c::CBackend;
-use nova_runtime::memory::MemoryManager;
-use nova_runtime::types::NovaType;
-use std::fs;
-use std::process::Command;
-use tempfile::TempDir;
+use nova_backend_js::JsBackend;
+use nova_backend_rust::RustBackend;
+use nova_backend_wasm::WasmBackend;
+use nova_compiler::sir::SirProgram;
+use nova_compiler::{CBackend, Lexer, Lowerer, Parser, SemanticAnalyzer};
 
-/// Test 1: Complete compilation pipeline for a simple program
-#[test]
-fn test_simple_program_compilation() {
-    let source = r#"
-        fn main() -> int {
-            let x: int = 42;
-            let y: int = x + 8;
-            return y;
-        }
-    "#;
-
-    // Lexing
+/// Run the front end and return the SIR, or the diagnostics that stopped it.
+///
+/// This mirrors `compile_to` in `compiler/src/main.rs`. If the two ever disagree
+/// about the order of the passes, this is the test that notices.
+fn lower(source: &str) -> Result<SirProgram, String> {
     let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize().expect("Tokenization failed");
-    assert!(!tokens.is_empty());
+    let (tokens, diagnostics) = lexer.tokenize();
+    if diagnostics.has_errors() {
+        let messages: Vec<&str> = diagnostics.iter().map(|d| d.message.as_str()).collect();
+        return Err(format!("lexical: {}", messages.join("; ")));
+    }
 
-    // Parsing
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse().expect("Parsing failed");
-    assert!(!ast.functions.is_empty());
+    let program = match parser.parse() {
+        Ok(program) => program,
+        Err(diagnostics) => {
+            let messages: Vec<&str> = diagnostics.iter().map(|d| d.message.as_str()).collect();
+            return Err(format!("parse: {}", messages.join("; ")));
+        }
+    };
 
-    // Semantic Analysis
     let mut analyzer = SemanticAnalyzer::new();
-    let analyzed_ast = analyzer.analyze(ast).expect("Semantic analysis failed");
+    if analyzer.analyze(&program).is_err() {
+        let messages: Vec<&str> = analyzer
+            .diagnostics
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        return Err(format!("semantic: {}", messages.join("; ")));
+    }
 
-    // SIR Generation
-    let mut sir_gen = SIRGenerator::new();
-    let sir = sir_gen.generate(analyzed_ast).expect("SIR generation failed");
-    assert!(!sir.functions.is_empty());
-
-    // C Code Generation
-    let backend = CBackend::new();
-    let c_code = backend.generate(&sir).expect("C code generation failed");
-    assert!(c_code.contains("main"));
-    assert!(c_code.contains("return"));
-
-    println!("✓ Simple program compilation successful");
+    let mut lowerer = Lowerer::new();
+    Ok(lowerer.lower_program(&program))
 }
 
-/// Test 2: Runtime memory management integration
+const HELLO: &str = r#"
+fn main() -> int {
+    print("Hello, NOVA");
+    return 0;
+}
+"#;
+
 #[test]
-fn test_runtime_memory_allocation() {
-    let mut mem_mgr = MemoryManager::new(1024 * 1024); // 1MB
-    
-    // Allocate memory
-    let ptr = mem_mgr.allocate(64, 8).expect("Allocation failed");
-    assert!(ptr > 0);
-    
-    // Write and read data
-    let test_data: [u8; 64] = [0x42; 64];
-    mem_mgr.write(ptr, &test_data).expect("Write failed");
-    
-    let mut buffer = [0u8; 64];
-    mem_mgr.read(ptr, &mut buffer).expect("Read failed");
-    assert_eq!(buffer, test_data);
-    
-    // Free memory
-    mem_mgr.deallocate(ptr).expect("Deallocation failed");
-    
-    println!("✓ Runtime memory management test successful");
+fn hello_world_reaches_c_with_its_runtime_header() {
+    let sir = lower(HELLO).expect("hello world must pass the front end");
+    let c = CBackend::new().generate(&sir);
+
+    assert!(c.contains("#include \"nova_runtime.h\""), "no runtime header:\n{c}");
+    assert!(c.contains("int main(void)"), "no C entry point:\n{c}");
+    assert!(c.contains("Hello, NOVA"), "the string literal was lost:\n{c}");
 }
 
-/// Test 3: Type system integration
 #[test]
-fn test_type_system_integration() {
-    let int_type = NovaType::Int;
-    let float_type = NovaType::Float;
-    let string_type = NovaType::String;
-    let bool_type = NovaType::Bool;
-    
-    assert_eq!(int_type.size(), 8);
-    assert_eq!(float_type.size(), 8);
-    assert!(string_type.is_reference());
-    assert_eq!(bool_type.size(), 1);
-    
-    // Type compatibility
-    assert!(int_type.is_compatible_with(&int_type));
-    assert!(!int_type.is_compatible_with(&float_type));
-    
-    println!("✓ Type system integration test successful");
-}
-
-/// Test 4: End-to-end compilation and execution simulation
-#[test]
-fn test_end_to_end_pipeline() {
+fn arithmetic_and_bindings_survive_lowering() {
     let source = r#"
-        fn add(a: int, b: int) -> int {
-            return a + b;
-        }
-        
-        fn main() -> int {
-            let result: int = add(10, 20);
-            return result;
-        }
-    "#;
-
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let nova_file = temp_dir.path().join("test.nova");
-    let c_file = temp_dir.path().join("test.c");
-    let binary_file = temp_dir.path().join("test");
-    
-    // Write source file
-    fs::write(&nova_file, source).expect("Failed to write source file");
-    
-    // Compile to C (simulated - in real scenario would call compiler CLI)
-    let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize().unwrap();
-    let mut parser = Parser::new(tokens);
-    let ast = parser.parse().unwrap();
-    let mut analyzer = SemanticAnalyzer::new();
-    let analyzed_ast = analyzer.analyze(ast).unwrap();
-    let mut sir_gen = SIRGenerator::new();
-    let sir = sir_gen.generate(analyzed_ast).unwrap();
-    let backend = CBackend::new();
-    let c_code = backend.generate(&sir).unwrap();
-    
-    fs::write(&c_file, c_code).expect("Failed to write C file");
-    
-    // Verify C code is valid (contains expected elements)
-    assert!(c_code.contains("int64_t add(int64_t a, int64_t b)"));
-    assert!(c_code.contains("int64_t main()"));
-    
-    println!("✓ End-to-end pipeline test successful");
+fn add(a: int, b: int) -> int {
+    return a + b;
 }
 
-/// Test 5: Error handling across layers
-#[test]
-fn test_error_handling_pipeline() {
-    // Invalid syntax
-    let invalid_source = r#"
-        fn main() -> int {
-            let x: int = ;  // Missing value
-            return x;
-        }
-    "#;
-    
-    let mut lexer = Lexer::new(invalid_source);
-    let tokens = lexer.tokenize().expect("Tokenization should succeed");
-    
-    let mut parser = Parser::new(tokens);
-    let parse_result = parser.parse();
-    assert!(parse_result.is_err(), "Parsing should fail for invalid syntax");
-    
-    println!("✓ Error handling pipeline test successful");
+fn main() -> int {
+    let x: int = 40;
+    let y: int = add(x, 2);
+    print(y);
+    return 0;
+}
+"#;
+    let sir = lower(source).expect("arithmetic must pass the front end");
+    let c = CBackend::new().generate(&sir);
+
+    assert!(c.contains("int main(void)"), "no C entry point:\n{c}");
+    // The helper is a real function, not inlined and not dropped.
+    assert!(c.matches("add").count() >= 2, "`add` was not emitted:\n{c}");
 }
 
-/// Test 6: Standard library function integration
 #[test]
-fn test_stdlib_function_calls() {
+fn a_struct_becomes_a_c_typedef() {
     let source = r#"
-        fn main() -> int {
-            // Test array operations (would use stdlib)
-            let arr: [int; 5] = [1, 2, 3, 4, 5];
-            let sum: int = 0;
-            // In full implementation, this would call stdlib reduce
-            return sum;
-        }
-    "#;
-    
+struct Counter {
+    value: int,
+}
+
+fn main() -> int {
+    let c = Counter { value: 0 };
+    print(c.value);
+    return 0;
+}
+"#;
+    let sir = lower(source).expect("a struct literal must pass the front end");
+    let c = CBackend::new().generate(&sir);
+
+    assert!(
+        c.contains("typedef struct Counter"),
+        "the struct did not become a C type:\n{c}"
+    );
+}
+
+#[test]
+fn a_valid_program_produces_no_diagnostics() {
+    let mut lexer = Lexer::new(HELLO);
+    let (_tokens, diagnostics) = lexer.tokenize();
+    assert!(
+        diagnostics.is_empty(),
+        "a valid program produced diagnostics: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_parse_error_is_returned_not_panicked() {
+    // `let x: int = ;` has no initialiser. The parser must say so.
+    let source = r#"
+fn main() -> int {
+    let x: int = ;
+    return x;
+}
+"#;
     let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize().unwrap();
+    let (tokens, diagnostics) = lexer.tokenize();
+    assert!(
+        !diagnostics.has_errors(),
+        "this should be a parse error, not a lexical one: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse().unwrap();
-    
-    // Verify AST contains array literal
-    let has_array = ast.functions.iter().any(|f| {
-        f.body.statements.iter().any(|stmt| {
-            matches!(stmt, nova_compiler::ast::Statement::Let { initializer, .. } 
-                     if matches!(initializer.as_ref(), Some(expr) if matches!(expr, nova_compiler::ast::Expression::ArrayLiteral(_))))
-        })
-    });
-    
-    assert!(has_array, "AST should contain array literal");
-    
-    println!("✓ Standard library function integration test successful");
+    assert!(parser.parse().is_err(), "a missing initialiser was accepted");
 }
 
-/// Test 7: FFI boundary testing
 #[test]
-fn test_ffi_boundary() {
-    use nova_runtime::ffi::FFIManager;
-    
-    let mut ffi_mgr = FFIManager::new();
-    
-    // Register a mock C function
-    let func_signature = nova_runtime::types::FunctionSignature {
-        name: "printf".to_string(),
-        params: vec![NovaType::Pointer(Box::new(NovaType::Char))],
-        return_type: Box::new(NovaType::Int),
-    };
-    
-    ffi_mgr.register_function(func_signature).expect("Failed to register FFI function");
-    
-    // Verify registration
-    assert!(ffi_mgr.is_registered("printf"));
-    
-    println!("✓ FFI boundary test successful");
+fn a_wrong_return_type_is_rejected() {
+    // Milestone 4 in DEV_PLAN.md: `return 1` from `-> bool` is an error.
+    let source = r#"
+fn flag() -> bool {
+    return 1;
 }
 
-/// Test 8: Concurrent execution simulation
+fn main() -> int {
+    return 0;
+}
+"#;
+    let err = lower(source).expect_err("`-> bool { return 1; }` was accepted");
+    assert!(
+        err.starts_with("semantic:"),
+        "the wrong layer rejected it: {err}"
+    );
+}
+
 #[test]
-fn test_concurrent_execution() {
-    use nova_runtime::threading::ThreadManager;
-    use std::sync::{Arc, Mutex};
-    
-    let counter = Arc::new(Mutex::new(0));
-    let mut thread_mgr = ThreadManager::new();
-    
-    let counter_clone = Arc::clone(&counter);
-    let task1 = move || {
-        let mut num = counter_clone.lock().unwrap();
-        for _ in 0..100 {
-            *num += 1;
-        }
-    };
-    
-    let counter_clone = Arc::clone(&counter);
-    let task2 = move || {
-        let mut num = counter_clone.lock().unwrap();
-        for _ in 0..100 {
-            *num += 1;
-        }
-    };
-    
-    // Execute tasks (in real impl, these would be Nova threads)
-    task1();
-    task2();
-    
-    let final_count = *counter.lock().unwrap();
-    assert_eq!(final_count, 200, "Concurrent tasks should complete correctly");
-    
-    println!("✓ Concurrent execution test successful");
+fn every_backend_emits_for_the_same_program() {
+    let sir = lower(HELLO).expect("hello world must pass the front end");
+
+    let c = CBackend::new().generate(&sir);
+    let js = JsBackend::new().generate(&sir);
+    let rust = RustBackend::new().generate(&sir);
+
+    for (name, out) in [("c", &c), ("js", &js), ("rust", &rust)] {
+        assert!(!out.is_empty(), "the {name} backend emitted nothing");
+        assert!(
+            out.contains("Hello, NOVA"),
+            "the {name} backend lost the string literal"
+        );
+    }
+
+    // WASM is allowed to reject a program it cannot express, but a hello world
+    // is inside the subset it advertises, so it must not reject this one.
+    if let Err(unsupported) = nova_backend_wasm::validate(&sir) {
+        panic!("the wasm backend rejected hello world as {unsupported}");
+    }
+    let wasm = WasmBackend::new().generate(&sir);
+    assert!(!wasm.is_empty(), "the wasm backend emitted nothing");
+}
+
+#[test]
+fn lowering_is_deterministic() {
+    // Two runs over the same source must produce byte-identical output. A
+    // HashMap iteration order leaking into code generation would break the
+    // parity harness in a way that looks like a backend bug.
+    let first = CBackend::new().generate(&lower(HELLO).expect("front end"));
+    let second = CBackend::new().generate(&lower(HELLO).expect("front end"));
+    assert_eq!(first, second, "code generation is not deterministic");
 }

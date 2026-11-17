@@ -159,7 +159,12 @@ impl LanguageServer for Backend {
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
-                references_provider: Some(OneOf::Left(true)),
+                // Not advertised: `references()` below returns `Ok(None)`.
+                // Advertising a capability the server does not implement makes
+                // editors offer "Find All References" and then show nothing.
+                // Flip this to `Some(OneOf::Left(true))` in the same change that
+                // fills in `references()`.
+                references_provider: Some(OneOf::Left(false)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
                 diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
