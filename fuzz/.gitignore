@@ -1,0 +1,5 @@
+# Crash and timeout reproducers, and the generated coverage map. A reproducer
+# worth keeping belongs in `tests/diagnostics/` or `tests/parity/` as a named
+# case, not as an opaque blob here.
+artifacts/
+coverage/

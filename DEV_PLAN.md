@@ -89,8 +89,8 @@ in place they are the acceptance check for everything else.
 | **G2 WASM validation** ✅ in place | `wasm-tools validate --features=wasm1 out.wat` for every WASM-emitting program — `accuracy.yml`, wasm-tools pinned by version and SHA-256 | malformed modules, wrong arity, invalid indices — independent of the host |
 | **G3 Diagnostic snapshots** ✅ in place | `.stderr` goldens per case in `tests/diagnostics/`, with `//~ ERROR` annotations in the source; `tools/diagnostic-check.py`, blessed with `--bless` or a `workflow_dispatch` input | a diagnostic silently changing its code, span or help text |
 | **G4 Differential corpus** ✅ in place | `tools/corpus-gen.py` generates programs from a seed and writes the output they must produce, computed independently in Python; `corpus.yml` runs `test --parity`, which checks both agreement between backends and agreement with that oracle | backend divergence on inputs nobody wrote by hand — and four backends that agree and are all wrong |
-| **G5 Fuzz** | `cargo-fuzz` on lexer and parser, 60s per target per PR, longer nightly | panics, hangs, stack overflow on malformed input |
-| **G6 Coverage** | `cargo llvm-cov` with a ratchet that may only go up | tests that assert nothing, untested branches |
+| **G5 Fuzz** ✅ in place, advisory | `cargo-fuzz` on lexer, parser and the whole front end — 60s per target per PR, 10 minutes weekly — `fuzz.yml`, seeded from `examples/` and `tests/parity/` | panics, hangs, stack overflow on malformed input |
+| **G6 Coverage** ✅ in place | `cargo llvm-cov` → LCOV, line coverage compared to `coverage-floor.txt`, which may only go up — `coverage.yml` | tests that assert nothing, untested branches |
 | **G7 Mutation** | `cargo-mutants` on the lowerer and C backend, weekly | tests that pass for the wrong reason |
 
 ---
@@ -175,8 +175,15 @@ belongs with the LSP navigation work in Stage 5.
 
 ### Stage 3 — Harden the front end (1 week)
 
-- **G5 Fuzz** the lexer and parser.
-- **G6 Coverage** with a ratchet.
+- **G5 Fuzz** the lexer and parser. ✅ `fuzz/` with three targets — `lex`,
+  `parse`, and `frontend` (source to SIR). Seeded by `fuzz/seed.sh` from the
+  repository's own programs, because a random-byte fuzzer spends its whole budget
+  failing to produce a valid program and never reaches the parser. **Advisory
+  until a weekly run is clean** — a compiler that has never been fuzzed will find
+  things on the first runs, and a new gate that starts red is not a gate.
+- **G6 Coverage** with a ratchet. ✅ `coverage.yml` computes line coverage from
+  LCOV `LF`/`LH` records rather than the summary table, whose column order is a
+  presentation detail a gate should not depend on.
 - **G7 Mutation** weekly, starting with the lowerer and the C backend.
 - Replace the wall-clock benchmark with instruction counts (`iai-callgrind` /
   Gungraun), which are stable enough to gate on.
