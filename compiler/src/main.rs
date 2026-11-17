@@ -8,10 +8,12 @@ use nova_backend_rust::RustBackend;
 use nova_backend_wasm::WasmBackend;
 use nova_compiler::runtime;
 use nova_compiler::{CBackend, Lexer, Lowerer, Parser, SemanticAnalyzer};
+use nova_common::{escape_json_string, Diagnostic};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const USAGE: &str = "\
 NOVA compiler
@@ -23,11 +25,14 @@ USAGE:
     nova-compiler run <source.nova> [-- ARGS...] build, then run the executable
     nova-compiler test --parity <source.nova>  run one program on every backend and compare
     nova-compiler doctor [--json]              check toolchains and backend readiness
+    nova-compiler explain [Exxxx]              long form of an error code, or list them
     nova-compiler version                      print the compiler version
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
         --target <name>   backend to emit: c (default), js, rust, or wasm
+        --error-format <f>  human (default) or json — one JSON object per
+                            diagnostic on stdout, nothing on stderr
     -V, --version         print the compiler version
     -h, --help            show this help
 
@@ -66,6 +71,9 @@ fn main() {
             let (input, output, target, rest) = parse_args(&args[1..]);
             require_c(target, "run");
             run(&input, output.as_deref(), &rest);
+        }
+        Some("explain") => {
+            explain(args.get(1).map(String::as_str));
         }
         Some("doctor") => {
             let mut json = false;
@@ -151,6 +159,151 @@ fn require_c(target: Target, command: &str) {
 }
 
 /// Parse `<source> [-o PATH] [--target c|js|rust] [-- args...]`.
+// ============================================================================
+// Diagnostics as a contract
+// ============================================================================
+
+/// Set by `--error-format=json`.
+///
+/// An `AtomicBool` rather than a parameter threaded through every call site: the
+/// CLI is single-threaded and the flag is global by nature, so a parameter would
+/// touch six functions to carry one bit. This is the same reasoning that got
+/// `static mut` removed from the runtime — an atomic is the sound version of the
+/// thing that was wanted.
+static JSON_DIAGNOSTICS: AtomicBool = AtomicBool::new(false);
+
+fn json_diagnostics() -> bool {
+    JSON_DIAGNOSTICS.load(Ordering::SeqCst)
+}
+
+fn json_quote(s: &str) -> String {
+    format!("\"{}\"", escape_json_string(s))
+}
+
+fn json_string_array(items: &[String]) -> String {
+    let quoted: Vec<String> = items.iter().map(|item| json_quote(item)).collect();
+    format!("[{}]", quoted.join(","))
+}
+
+/// One diagnostic, as one JSON object on one line.
+///
+/// A line-per-object shape rather than one big array: an editor can parse it
+/// incrementally, and a truncated stream still leaves the diagnostics that
+/// arrived. `code` and `span` are `null` rather than absent, so a consumer does
+/// not have to distinguish "missing" from "no value".
+fn diagnostic_json(file: &str, diag: &Diagnostic) -> String {
+    let span = match &diag.span {
+        Some(span) => format!(
+            "{{\"line_start\":{},\"column_start\":{},\"line_end\":{},\"column_end\":{}}}",
+            span.start.line, span.start.column, span.end.line, span.end.column
+        ),
+        None => "null".to_string(),
+    };
+    let code = match &diag.code {
+        Some(code) => json_quote(code),
+        None => "null".to_string(),
+    };
+    format!(
+        "{{\"level\":{},\"code\":{},\"message\":{},\"file\":{},\"span\":{},\"notes\":{},\"helps\":{}}}",
+        json_quote(&diag.level.to_string()),
+        code,
+        json_quote(&diag.message),
+        json_quote(file),
+        span,
+        json_string_array(&diag.notes),
+        json_string_array(&diag.helps),
+    )
+}
+
+/// Print one diagnostic, in whichever format was asked for.
+fn emit_diagnostic(file: &str, diag: &Diagnostic) {
+    if json_diagnostics() {
+        println!("{}", diagnostic_json(file, diag));
+        return;
+    }
+    let code = match &diag.code {
+        Some(code) => format!("[{code}] "),
+        None => String::new(),
+    };
+    match &diag.span {
+        Some(span) => eprintln!(
+            "  {file}:{}:{}: {code}{}",
+            span.start.line, span.start.column, diag.message
+        ),
+        None => eprintln!("  {file}: {code}{}", diag.message),
+    }
+    for note in &diag.notes {
+        eprintln!("    note: {note}");
+    }
+    for help in &diag.helps {
+        eprintln!("    help: {help}");
+    }
+}
+
+/// The error codes the compiler can emit, with the long form `explain` prints.
+///
+/// This table is the source of truth. `docs/errors.md` is checked against it by
+/// `tools/error-code-check.py`, so the page cannot list a code the compiler does
+/// not emit, or omit one it does.
+const ERROR_CODES: &[(&str, &str, &str)] = &[
+    (
+        "E0002",
+        "undefined name",
+        "A name was used that nothing has declared in scope.\n\n\
+         Usually a typo, or a `use`/`mod` that did not pull in the module holding\n\
+         the name. NOVA resolves across a whole file, so a function declared later\n\
+         in the same file is visible.",
+    ),
+    (
+        "E0061",
+        "wrong number of arguments",
+        "A call passes a different number of arguments than the callee declares.\n\n\
+         The `help:` line prints the full parameter list, which is the fastest way\n\
+         to see whether an argument is missing or the wrong function is being\n\
+         called. Generic calls are checked against the instantiation at the call\n\
+         site.",
+    ),
+    (
+        "E0308",
+        "mismatched types",
+        "One code covers four situations, distinguished by the message:\n\n\
+         - `argument N of f is X, but the parameter is Y` — an argument's type\n\
+         - `function f returns X, but this return value is Y` — a `return expr`\n\
+         - `function f returns X, but this return has no value` — a bare `return`\n\
+         - `function f returns X, but its final expression is Y` — a block value\n\n\
+         `int` -> `float` is the only implicit conversion. Everything else is\n\
+         written out with `as`.",
+    ),
+];
+
+fn explain(code: Option<&str>) -> ! {
+    match code {
+        None => {
+            println!("Error codes this compiler can emit:\n");
+            for (code, title, _) in ERROR_CODES {
+                println!("  {code}  {title}");
+            }
+            println!("\n`nova-compiler explain Exxxx` prints the long form.");
+            exit(0);
+        }
+        Some(wanted) => {
+            let wanted = wanted.trim();
+            for (code, title, body) in ERROR_CODES {
+                if code.eq_ignore_ascii_case(wanted) {
+                    println!("{code} — {title}\n");
+                    println!("{body}");
+                    exit(0);
+                }
+            }
+            let known: Vec<&str> = ERROR_CODES.iter().map(|(code, _, _)| *code).collect();
+            die(&format!(
+                "unknown error code `{wanted}`: known codes are {}",
+                known.join(", ")
+            ));
+        }
+    }
+}
+
 fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Target, Vec<String>) {
     let mut input: Option<PathBuf> = None;
     let mut output: Option<PathBuf> = None;
@@ -178,6 +331,26 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Target, Vec<String>
                         "unknown target `{other}`: expected `c`, `js`, `rust`, or `wasm`"
                     )),
                     None => die("`--target` needs a name"),
+                }
+            }
+            "--error-format" => {
+                i += 1;
+                match args.get(i).map(String::as_str) {
+                    Some("json") => JSON_DIAGNOSTICS.store(true, Ordering::SeqCst),
+                    Some("human") => JSON_DIAGNOSTICS.store(false, Ordering::SeqCst),
+                    Some(other) => die(&format!(
+                        "unknown error format `{other}`: expected `human` or `json`"
+                    )),
+                    None => die("`--error-format` needs a value"),
+                }
+            }
+            flag if flag.starts_with("--error-format=") => {
+                match &flag["--error-format=".len()..] {
+                    "json" => JSON_DIAGNOSTICS.store(true, Ordering::SeqCst),
+                    "human" => JSON_DIAGNOSTICS.store(false, Ordering::SeqCst),
+                    other => die(&format!(
+                        "unknown error format `{other}`: expected `human` or `json`"
+                    )),
                 }
             }
             "--" => {
@@ -226,20 +399,16 @@ fn compile_to_c(input: &Path) -> String {
 fn compile_to(input: &Path, target: Target) -> String {
     let source = fs::read_to_string(input)
         .unwrap_or_else(|e| die(&format!("cannot read {}: {e}", input.display())));
-    let name = input.display();
+    let name = input.display().to_string();
 
     let mut lexer = Lexer::new(&source);
     let (tokens, diagnostics) = lexer.tokenize();
     if diagnostics.has_errors() {
-        eprintln!("{name}: lexical errors:");
+        if !json_diagnostics() {
+            eprintln!("{name}: lexical errors:");
+        }
         for diag in diagnostics.iter() {
-            eprintln!("  {}", diag.message);
-            for note in &diag.notes {
-                eprintln!("    note: {note}");
-            }
-            for help in &diag.helps {
-                eprintln!("    help: {help}");
-            }
+            emit_diagnostic(&name, diag);
         }
         die("lexical analysis failed");
     }
@@ -248,15 +417,11 @@ fn compile_to(input: &Path, target: Target) -> String {
     let program = match parser.parse() {
         Ok(program) => program,
         Err(diagnostics) => {
-            eprintln!("{name}: parse errors:");
+            if !json_diagnostics() {
+                eprintln!("{name}: parse errors:");
+            }
             for diag in diagnostics.iter() {
-                eprintln!("  {}", diag.message);
-                for note in &diag.notes {
-                    eprintln!("    note: {note}");
-                }
-                for help in &diag.helps {
-                    eprintln!("    help: {help}");
-                }
+                emit_diagnostic(&name, diag);
             }
             die("parsing failed");
         }
@@ -270,31 +435,11 @@ fn compile_to(input: &Path, target: Target) -> String {
 
     let mut analyzer = SemanticAnalyzer::new();
     if analyzer.analyze(&program).is_err() {
-        eprintln!("{name}: semantic errors:");
+        if !json_diagnostics() {
+            eprintln!("{name}: semantic errors:");
+        }
         for diag in analyzer.diagnostics.iter() {
-            // `file:line:col: [Exxxx] cause` so editors and CI logs can jump to
-            // the name, and so the code documented in `docs/errors.md` is the
-            // code a user actually sees. It used to be dropped here: every
-            // diagnostic carried a code and the CLI printed only the message, so
-            // `E0308` existed everywhere except in front of the person who needed
-            // to search for it.
-            let code = match &diag.code {
-                Some(code) => format!("[{code}] "),
-                None => String::new(),
-            };
-            match &diag.span {
-                Some(span) => eprintln!(
-                    "  {name}:{}:{}: {code}{}",
-                    span.start.line, span.start.column, diag.message
-                ),
-                None => eprintln!("  {name}: {code}{}", diag.message),
-            }
-            for note in &diag.notes {
-                eprintln!("    note: {note}");
-            }
-            for help in &diag.helps {
-                eprintln!("    help: {help}");
-            }
+            emit_diagnostic(&name, diag);
         }
         die("semantic analysis failed");
     }
@@ -332,11 +477,16 @@ fn emit(input: &Path, output: Option<&Path>, target: Target) {
             if target == Target::C {
                 write_runtime_for(path);
             }
-            eprintln!("✓ wrote {}", path.display());
+            // Suppressed in JSON mode: there, stdout is the channel a consumer
+            // parses and stderr should be empty, so nothing but JSON reaches a
+            // parser.
+            if !json_diagnostics() {
+                eprintln!("✓ wrote {}", path.display());
+            }
         }
         None => {
             print!("{c_code}");
-            if target == Target::C {
+            if target == Target::C && !json_diagnostics() {
                 eprintln!(
                     "note: the generated C calls the NOVA runtime; \
                      `emit -o <file.c>` writes {} and {} beside it, and `build` links them",
@@ -791,6 +941,16 @@ fn default_stem(input: &Path) -> String {
 }
 
 fn die(message: &str) -> ! {
-    eprintln!("error: {message}");
+    if json_diagnostics() {
+        // A failure that is not a diagnostic still has to reach a machine reader:
+        // in JSON mode stdout is the only channel, so nothing goes to stderr and
+        // the exit status stays the signal for "this run failed".
+        println!(
+            "{{\"level\":\"error\",\"code\":null,\"message\":{},\"file\":null,\"span\":null,\"notes\":[],\"helps\":[]}}",
+            json_quote(message)
+        );
+    } else {
+        eprintln!("error: {message}");
+    }
     exit(1);
 }

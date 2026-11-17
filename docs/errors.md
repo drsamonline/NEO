@@ -7,6 +7,30 @@ There are three today. This page lists what exists, not what is planned — a
 compiler that documents codes it does not emit teaches you to distrust the
 documentation.
 
+## Reading them from a program
+
+```bash
+nova-compiler emit prog.nova -o prog.c --error-format=json
+```
+
+One JSON object per diagnostic on **stdout**, one per line, nothing on stderr:
+
+```json
+{"level":"error","code":"E0308","message":"function `flag` returns `bool`, but this return value is `int`","file":"prog.nova","span":{"line_start":2,"column_start":12,"line_end":2,"column_end":13},"notes":[],"helps":["return a `bool` value, or change the declared return type"]}
+```
+
+`code` and `span` are `null` rather than absent, so a consumer does not have to
+tell "missing" from "no value". A failure that is not a diagnostic — a file that
+cannot be read — is still one object, with `level: error` and `code: null`. The
+exit status remains the signal for whether the run succeeded.
+
+This is what the language server should consume instead of re-deriving
+diagnostics from a second compiler pass.
+
+`nova-compiler explain` lists the codes; `nova-compiler explain E0308` prints the
+long form below. The three lists — emitted, described, documented — are checked
+against each other in CI by `tools/error-code-check.py`.
+
 ## Where codes come from
 
 | Layer | Codes |

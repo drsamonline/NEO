@@ -30,6 +30,9 @@ jobs:
 
       - run: cargo build -p nova-compiler
 
+      - name: The compiler, `explain` and docs/errors.md name the same codes
+        run: python3 tools/error-code-check.py
+
       - name: Check
         if: github.event.inputs.bless != 'true'
         run: python3 tools/diagnostic-check.py

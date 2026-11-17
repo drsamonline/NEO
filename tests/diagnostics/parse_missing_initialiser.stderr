@@ -1,7 +1,7 @@
 exit: 1
 ---
 <case>: parse errors:
-  Expected expression at ';'
-  Expected expression at 'return'
-  Expected expression at '}'
+  <case>:6:18: Expected expression at ';'
+  <case>:7:5: Expected expression at 'return'
+  <case>:8:1: Expected expression at '}'
 error: parsing failed
