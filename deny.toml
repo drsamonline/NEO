@@ -45,8 +45,14 @@ confidence-threshold = 0.9
 # seeing, but they are not a correctness problem.
 multiple-versions = "warn"
 # A wildcard version is a decision that dependencies may drift, and nothing here
-# needs one.
+# needs one — with one exception, which is the whole reason for the flag below.
 wildcards = "deny"
+# `nova-common = { path = "../crates/nova-common" }` has no version, and cargo-deny
+# counts that as a wildcard. It is not one in any sense that matters: a path
+# dependency inside this workspace is pinned by the workspace, and cannot resolve
+# to a different crate tomorrow. The deny above still applies to anything from a
+# registry, which is where drift is real.
+allow-wildcard-paths = true
 
 [sources]
 # Only crates.io. A dependency that arrives from a git URL or an unknown registry
