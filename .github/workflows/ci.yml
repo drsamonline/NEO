@@ -18,17 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     # Advisory on purpose. `cargo fmt --check` on a workspace that has never been
     # formatted fails on every file at once, so making this blocking today would
-    # turn a working build red without telling anyone anything new. Flip
-    # `continue-on-error` to false in the same pull request that lands
-    # `cargo fmt --all`, and the gate becomes real from then on.
-    continue-on-error: true
+    # turn a working build red without telling anyone anything new.
+    #
+    # `continue-on-error` sits on the steps, not the job, so the job still
+    # concludes success and does not mark every pull request "unstable". The
+    # failure is in the step log and in the annotation. Move it to the job — or
+    # drop it — in the same pull request that lands `cargo fmt --all`.
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
+        continue-on-error: true
       - run: cargo clippy --workspace --all-targets -- -D warnings
+        continue-on-error: true
 
   rust-workspace:
     name: Build Rust workspace
