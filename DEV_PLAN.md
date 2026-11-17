@@ -39,7 +39,7 @@ the code and a CI run, and the run is named where it matters.
 | Runtime crate | ✅ compiles and tests; **not linked to generated C** | 33 runtime tests |
 | Standard library | ⚠️ 4 modules, thin | `stdlib_parse.rs` |
 | Package manager | ⚠️ `init`/`build`/`run` real; **registry mocked, deps not built** | `pkg` tests |
-| Language server | ⚠️ diagnostics real; go-to-definition is a string search; `references` unimplemented | `lsp` tests |
+| Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ REPL/breakpoints real; stack frames and DWARF mocked | `dbg` tests |
 | VS Code extension | ❌ stub — 4-field `manifest`, 2-line `extension.ts` | — |
 | Language spec | ❌ 1 of 25 chapters written | `docs/language/README.md` |
@@ -221,8 +221,13 @@ string search and no formatter is possible.
 
 ### Stage 5 — Close the tooling milestones that are now cheap (1 week)
 
-- **LSP go-to-definition and references** (old milestone 14) from the symbol table.
-  Cheap once Stage 2 exists.
+- **LSP go-to-definition and references** (old milestone 14). ✅ Token-level: the
+  compiler's own tokens give exact identifier spans, `includeDeclaration` is
+  honoured, and the capability is advertised because it now answers. It used to
+  return the whole line at column zero for any line containing `fn <name>`.
+  **Not a resolver** — two identifiers with the same text are one symbol, so
+  shadowing is not distinguished. Closing that gap is Stage 4: it needs a lossless
+  tree with a scope map, which is the same thing `nova fmt` needs.
 - **VS Code extension** (old milestone 18): `engines`, `main`, `contributes`, a
   client that spawns `nova-lsp`. Two days once the LSP answers navigation.
 - **Package manager**: replace the mock registry with git and path dependencies
