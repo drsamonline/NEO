@@ -477,11 +477,16 @@ fn emit(input: &Path, output: Option<&Path>, target: Target) {
             if target == Target::C {
                 write_runtime_for(path);
             }
-            eprintln!("✓ wrote {}", path.display());
+            // Suppressed in JSON mode: there, stdout is the channel a consumer
+            // parses and stderr should be empty, so nothing but JSON reaches a
+            // parser.
+            if !json_diagnostics() {
+                eprintln!("✓ wrote {}", path.display());
+            }
         }
         None => {
             print!("{c_code}");
-            if target == Target::C {
+            if target == Target::C && !json_diagnostics() {
                 eprintln!(
                     "note: the generated C calls the NOVA runtime; \
                      `emit -o <file.c>` writes {} and {} beside it, and `build` links them",
