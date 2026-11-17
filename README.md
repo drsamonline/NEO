@@ -59,8 +59,8 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - `nova-compiler test --parity` compares stdout and exit status across all four
   backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
   program.
-- **193 tests pass** (`cargo test --workspace`; WASM execution tests need
-  `node` and `wat2wasm`).
+- **199 tests pass** (`cargo test --workspace`; WASM execution tests need
+  `node` and `wat2wasm`). Verified in CI, run 44083756917.
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
 - The Rust `runtime/` crate (memory, GC, I/O, threading, async) compiles and is
@@ -218,7 +218,7 @@ with `wc -l` rather than by hand; a stale table is how this one drifted from
 | Live demo | [drsamonline.github.io/NEO](https://drsamonline.github.io/NEO/) |
 | Author | [Dr Sohil Momin](https://drsamonline.github.io/) |
 | Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
-| Tests | 193 passing, 0 failing in the workspace crates; 4 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
+| Tests | 199 passing, 0 failing, 0 ignored (`cargo test --workspace`); 4 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
 | License | MIT (see [LICENSE](LICENSE)) |
 | Releases | None published yet |
 
@@ -262,4 +262,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Last Updated**: 2026-11-14
 **Current stage**: Phase 3 partial, Phase 4 in progress (see [DEV_PLAN.md](DEV_PLAN.md); it is authoritative)
-**Test suite**: 193 passing, 0 failing
+**Test suite**: 199 passing, 0 failing (verified in CI)
