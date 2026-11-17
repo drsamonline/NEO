@@ -1,0 +1,17 @@
+// A comment with non-ASCII text: — “quotes” … 日本語 and an emoji 🎉.
+//
+// The lexer used to index a `String` with character positions, so the first
+// non-ASCII character shifted every later token and the compiler reported
+// "Invalid integer: =" for perfectly ordinary source. Every token after this
+// comment is ASCII, so the program's output is ASCII and comparable across
+// backends; what is under test is that the comment did not corrupt the lexing.
+fn main() -> int {
+    let total: int = 0;
+    let mut i = 0;
+    while i < 5 {
+        total = total + i;
+        i = i + 1;
+    }
+    print(total);
+    return 0;
+}

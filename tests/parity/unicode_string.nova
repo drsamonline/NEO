@@ -1,0 +1,11 @@
+// Non-ASCII in a string literal, which is the case that matters most for this
+// project: Hindi and Gujarati text is the point of several of its apps.
+//
+// The output is compared byte-for-byte across all four backends, so this also
+// pins that the C, JavaScript, Rust and WebAssembly backends agree on how a
+// non-ASCII literal is emitted and printed.
+fn main() -> int {
+    print("नमस्ते");
+    print("કેમ છો");
+    return 0;
+}
