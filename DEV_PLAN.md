@@ -24,9 +24,9 @@ suite; if a row disagrees with `cargo test`, the row is wrong. Last verified: 20
 | JS / Rust / WASM backends | ⚠️ all three emit through `--target`; JS and Rust output (arrays and closures included) is executed in tests. Rust closures are `Rc<dyn Fn(..) -> ..>` values over generated environment structs; WASM executes ints/strings/recursion/loops, growable int arrays, structs, tuples and `int` closures via `backends/wasm/host.mjs`. Unsupported signatures are rejected by `validate` instead of emitted as placeholders | `backends/wasm` and `rust_closures_run_and_match_c` tests, Node + `wat2wasm` end-to-end tests, `tests/parity/` |
 | Standard library | ✅ all four modules parse and emit C (`use` merges `core` and `io`); `core` math helpers return their values (`factorial`, `fibonacci`, `sign`, `clamp`, `gcd`) | `compiler/tests/stdlib_parse.rs`, `compiler/tests/end_to_end.rs::core_stdlib_math_functions_return_their_values` |
 | Examples | ✅ `array_ops.nova` now builds and runs; the remaining examples need the unimplemented features listed above | `nova-compiler run` |
-| Docs | ❌ 59 files under 200 bytes; language spec describes syntax the parser lacks | — |
+| Docs | ⚠️ 54 files under 200 bytes; `docs/language/README.md` states which chapters are written (1 of 25) and which are not, and the stubs carry a banner until they are | — |
 
-**Test suite:** 193 passing, 0 failing (`cargo test --workspace`; WASM execution tests need `node` + `wat2wasm`).
+**Test suite:** 199 passing, 0 failing, 0 ignored (`cargo test --workspace`; WASM execution tests need `node` + `wat2wasm`). Verified in CI, run 44083756917.
 
 ## Milestones, in order
 
@@ -45,7 +45,7 @@ Each milestone is done only when its acceptance check passes in CI.
 | 9 | Enums + `match` end to end | a `match` program compiles to `switch` and runs | ✅ done |
 | 10 | Arrays with bounds checks in the shim | `examples/array_ops.nova` builds and runs | ✅ done |
 | 11 | CI: build → link → run every example | new CI job fails on a wrong-output regression | ✅ done |
-| 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests (`integration_tests/` today imports APIs that do not exist) | ⬜ |
+| 12 | Real end-to-end test crate | `cargo test --workspace` includes compiler→binary tests: `integration_tests/` is a workspace member and its 8 tests pass in CI (run 44083756917) | ✅ done |
 | 13 | Wire JS/Rust/WASM targets | `--target javascript|rust|wasm` emits; JS, Rust and WASM output is executed in tests, and `test --parity` compares all four | ✅ done |
 | 14 | LSP go-to-definition/references from the symbol table | editor navigation works | ⬜ |
 | 15 | Debugger reads DWARF (`gimli`) | breakpoints hit real lines with real variables | ⬜ |

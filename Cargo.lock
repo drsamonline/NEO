@@ -835,30 +835,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "nova-backend-c"
-version = "0.1.0"
-dependencies = [
- "nova-common",
- "nova-compiler",
-]
-
-[[package]]
 name = "nova-backend-js"
-version = "0.1.0"
+version = "0.6.1"
 dependencies = [
  "nova-common",
 ]
 
 [[package]]
 name = "nova-backend-rust"
-version = "0.1.0"
+version = "0.6.1"
 dependencies = [
  "nova-common",
 ]
 
 [[package]]
 name = "nova-backend-wasm"
-version = "0.1.0"
+version = "0.6.1"
 dependencies = [
  "nova-common",
 ]
@@ -879,7 +871,7 @@ dependencies = [
 
 [[package]]
 name = "nova-dbg"
-version = "0.3.0"
+version = "0.6.1"
 dependencies = [
  "clap",
  "gdbstub",
@@ -891,7 +883,7 @@ dependencies = [
 
 [[package]]
 name = "nova-lsp"
-version = "0.3.0"
+version = "0.6.1"
 dependencies = [
  "lsp-types",
  "nova-common",
@@ -905,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "nova-pkg"
-version = "0.3.0"
+version = "0.6.1"
 dependencies = [
  "base64",
  "clap",

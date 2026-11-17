@@ -1,0 +1,10 @@
+[toolchain]
+# `stable` rather than a pinned number on purpose: this file exists so that
+# `rustup` and CI agree on one channel, and so that `rustfmt` and `clippy` are
+# installed wherever the repository is checked out. Pinning an exact release is
+# the next step — do it once a version is known to build the whole workspace,
+# and add `rust-version` to `[workspace.package]` at the same time so the MSRV
+# is declared in Cargo rather than only here.
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

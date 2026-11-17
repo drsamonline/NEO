@@ -1,10 +1,8 @@
 # Changelog
 
-## 0.6.1
-
-- Release cut so the tag describes the code it ships: this is the first release since 0.6.0.
-
 All notable changes to the NOVA project will be documented in this file.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
+`[Unreleased]` always sits above the newest release.
 
 ## [Unreleased] - Phase 2: Runtime System (Active Development)
 
@@ -624,6 +622,12 @@ All notable changes to the NOVA project will be documented in this file.
 - Runtime LOC: 1,220+ lines
 - Test coverage: 20+ tests across 5 modules
 - Status: Core modules complete, I/O and threading pending
+
+## [0.6.1]
+
+- Release cut so the tag describes the code it ships: this is the first release since 0.6.0.
+- No date is recorded here because no GitHub release or tag date was found in the
+  repository; fill it in at the next tag.
 
 ## [1.0.0-alpha] - Phase 1: Compiler Core Complete - 2024
 

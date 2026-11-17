@@ -6,10 +6,10 @@ members = [
     "lsp",
     "dbg",
     "crates/nova-common",
-    "backends/c",
     "backends/javascript",
     "backends/rust",
     "backends/wasm",
+    "integration_tests",
 ]
 resolver = "2"
 

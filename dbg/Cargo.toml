@@ -1,6 +1,6 @@
 [package]
 name = "nova-dbg"
-version = "0.3.0"
+version.workspace = true
 edition = "2021"
 description = "NOVA Debugger - Interactive debugging for NOVA programs"
 authors = ["NOVA Team"]

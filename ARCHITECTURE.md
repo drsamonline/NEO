@@ -86,28 +86,40 @@ Converts AST to SIR:
 
 ---
 
-### 6. Backends (1,529 lines total) ✅
+### 6. Backends (3,931 lines total) ✅ / ⚠️
 
-#### C Backend (449 lines)
-**Location**: `backends/c/src/lib.rs`
-- Generates portable C code
-- Compatible with C99+
-- Tested and production-ready
+C is the reference target and the only one `build`/`run` can link. The other
+three emit a program and are exercised by the tests; they are not equal in
+coverage, and `DEV_PLAN.md` says which feature stops where.
 
-#### JavaScript Backend (343 lines)
+#### C backend (846 lines)
+**Location**: `compiler/src/backend/mod.rs`
+- The generator the CLI uses, and the only one whose output is compiled and run
+- Emits C99 plus `nova_runtime.h/.c` (ABI v3)
+- Covered by `compiler/tests/end_to_end.rs` — 52 tests
+- There used to be a second, unused C generator in `backends/c/`. It was 756
+  lines, nothing depended on it, and it had drifted from this one. It was
+  deleted rather than wired up.
+
+#### JavaScript backend (478 lines)
 **Location**: `backends/javascript/src/lib.rs`
-- ES6+ JavaScript output
-- Browser and Node.js compatible
+- ES6+ output, runs under `node`
+- Arrays and closures included; exercised by `test --parity`
 
-#### Rust Backend (352 lines)
+#### Rust backend (748 lines)
 **Location**: `backends/rust/src/lib.rs`
-- Idiomatic Rust code generation
-- Cargo-compatible output
+- Idiomatic Rust, compiles with plain `rustc`
+- Closures are `Rc<dyn Fn(..) -> ..>` over generated environment structs
 
-#### WebAssembly Backend (385 lines)
+#### WebAssembly backend (1,859 lines)
 **Location**: `backends/wasm/src/lib.rs`
-- WASM module generation
-- Web platform ready
+- Emits `.wat` text, assembled with `wat2wasm` and run through
+  `backends/wasm/host.mjs` under Node
+- Integers, booleans, string literals, `print`, recursion, `if`/`while`/range
+  `for`, growable `int` arrays, structs, tuples and `int` closures
+- Array access is bounds-checked; a signature it cannot express is rejected by
+  `validate` with a message naming the feature, never emitted as a placeholder
+- Not yet: float or string-returning closure signatures, float struct fields
 
 **Input**: SIR  
 **Output**: Target language source code

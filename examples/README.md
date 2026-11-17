@@ -82,7 +82,8 @@ python3 tools/example-check.py
 ```
 
 `--target js`, `--target rust` and `--target wasm` emit those generators' output;
-`build`/`run` link C only. The four generators live in `backends/`, and every
+`build`/`run` link C only. The C generator lives in `compiler/src/backend/`; the
+other three live in `backends/`. Every
 example here is checked with `nova-compiler test --parity` in CI alongside the
 programs in `tests/parity/`.
 
