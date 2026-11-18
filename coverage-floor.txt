@@ -1,4 +1,4 @@
-65.23
+65.26
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -15,3 +15,4 @@
 # 65.04% (8,060 of 12,393) when the trait surface was removed and the guard added.
 # 65.21% (8,120 of 12,453) when re-indentation landed.
 # 65.23% (8,274 of 12,684) when path and git dependencies landed.
+# 65.26% (8,290 of 12,703) when the floating-point builtins landed.

@@ -37,7 +37,7 @@ the code and a CI run, and the run is named where it matters.
 | CLI | ✅ `emit` / `build` / `run` / `doctor` / `test --parity` | end-to-end tests |
 | JS / Rust / WASM backends | ⚠️ exercised subset; C is the reference | `tests/parity/` in CI |
 | Runtime crate | ✅ compiles and tests; **not linked to generated C** | 33 runtime tests |
-| Standard library | ⚠️ 4 modules, **167 of 250 functions usable** — the other 83 call a builtin the compiler does not implement | `stdlib/README.md`, `tools/stdlib-check.py` |
+| Standard library | ⚠️ 4 modules, **196 of 250 functions usable** — the other 54 call a builtin the compiler does not implement | `stdlib/README.md`, `tools/stdlib-check.py` |
 | Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry mocked; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ REPL/breakpoints real; stack frames and DWARF mocked | `dbg` tests |
@@ -409,6 +409,12 @@ plan should borrow rather than invent.
   rather than a design: a `RefCell` in a `thread_local!` would be sound, and needs a
   memory model NOVA does not have yet.
 - The package registry is mocked.
+- **`stdlib/math` emits C that does not compile.** `normalize2`/`normalize3` build an
+  `NovaTuple_int_int` where a `NovaTuple_float_float` is declared — tuple element types
+  are inferred as `int` — and `mod_int` applies `%` to two doubles. `use math;`
+  therefore fails even though 75 of its 76 functions call only implemented builtins.
+  The CI step "Every standard-library module emits C" only *emits*, which is why
+  nothing caught it; it should compile the result.
 
 ---
 

@@ -86,6 +86,40 @@ void nova_panic(const char *message);
 void nova_exit(long long code);
 long long nova_unsupported(const char *name);
 
+/* Floating-point maths. `float` is C `double` throughout, so these are the
+ * C library functions under a name the compiler can emit. `nova-compiler build`
+ * links with `-lm` for exactly this reason. */
+double nova_math_sqrt(double value);
+double nova_math_cbrt(double value);
+double nova_math_sin(double value);
+double nova_math_cos(double value);
+double nova_math_tan(double value);
+double nova_math_asin(double value);
+double nova_math_acos(double value);
+double nova_math_atan(double value);
+double nova_math_sinh(double value);
+double nova_math_cosh(double value);
+double nova_math_tanh(double value);
+double nova_math_exp(double value);
+double nova_math_log(double value);
+double nova_math_log2(double value);
+double nova_math_log10(double value);
+double nova_math_floor(double value);
+double nova_math_ceil(double value);
+double nova_math_round(double value);
+double nova_math_powf(double left, double right);
+double nova_math_atan2(double left, double right);
+double nova_math_fmod(double left, double right);
+double nova_math_remainder(double left, double right);
+bool nova_math_is_nan(double value);
+bool nova_math_is_infinite(double value);
+bool nova_math_is_finite(double value);
+double nova_math_nan(void);
+double nova_math_infinity(void);
+long long nova_parse_int(const char *value);
+double nova_parse_float(const char *value);
+
+
 /* Runtime version, ABI v3. */
 const char *nova_runtime_version(void);
 
@@ -107,6 +141,7 @@ pub const SOURCE: &str = r#"/* nova_runtime.c - NOVA runtime shim (ABI v3).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 void nova_print_int(long long value) {
     printf("%lld", value);
@@ -297,6 +332,46 @@ void nova_panic(const char *message) {
 
 void nova_exit(long long code) {
     exit((int)code);
+}
+
+/* Floating-point maths. One line each, so a wrong result is a wrong libm call
+ * rather than a wrong wrapper. */
+double nova_math_sqrt(double value) { return sqrt(value); }
+double nova_math_cbrt(double value) { return cbrt(value); }
+double nova_math_sin(double value) { return sin(value); }
+double nova_math_cos(double value) { return cos(value); }
+double nova_math_tan(double value) { return tan(value); }
+double nova_math_asin(double value) { return asin(value); }
+double nova_math_acos(double value) { return acos(value); }
+double nova_math_atan(double value) { return atan(value); }
+double nova_math_sinh(double value) { return sinh(value); }
+double nova_math_cosh(double value) { return cosh(value); }
+double nova_math_tanh(double value) { return tanh(value); }
+double nova_math_exp(double value) { return exp(value); }
+double nova_math_log(double value) { return log(value); }
+double nova_math_log2(double value) { return log2(value); }
+double nova_math_log10(double value) { return log10(value); }
+double nova_math_floor(double value) { return floor(value); }
+double nova_math_ceil(double value) { return ceil(value); }
+double nova_math_round(double value) { return round(value); }
+double nova_math_powf(double left, double right) { return powf(left, right); }
+double nova_math_atan2(double left, double right) { return atan2(left, right); }
+double nova_math_fmod(double left, double right) { return fmod(left, right); }
+double nova_math_remainder(double left, double right) { return remainder(left, right); }
+bool nova_math_is_nan(double value) { return isnan(value) != 0; }
+bool nova_math_is_infinite(double value) { return isinf(value) != 0; }
+bool nova_math_is_finite(double value) { return isfinite(value) != 0; }
+double nova_math_nan(void) { return NAN; }
+double nova_math_infinity(void) { return INFINITY; }
+
+/* Parsing. `strtoll`/`strtod` stop at the first character they cannot use and
+ * return 0 for a string with no number in it, which is the least surprising
+ * answer available without an error channel. */
+long long nova_parse_int(const char *value) {
+    return strtoll(value != NULL ? value : "", NULL, 10);
+}
+double nova_parse_float(const char *value) {
+    return strtod(value != NULL ? value : "", NULL);
 }
 
 long long nova_unsupported(const char *name) {

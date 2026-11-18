@@ -440,13 +440,17 @@ fn format(template: String, args: [String]) -> String {
 }
 
 /// Parse integer from string
+///
+/// Wrapped in `Some` because the signature promises `Option<int>` and the builtin
+/// returns `int`. That mismatch was invisible while the builtin had no known type;
+/// the moment it had one, sema reported E0308.
 fn parse_int(s: String) -> Option<int> {
-    __builtin_parse_int(s)
+    Some(__builtin_parse_int(s))
 }
 
 /// Parse float from string
 fn parse_float(s: String) -> Option<float> {
-    __builtin_parse_float(s)
+    Some(__builtin_parse_float(s))
 }
 
 /// Parse boolean from string

@@ -153,6 +153,72 @@ fn hello_compiles_links_and_prints() {
 }
 
 #[test]
+fn the_floating_point_builtins_run() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    // The builtins are called directly rather than through `use math;` on purpose.
+    // The module emits C but does not *compile* — `normalize2` builds an
+    // `NovaTuple_int_int` where a `NovaTuple_float_float` is declared, and `mod_int`
+    // applies `%` to two doubles — so importing it fails for reasons that have
+    // nothing to do with the builtins. Those are recorded in `DEV_PLAN.md`.
+    //
+    // Floats print through `%g`, which is why `4.0` comes out as `4`.
+    let dir = scratch("builtins");
+    let file = dir.join("builtins.nova");
+    let binary = dir.join("builtins");
+    fs::write(
+        &file,
+        "\
+fn main() -> int {
+    print(__builtin_sqrt(16.0));
+    print(__builtin_cbrt(27.0));
+    print(__builtin_powf(2.0, 10.0));
+    print(__builtin_sin(0.0));
+    print(__builtin_exp(0.0));
+    print(__builtin_log(1.0));
+    print(__builtin_floor(3.7) as int);
+    print(__builtin_round(2.5) as int);
+    print(__builtin_is_nan(__builtin_nan()));
+    print(__builtin_is_finite(1.0));
+    print(__builtin_parse_int(\"42\"));
+    print(__builtin_parse_float(\"2.5\"));
+    return 0;
+}
+",
+    )
+    .expect("write source");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&file)
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run built binary");
+    assert!(
+        run.status.success(),
+        "program exited with {}:\nstderr: {}",
+        run.status,
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "4\n3\n1024\n0\n1\n0\n3\n3\ntrue\ntrue\n42\n2.5\n"
+    );
+}
+
+#[test]
 fn fibonacci_example_runs() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");
@@ -1706,13 +1772,13 @@ fn emitted_c_links_against_the_generated_runtime() {
     );
 
     let binary = dir.join("hello");
-    let build = Command::new(cc())
-        .arg(&c_file)
-        .arg(&runtime_c)
-        .arg("-o")
-        .arg(&binary)
-        .output()
-        .expect("link generated C with the runtime");
+    let mut link = Command::new(cc());
+    link.arg(&c_file).arg(&runtime_c).arg("-o").arg(&binary);
+    // The runtime shim calls libm (`sqrt`, `sin`, …), so a Linux link needs `-lm`.
+    if !cfg!(windows) {
+        link.arg("-lm");
+    }
+    let build = link.output().expect("link generated C with the runtime");
     assert!(
         build.status.success(),
         "cc failed:\n{}",

@@ -607,11 +607,15 @@ fn build(input: &Path, output: Option<&Path>) -> PathBuf {
     let runtime_c = write_runtime_for(&c_path);
 
     let cc = env::var("CC").unwrap_or_else(|_| "cc".to_string());
-    let result = Command::new(&cc)
-        .arg(&c_path)
-        .arg(&runtime_c)
-        .arg("-o")
-        .arg(&binary)
+    let mut link = Command::new(&cc);
+    link.arg(&c_path).arg(&runtime_c).arg("-o").arg(&binary);
+    // The runtime shim calls `sqrt`, `sin` and friends, which live in libm on every
+    // Unix. macOS folds them into libSystem and ignores `-lm`; MSVC has no `-lm` and
+    // does not need one, so the flag is added only where it is both needed and valid.
+    if !cfg!(windows) {
+        link.arg("-lm");
+    }
+    let result = link
         .output()
         .unwrap_or_else(|e| {
             die(&format!(

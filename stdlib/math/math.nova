@@ -137,18 +137,23 @@ fn distance3d(x1: float, y1: float, z1: float, x2: float, y2: float, z2: float) 
 }
 
 /// Round to nearest integer
+///
+/// The cast is not decoration: `__builtin_round` returns `float`, and `int` from
+/// `float` is not one of NOVA's implicit conversions. Declaring `-> int` and
+/// returning the builtin directly was an E0308 that nothing could see until the
+/// builtin had a known return type.
 fn round(x: float) -> int {
-    __builtin_round(x)
+    __builtin_round(x) as int
 }
 
 /// Floor (round down)
 fn floor(x: float) -> int {
-    __builtin_floor(x)
+    __builtin_floor(x) as int
 }
 
 /// Ceiling (round up)
 fn ceil(x: float) -> int {
-    __builtin_ceil(x)
+    __builtin_ceil(x) as int
 }
 
 /// Truncate (remove decimal part)
