@@ -1,4 +1,4 @@
-65.61
+65.96
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -23,3 +23,4 @@
 # 65.61% (8,420 of 12,833) when `Option<Struct>` was rejected. It fell by 0.02 because
 # the new sema check is exercised by a diagnostics golden, which drives a subprocess
 # that llvm-cov cannot see — the same blind spot that lowered the floor in #29.
+# 65.96% (8,596 of 13,033) when the borrow, global and match-chain fixes landed with their tests.
