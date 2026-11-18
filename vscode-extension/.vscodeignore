@@ -1,0 +1,6 @@
+# Source and build inputs are not shipped; `out/` and `node_modules/` are.
+src/**
+tsconfig.json
+.vscodeignore
+**/*.map
+node_modules/.cache/**

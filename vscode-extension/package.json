@@ -1,5 +1,83 @@
 {
-  "name":"nova-language",
-  "displayName":"NOVA Language",
-  "version":"0.0.1"
+  "name": "nova-language",
+  "displayName": "NOVA Language",
+  "description": "Syntax highlighting, diagnostics and navigation for NOVA — the language whose compiler lowers to C, JavaScript, Rust and WebAssembly.",
+  "version": "0.6.1",
+  "publisher": "drsamonline",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drsamonline/NEO"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "nova",
+    "compiler",
+    "language",
+    "wasm"
+  ],
+  "activationEvents": [
+    "onLanguage:nova"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "nova",
+        "aliases": [
+          "NOVA",
+          "nova"
+        ],
+        "extensions": [
+          ".nova"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nova",
+        "scopeName": "source.nova",
+        "path": "./syntaxes/nova.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "NOVA",
+      "properties": {
+        "nova.server.path": {
+          "type": "string",
+          "default": "nova-lsp",
+          "markdownDescription": "Path to the `nova-lsp` executable. A bare name is looked up on `PATH`; an absolute path is used as given. Build it with `cargo build --release -p nova-lsp`."
+        },
+        "nova.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace the JSON-RPC traffic between the editor and the NOVA language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc --watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.2",
+    "@types/vscode": "1.85.0",
+    "typescript": "5.6.3"
+  }
 }

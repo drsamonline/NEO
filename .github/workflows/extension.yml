@@ -1,0 +1,76 @@
+name: Extension
+
+# The VS Code extension is the only part of this project a stranger installs, and
+# nothing built it. `tsc` is the check: a manifest pointing at a missing file, or a
+# client that does not type-check, produces an extension that fails to activate
+# with an error the author never sees.
+#
+# `npm ci`, not `npm install`: the lockfile is committed, so the tree this builds is
+# the tree that was tested. An unpinned install is the supply-chain hole the
+# `Security` workflow closes for Rust, and it would be open here.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: The extension compiles and describes the language
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode-extension
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4
+        with:
+          node-version: "20"
+
+      # The grammar's keyword list is derived from the compiler's token table, so a
+      # keyword added to the language must appear here too.
+      - name: The grammar describes the compiler's keywords
+        working-directory: .
+        run: python3 tools/extension-check.py
+
+      - name: Install from the lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Compile
+        run: npm run compile
+
+      - name: The manifest's entry point is the one the build produced
+        run: |
+          set -eu
+          main="$(node -p "require('./package.json').main")"
+          test -f "${main#./}" || {
+            echo "::error::package.json main is $main but the build did not produce it"
+            exit 1
+          }
+          echo "built $main"
+
+      # Packaging is the real test of the manifest: vsce validates it, and the
+      # archive is what a user installs. A file that is contributed but missing, or
+      # excluded by `.vscodeignore`, shows up here and nowhere else.
+      - name: Package
+        run: npx --yes @vscode/vsce@4.1.1 package --out /tmp/nova-language.vsix
+
+      - name: The package contains everything the manifest promises
+        run: |
+          set -eu
+          unzip -l /tmp/nova-language.vsix
+          for required in \
+              extension/out/extension.js \
+              extension/syntaxes/nova.tmLanguage.json \
+              extension/language-configuration.json \
+              extension/package.json \
+              extension/node_modules/vscode-languageclient/package.json; do
+            unzip -l /tmp/nova-language.vsix | grep -q " $required$" || {
+              echo "::error::the packaged extension is missing $required"
+              exit 1
+            }
+          done
+          echo "package contains the client, the grammar and the language configuration"

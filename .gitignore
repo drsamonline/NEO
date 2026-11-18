@@ -2,3 +2,9 @@
 target/
 # Benchmark build output
 benches/build/
+
+# The VS Code extension's dependencies and build output. `package-lock.json` is
+# committed: `npm ci` in CI needs it, and an unpinned install is a supply-chain
+# hole.
+vscode-extension/node_modules/
+vscode-extension/out/

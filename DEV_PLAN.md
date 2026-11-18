@@ -41,7 +41,7 @@ the code and a CI run, and the run is named where it matters.
 | Package manager | ⚠️ `init`/`build`/`run` real; **registry mocked, deps not built** | `pkg` tests |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ REPL/breakpoints real; stack frames and DWARF mocked | `dbg` tests |
-| VS Code extension | ❌ stub — 4-field `manifest`, 2-line `extension.ts` | — |
+| VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
 | Language spec | ❌ 1 of 25 chapters written | `docs/language/README.md` |
 | **Test suite** | **199 passing, 0 failing, 0 ignored** | CI run 44117607709, the branch merged as #21 |
 
@@ -228,8 +228,12 @@ string search and no formatter is possible.
   **Not a resolver** — two identifiers with the same text are one symbol, so
   shadowing is not distinguished. Closing that gap is Stage 4: it needs a lossless
   tree with a scope map, which is the same thing `nova fmt` needs.
-- **VS Code extension** (old milestone 18): `engines`, `main`, `contributes`, a
-  client that spawns `nova-lsp`. Two days once the LSP answers navigation.
+- **VS Code extension** (old milestone 18). ✅ A real manifest (`engines`,
+  `main`, `activationEvents`, `contributes`), a client that spawns `nova-lsp` over
+  stdio and reports clearly when it cannot, a TextMate grammar whose keyword list
+  is derived from `crates/nova-common/src/token.rs`, and a language configuration.
+  `tsc` and `vsce package` run in CI, and `tools/extension-check.py` fails if the
+  grammar stops describing the compiler's keywords.
 - **Package manager**: replace the mock registry with git and path dependencies
   plus a lockfile. A real registry is a product decision, not a compiler feature;
   git dependencies are a week and remove the "mocked" asterisk entirely.
@@ -277,7 +281,7 @@ plan should borrow rather than invent.
 | Lossy AST blocks formatter and LSP | `rowan` lossless CST, `salsa` incremental queries | The architecture rust-analyzer is built on |
 | Hand-rolled lexer | `logos` (if lexer speed becomes the bottleneck) | Not needed yet — the current lexer is fine and has no dependency |
 | Hand-maintained docs site | `mdBook` + `mdbook-linkcheck` | `docs/language/` is already markdown; the HTML is hand-written |
-| No editor syntax highlighting | `tree-sitter-nova` grammar | Gives editors highlighting and the LSP a fallback parser for free |
+| No editor syntax highlighting | ✅ TextMate grammar in `vscode-extension/syntaxes/`, generated from `token.rs` | Highlighting in VS Code now; `tree-sitter-nova` would add other editors and a fallback parser for the LSP |
 | Supply chain unguarded | ✅ `cargo-deny` — licences, sources, bans, advisories (`security.yml`) | Licence and advisory gate; `deny.toml` is now the policy `NOTICE` claims. **SBOM generation is still open.** |
 | MSRV undeclared | `rust-version` in `[workspace.package]` + `cargo-msrv` | A pin that means something |
 
