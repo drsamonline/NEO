@@ -31,6 +31,9 @@ Everything written down, and where to start.
 | [`language/03_keywords.md`](language/03_keywords.md) | The 25 reserved words, read out of `token.rs` |
 | [`language/05_literals.md`](language/05_literals.md) | What each literal form means once it is a token |
 | [`language/06_types.md`](language/06_types.md) | The type names, the composites, and the widths that are accepted and ignored |
+| [`language/07_functions.md`](language/07_functions.md) | Declarations, parameters by value and by reference, generics, and the `nova_fn_` prefix |
+| [`language/08_modules.md`](language/08_modules.md) | Resolution order, module roots, and why a program must not be named after the module it imports |
+| [`language/09_control_flow.md`](language/09_control_flow.md) | `if`/`while`/`loop`/`for`/`match`, blocks as expressions, and what is missing |
 | [`RUNTIME_PROGRESS.md`](RUNTIME_PROGRESS.md) | The Rust runtime crate: what it provides and what it does not |
 
 ## Decisions

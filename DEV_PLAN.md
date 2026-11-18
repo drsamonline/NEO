@@ -42,7 +42,7 @@ the code and a CI run, and the run is named where it matters.
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ REPL/breakpoints real; stack frames and DWARF mocked | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
-| Language spec | ❌ 5 of 25 chapters written — overview, lexical grammar, keywords, literals, types | `docs/language/README.md` |
+| Language spec | ❌ 8 of 25 chapters written — overview, lexical grammar, keywords, literals, types, functions, modules, control flow | `docs/language/README.md` |
 | **Test suite** | **199 passing, 0 failing, 0 ignored** | CI run 44117607709, the branch merged as #21 |
 
 ---
