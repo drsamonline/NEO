@@ -53,7 +53,7 @@ struct ModuleLoader<'a> {
     module_roots: &'a [PathBuf],
 }
 
-impl ModuleLoader {
+impl ModuleLoader<'_> {
     fn collect_uses(&mut self, program: &Program, source: &Path) -> Result<(), String> {
         for item in &program.items {
             let name = match item {
