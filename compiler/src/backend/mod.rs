@@ -905,6 +905,12 @@ impl CBackend {
     fn block_value_type(&self, value: &SirExpr) -> String {
         match value {
             SirExpr::Typed { typ, .. } => self.c_type(typ),
+            // A block whose value is another block takes the inner value's type. The
+            // binding a `match` arm introduces makes exactly that shape — an outer
+            // block for the payload, an inner one for the arm's body — and the outer
+            // temporary was being typed `int` while holding an `Option_String`.
+            SirExpr::Block(_, Some(inner)) => self.block_value_type(inner),
+            SirExpr::Block(_, None) => "void".to_string(),
             other => match self.print_kind(other) {
                 "str" => "char*".to_string(),
                 "float" => "double".to_string(),
