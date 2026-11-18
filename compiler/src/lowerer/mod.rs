@@ -1724,6 +1724,21 @@ impl Lowerer {
             }
             Expr::Identifier(name) => self.lower_variable(name),
             Expr::Binary(left, op, right) => {
+                // `+` on two strings concatenates. Without this the C backend emitted
+                // `a + b` on `char *` and C rejected it — `stdlib/io` builds its log
+                // prefixes that way.
+                if matches!(op, AstBinOp::Add)
+                    && self.expr_type(left).is_some_and(|typ| is_string_type(&typ))
+                    && self.expr_type(right).is_some_and(|typ| is_string_type(&typ))
+                {
+                    return SirExpr::Typed {
+                        expr: Box::new(SirExpr::Call {
+                            callee: "nova_strcat".to_string(),
+                            args: vec![self.lower_expr(left), self.lower_expr(right)],
+                        }),
+                        typ: "string".to_string(),
+                    };
+                }
                 let expr = SirExpr::BinOp {
                     left: Box::new(self.lower_expr(left)),
                     op: self.lower_bin_op(op),
@@ -2349,7 +2364,16 @@ impl Lowerer {
         let is_payload_enum = scrutinee_type
             .as_deref()
             .map(|typ| typ.split('<').next().unwrap_or(typ))
-            .is_some_and(|base| base == "Option" || self.enum_payloads.contains_key(base));
+            // `enum_payloads` has an entry for every declared enum, empty when no
+            // variant carries data, so `contains_key` was true for a payload-free enum
+            // and the switch tested `.tag` on what is really an `int`.
+            .is_some_and(|base| {
+                base == "Option"
+                    || self
+                        .enum_payloads
+                        .get(base)
+                        .is_some_and(|variants| !variants.is_empty())
+            });
         let scrutinee_expr = if is_payload_enum {
             SirExpr::FieldAccess {
                 object: Box::new(record_expr.clone()),
@@ -3002,6 +3026,11 @@ fn note_option_payload(payloads: &mut std::collections::BTreeSet<String>, typ: &
     if let Some(payload) = option_payload_of(typ) {
         payloads.insert(payload.to_string());
     }
+}
+
+/// Whether a type string names a string.
+fn is_string_type(typ: &str) -> bool {
+    matches!(typ.trim(), "String" | "string" | "str" | "&str")
 }
 
 fn option_payload_of(typ: &str) -> Option<&str> {
