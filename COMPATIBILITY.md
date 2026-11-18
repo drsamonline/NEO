@@ -41,8 +41,16 @@ One version for the whole workspace (`Cargo.toml` → `[workspace.package]`), an
 `VERSION` must match it. `CHANGELOG.md` records what changed; `[Unreleased]` always
 sits above the newest release.
 
-## Nothing is published yet
+## Nothing is installable yet
 
-Not on crates.io, not on npm, no release artifacts. `Cargo.toml` says
-`publish = false` on every crate, which is what makes that statement checkable
-rather than aspirational.
+Not on crates.io, not on npm. `Cargo.toml` says `publish = false` on every crate,
+which is what makes that statement checkable rather than aspirational.
+
+Two GitHub Releases exist — `v0.6.0` and `v0.6.1` — and **neither carries an
+artifact**: the release pages are empty. Both tags also point at the same commit, so
+they are one snapshot published twice. Neither is a thing you can download and run.
+
+The pipeline that would fix that is verified: a dry run builds `x86_64-linux`,
+`arm64-macos` and `x86_64-windows` archives, writes a SHA-256 beside each, and runs
+the packaged compiler on all three. No tag has been pushed since it was written, and
+`v0.6.1` already exists — so the first real release needs a version above it.
