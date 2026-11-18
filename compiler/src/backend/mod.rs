@@ -877,3 +877,48 @@ impl CBackend {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `'{}'` was the whole of the old escaping, so a char literal holding a quote
+    /// produced three quotes in a row and ended the C literal early.
+    #[test]
+    fn a_char_literal_is_escaped() {
+        assert_eq!(CBackend::escape_c_char('a'), "'a'");
+        assert_eq!(CBackend::escape_c_char('\''), "'\\''");
+        assert_eq!(CBackend::escape_c_char('\\'), "'\\\\'");
+        assert_eq!(CBackend::escape_c_char('\n'), "'\\n'");
+        assert_eq!(CBackend::escape_c_char('\t'), "'\\t'");
+        // Outside printable ASCII a C character constant is not portable, so the
+        // value is written as a cast instead.
+        assert_eq!(CBackend::escape_c_char('क'), "(char)2325");
+    }
+
+    /// `%` is defined for integers only. On floats the C has to be `fmod`, and the
+    /// choice is made the same way the print functions are chosen.
+    #[test]
+    fn modulo_on_floats_emits_fmod() {
+        let float_mod = SirExpr::BinOp {
+            left: Box::new(SirExpr::Typed {
+                expr: Box::new(SirExpr::Literal(SirLiteral::Float(7.5))),
+                typ: "float".to_string(),
+            }),
+            op: SirBinOp::Mod,
+            right: Box::new(SirExpr::Typed {
+                expr: Box::new(SirExpr::Literal(SirLiteral::Float(2.0))),
+                typ: "float".to_string(),
+            }),
+        };
+        let backend = CBackend::new();
+        assert_eq!(backend.expr_to_c(&float_mod), "fmod(7.5, 2)");
+
+        let int_mod = SirExpr::BinOp {
+            left: Box::new(SirExpr::Literal(SirLiteral::Int(7))),
+            op: SirBinOp::Mod,
+            right: Box::new(SirExpr::Literal(SirLiteral::Int(2))),
+        };
+        assert_eq!(backend.expr_to_c(&int_mod), "(7 % 2)");
+    }
+}
