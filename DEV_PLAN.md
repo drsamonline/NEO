@@ -233,6 +233,12 @@ deferral cannot be expanded correctly later.
   `grammar-check.py` guards the grammar against the parser. One asymmetry is
   allowed and named: the parser turns a bare top-level expression into a synthetic
   `__main` function, and the tree reports no item there.
+
+  **It found two real bugs on its first run.** `fn(A) -> B` — a function *type* inside
+  a parameter list — was read as a declaration, because parentheses do not change the
+  brace depth, so `stdlib/core/core.nova` reported eight functions that do not exist.
+  And `static` was invisible to the tree while the parser recorded it as a `ConstDef`.
+  Both fixed; three unit tests pin them.
 - ✅ Settle `trait`: it is not a keyword, the grammar has no production for it and
   the parser cannot produce one, so `Item::Trait` and `TraitDef` were dead code
   claiming a feature. Removed — [`docs/adr/0002-traits.md`](docs/adr/0002-traits.md).

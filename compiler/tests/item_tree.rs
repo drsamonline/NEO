@@ -92,7 +92,8 @@ fn from_tree(source: &str) -> Vec<(ItemKind, Option<String>)> {
 #[test]
 fn there_is_something_to_compare() {
     let files = nova_files();
-    assert!(files.len() >= 20, "found only {} programs", files.len());
+    // Five examples, four stdlib modules, six parity programs.
+    assert!(files.len() >= 15, "found only {} programs", files.len());
 }
 
 #[test]
@@ -112,7 +113,7 @@ fn the_item_tree_and_the_parser_agree_on_every_shipped_program() {
             path.display()
         );
     }
-    assert!(compared >= 20, "only {compared} programs were compared");
+    assert!(compared >= 15, "only {compared} programs were compared");
 }
 
 #[test]

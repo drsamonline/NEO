@@ -56,7 +56,11 @@ impl ItemKind {
             TokenKind::Fn => Self::Function,
             TokenKind::Struct => Self::Struct,
             TokenKind::Enum => Self::Enum,
-            TokenKind::Const => Self::Const,
+            // `static` is a separate keyword but the parser records it as a `ConstDef`,
+            // so the item tree must call it a const too or the two descriptions
+            // disagree. That the parser collapses them is a wart of its own; this
+            // module's job is to describe what the parser does, not what it should.
+            TokenKind::Const | TokenKind::Static => Self::Const,
             TokenKind::Type => Self::TypeAlias,
             TokenKind::Use => Self::Use,
             TokenKind::Mod => Self::Module,
@@ -138,6 +142,27 @@ impl ItemTree {
     }
 }
 
+/// Whether the token at `index` can begin an item.
+///
+/// Brace depth alone is not enough, and the guard in `compiler/tests/item_tree.rs`
+/// is what proved it: `fn(A) -> B` is a **function type**, and it appears inside a
+/// parameter list, where the parentheses do not change the brace depth. Reading that
+/// `fn` as a declaration invented an item named after the first parameter's type —
+/// which is why `stdlib/core/core.nova` reported eight functions that do not exist.
+///
+/// A declaration can only follow the end of another item, so the token before it
+/// must be `}` or `;`, or `pub` (which can precede any of them), or there must be no
+/// token before it at this level.
+fn starts_item(tokens: &[Token], from: usize, index: usize) -> bool {
+    if index == from {
+        return true;
+    }
+    matches!(
+        tokens[index - 1].kind,
+        TokenKind::RBrace | TokenKind::Semicolon | TokenKind::Pub
+    )
+}
+
 /// Find the items at this nesting level within a token window.
 ///
 /// The window is always a level's own contents, with no enclosing braces in it, so
@@ -149,7 +174,7 @@ fn scan(tokens: &[Token], from: usize, to: usize) -> Vec<Item> {
 
     let mut index = from;
     while index < to {
-        if depth == 0 {
+        if depth == 0 && starts_item(tokens, from, index) {
             if let Some(kind) = ItemKind::from_token(&tokens[index].kind) {
                 if let Some((start, kind)) = open.take() {
                     items.push(build(tokens, start, index, kind));
@@ -364,6 +389,52 @@ fn main() -> int {
         assert_eq!(span.start.column, 8);
         assert_eq!(span.end.column, 15);
         assert_eq!(span.start.line, structure.span.start.line);
+    }
+
+    #[test]
+    fn a_function_type_is_not_a_declaration() {
+        // `fn(A) -> B` inside a parameter list is a type, not an item. Brace depth
+        // does not change across parentheses, so depth alone read this as a
+        // declaration and invented an item named `A`. Found by
+        // `compiler/tests/item_tree.rs` against `stdlib/core/core.nova`.
+        let source = "\
+fn compose<A, B>(f: fn(A) -> B, g: fn(B) -> int) -> int {
+    return g(f);
+}
+
+fn main() -> int {
+    return 0;
+}
+";
+        let tree = ItemTree::parse(source);
+        assert_eq!(
+            names(&tree),
+            vec![("function", Some("compose")), ("function", Some("main"))],
+            "a function-typed parameter must not become an item"
+        );
+    }
+
+    #[test]
+    fn a_static_is_an_item() {
+        // The parser records `static` as a `ConstDef`, so the tree must call it a
+        // const too — otherwise the two descriptions disagree, which is what the
+        // guard in `compiler/tests/item_tree.rs` checks.
+        let source = "static SEED: int = 1;\n\nfn main() -> int {\n    return 0;\n}\n";
+        let tree = ItemTree::parse(source);
+        assert_eq!(
+            names(&tree),
+            vec![("const", Some("SEED")), ("function", Some("main"))]
+        );
+    }
+
+    #[test]
+    fn a_pub_item_is_still_an_item() {
+        let source = "pub fn a() {\n}\n\npub const B: int = 1;\n";
+        let tree = ItemTree::parse(source);
+        assert_eq!(
+            names(&tree),
+            vec![("function", Some("a")), ("const", Some("B"))]
+        );
     }
 
     #[test]
