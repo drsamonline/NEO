@@ -7,6 +7,6 @@ It also wraps the compiler's builtins — `print`, `panic`, `typeof`, `strlen`,
 `array_push` and the rest — so source can call a function instead of a
 `__builtin_*`. Both work.
 
-A large part of this module is scaffolding: it declares more than the backends
-currently lower. `DEV_PLAN.md` → "Known limitations" is the authority on which
-builtins trap.
+**49 of its 55 functions can run**; 6 call a builtin the compiler does not implement.
+The authoritative numbers are in [`../README.md`](../README.md), derived from the
+source by `tools/stdlib-check.py` and checked in CI.

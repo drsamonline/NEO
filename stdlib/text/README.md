@@ -5,5 +5,8 @@
 case conversion.
 
 Strings are byte sequences; `split` returns `[String]`, and arrays are `int`-element
-only today, so anything returning a collection is scaffolding. Check
-`DEV_PLAN.md`'s limitations before relying on one.
+only today, so anything returning a collection is scaffolding.
+
+**54 of its 59 functions can run** — the best of the four modules, because most of it
+is pure NOVA with no builtin underneath. Numbers in
+[`../README.md`](../README.md).

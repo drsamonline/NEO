@@ -50,6 +50,9 @@ jobs:
       - name: Every document is written, reachable and explained
         run: python3 tools/docs-check.py
 
+      - name: The stdlib README matches what the stdlib can actually run
+        run: python3 tools/stdlib-check.py
+
       - name: The grammar still describes the compiler
         run: python3 tools/grammar-check.py
       - name: Every shipped example is a NOVA program
