@@ -78,7 +78,11 @@ impl CBackend {
             let typ_str = self.c_type(&global.typ);
             let _ = write!(self.output, "{} {}", typ_str, global.name);
             if let Some(init) = &global.init_value {
-                let _ = write!(self.output, " = {}", self.expr_to_c(init));
+                // A file-scope initialiser has to be a constant expression. A string
+                // constant lowered to `nova_strdup("...")` is a call, so C rejects it:
+                // "initializer element is not constant". The literal itself has static
+                // storage and is exactly what the global should point at.
+                let _ = write!(self.output, " = {}", self.global_init_to_c(init));
             }
             let _ = writeln!(self.output, ";");
         }
@@ -297,6 +301,23 @@ impl CBackend {
     /// Printable ASCII goes in single quotes with the specials escaped; anything
     /// else becomes a numeric cast, because a multi-byte character inside a C
     /// character constant is not portable and usually not what was meant.
+    /// A global's initialiser, as C that is allowed at file scope.
+    ///
+    /// The one rewrite that matters: a string constant arrives as
+    /// `nova_strdup("<literal>")`, which is a function call and therefore not a
+    /// constant expression. The literal is emitted directly instead — it already has
+    /// static storage, and duplicating it at start-up bought nothing.
+    fn global_init_to_c(&self, init: &SirExpr) -> String {
+        if let SirExpr::Call { callee, args } = init {
+            if callee == "nova_strdup" {
+                if let Some(SirExpr::Literal(SirLiteral::String(text))) = args.first() {
+                    return format!("\"{}\"", Self::escape_c_string(text));
+                }
+            }
+        }
+        self.expr_to_c(init)
+    }
+
     fn escape_c_char(c: char) -> String {
         match c {
             '\'' => "'\\''".to_string(),
@@ -894,6 +915,23 @@ mod tests {
         // Outside printable ASCII a C character constant is not portable, so the
         // value is written as a cast instead.
         assert_eq!(CBackend::escape_c_char('क'), "(char)2325");
+    }
+
+    /// A string constant at file scope must be a constant expression; a `nova_strdup`
+    /// call is not one, which is what C reported as "initializer element is not
+    /// constant" for every module that declares one.
+    #[test]
+    fn a_string_constant_is_a_literal_at_file_scope() {
+        let backend = CBackend::new();
+        let strdup = SirExpr::Call {
+            callee: "nova_strdup".to_string(),
+            args: vec![SirExpr::Literal(SirLiteral::String("r".to_string()))],
+        };
+        assert_eq!(backend.global_init_to_c(&strdup), "\"r\"");
+
+        // Anything else is emitted as it is.
+        let plain = SirExpr::Literal(SirLiteral::Int(7));
+        assert_eq!(backend.global_init_to_c(&plain), "7");
     }
 
     /// `%` is defined for integers only. On floats the C has to be `fmod`, and the
