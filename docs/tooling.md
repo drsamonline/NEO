@@ -75,6 +75,21 @@ The dry run exists because this workflow was written in a pull request and, unti
 runs, "it works" is an assumption. It is the one piece of the repository that cannot
 be checked by pushing a branch.
 
+**What the first real release proved the dry run could not.** The dry run skips the
+three steps guarded on `push` — create, upload and publish — so it cannot cover them.
+The first `v0.7.0` tag built all three platforms and uploaded six assets, and then
+failed at the last step:
+
+```
+failed to run git: fatal: not a git repository (or any of the parent directories): .git
+```
+
+`publish` has no `actions/checkout`, so `gh release edit` could not work out which
+repository it was talking to. Every `gh` call in the workflow now passes
+`-R "$GITHUB_REPOSITORY"` rather than relying on the working directory being a
+checkout. The lesson is not "test harder": it is that a guard which makes a step safe
+also makes it untested, and the untested step is where the bug was.
+
 **The verify step is what stops the version bug from shipping.** It refuses a tag
 whose version disagrees with `Cargo.toml` or `VERSION` — the defect that once left
 four different version numbers in one repository.

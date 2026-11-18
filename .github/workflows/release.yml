@@ -110,10 +110,10 @@ jobs:
           else:
               print(f"See [CHANGELOG.md](CHANGELOG.md). No `{tag}` section was found.")
           PY
-          if gh release view "$tag" >/dev/null 2>&1; then
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release $tag already exists; uploading into it"
           else
-            gh release create "$tag" --draft --title "NOVA $tag" --notes-file notes.md
+            gh release create "$tag" -R "$GITHUB_REPOSITORY" --draft --title "NOVA $tag" --notes-file notes.md
           fi
 
   build:
@@ -196,7 +196,7 @@ jobs:
         run: |
           set -eu
           tag="${TAG}"
-          gh release upload "$tag" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+          gh release upload "$tag" -R "$GITHUB_REPOSITORY" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
 
       # A dry run proves everything the upload would have proved except the upload
       # itself: the three platforms build, the packaged compiler runs, the archive
@@ -225,4 +225,8 @@ jobs:
       - name: Flip the draft to published
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$TAG" --draft=false
+        # `-R` because this job has no checkout: without it `gh` looks for a git
+        # repository in the working directory and finds none. That is exactly how
+        # the first real release failed, and a dry run cannot catch it — the step
+        # is guarded on `push`, so a dry run never reaches it.
+        run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false
