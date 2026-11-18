@@ -191,7 +191,7 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).to_string()
 }
 
-/// Which `math` calls work, characterised so the list cannot change silently.
+/// Every `math` call that used to crash, now that the name collision is fixed.
 ///
 /// Four of them crash, and the emitted C says why:
 ///
@@ -200,19 +200,15 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
 ///     int ceil(double x)   { return (int)nova_math_ceil(x); }
 ///     double powf(double base, double exp) { return nova_math_powf(base, exp); }
 ///
-/// Those are **definitions of libm symbols**. `nova_math_floor` lives in the runtime
-/// translation unit and calls `floor`, and at link time that resolves to the program's
-/// own `floor`, which calls `nova_math_floor` again — unbounded recursion, so SIGSEGV.
+/// Those were **definitions of libm symbols**. `nova_math_floor` lives in the runtime
+/// translation unit and calls `floor`; at link time that resolved to the program's own
+/// `floor`, which called `nova_math_floor` again — unbounded recursion, so SIGSEGV.
 ///
-/// `sqrt` and `cbrt` do not crash and I have not established why; both are also libm
-/// names, so the collision alone does not explain the split. That is the open question,
-/// and it is stated rather than papered over.
-///
-/// This test asserts the *current* split on purpose: when the collision is fixed, it
-/// fails, and whoever fixed it updates the table. A test that pins a defect is worth
-/// more than a comment that describes one.
+/// The backend now emits a NOVA function whose name belongs to the C library as
+/// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
+/// of the defect and is now the guard against it returning.
 #[test]
-fn the_math_calls_that_work_and_the_ones_that_crash() {
+fn every_math_call_works() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");
         return;
