@@ -226,6 +226,29 @@ impl Lowerer {
                 }
             }
             Expr::Array(_) => Some("Array".to_string()),
+            // `&x` / `&mut x` is a reference to its operand. This arm is the hinge for
+            // `lower_call_args`: its `is_reference` test reads this type, so an explicit
+            // borrow must report one or the argument is wrapped a second time (`&&file`).
+            //
+            // The parser erases `&` vs `&mut` (`parse_unary` consumes `mut` and drops
+            // it), so a borrow is spelled `&mut T` — which is what a by-address
+            // parameter is declared as. An operand of unknown type still yields a
+            // reference: the borrow is syntactically a reference whether or not
+            // inference succeeded.
+            Expr::Unary(AstUnOp::AddrOf, operand) => {
+                let inner = self.expr_type(operand).unwrap_or_else(|| "int".to_string());
+                if inner.trim_start().starts_with('&') {
+                    Some(inner)
+                } else {
+                    Some(format!("&mut {inner}"))
+                }
+            }
+            // `*p` reads through a reference; its type is the referent's.
+            Expr::Unary(AstUnOp::Deref, operand) => {
+                let inner = self.expr_type(operand)?;
+                let rest = inner.trim_start().strip_prefix('&')?.trim_start();
+                Some(rest.strip_prefix("mut ").unwrap_or(rest).trim_start().to_string())
+            }
             // A block expression's type is the type of its trailing expression.
             Expr::Block(block) => block
                 .final_expr
@@ -280,9 +303,11 @@ impl Lowerer {
                     if !func.generics.is_empty() {
                         self.generic_decls.insert(func.name.clone(), func.clone());
                     }
+                    // `type_display`, not `.name`: the arguments matter. `Option<File>`
+                    // became `Option`, which is not a type any struct is named after.
                     self.signatures.insert(
                         func.name.clone(),
-                        func.return_type.as_ref().map(|t| t.name.clone()),
+                        func.return_type.as_ref().map(type_display),
                     );
                     self.param_types.insert(
                         func.name.clone(),
@@ -1717,12 +1742,31 @@ impl Lowerer {
                     expr
                 }
             }
-            Expr::Unary(op, operand) => {
-                SirExpr::UnaryOp {
-                    op: self.lower_un_op(op),
-                    operand: Box::new(self.lower_expr(operand)),
+            Expr::Unary(op, operand) => match op {
+                // `&x` takes the address. Borrowing a value that is already a reference
+                // is that same pointer — NOVA has no `&&T` — so `touch(&mut file)` inside
+                // a function whose `file` is already `&mut File` stays one `File*`.
+                AstUnOp::AddrOf => {
+                    let lowered = self.lower_expr(operand);
+                    if self
+                        .expr_type(operand)
+                        .is_some_and(|typ| typ.trim_start().starts_with('&'))
+                    {
+                        lowered
+                    } else {
+                        SirExpr::AddressOf(Box::new(lowered))
+                    }
                 }
-            }
+                AstUnOp::Deref => SirExpr::Deref(Box::new(self.lower_expr(operand))),
+                AstUnOp::Neg => SirExpr::UnaryOp {
+                    op: SirUnOp::Neg,
+                    operand: Box::new(self.lower_expr(operand)),
+                },
+                AstUnOp::Not => SirExpr::UnaryOp {
+                    op: SirUnOp::Not,
+                    operand: Box::new(self.lower_expr(operand)),
+                },
+            },
             Expr::Call(callee, args) => {
                 // Calling a function-typed value goes through the closure ABI.
                 if let Some(typ) = self.expr_type(callee) {
@@ -2571,7 +2615,93 @@ impl Lowerer {
 
         for arm in arms.iter().rev() {
             let guard = arm.guard.as_ref().map(|guard| self.lower_expr(guard));
-            let body = self.lower_expr(&arm.body);
+
+            // `Some(x) => ...` as a value has to bind `x` too. The statement form
+            // (`lower_match_statement`) always did; this chain did not, so a `match`
+            // in trailing-expression position — which is how `read_file` is written —
+            // left the payload undeclared and every use of it failed with
+            // "undeclared identifier". The binding is attached to the arm's body as a
+            // block, which the backend hoists.
+            let binding: Option<(String, String, String)> = match &arm.pattern {
+                Pattern::EnumVariant(enum_name, variant, Some(inner)) => {
+                    // A wildcard or a nested pattern binds nothing; the tag test still
+                    // applies.
+                    let binding_name = match inner.as_ref() {
+                        Pattern::Identifier(name) if name != "_" => Some(name.clone()),
+                        _ => None,
+                    };
+                    if binding_name.is_none() {
+                        None
+                    } else {
+                        let scrutinee_type = self.expr_type(scrutinee);
+                        // For `Option` the payload type is the scrutinee's argument —
+                        // `Option<File>` binds a `File`. `enum_payloads` only knows
+                        // declared enums, so looking there alone gave `int` and the
+                        // binding was an `int` initialised from a `File` field.
+                        let payload_type = match scrutinee_type
+                            .as_deref()
+                            .and_then(option_payload_of)
+                        {
+                            Some(payload) => payload.to_string(),
+                            None => self
+                                .enum_payloads
+                                .get(enum_name)
+                                .and_then(|variants| variants.get(variant))
+                                .cloned()
+                                .unwrap_or_else(|| "int".to_string()),
+                        };
+                        // An `Option` payload lives in `payload`; an enum's lives in the
+                        // slot named after its type.
+                        let field = match scrutinee_type.as_deref().and_then(option_payload_of) {
+                            Some(payload) => {
+                                self.option_payloads.insert(payload.to_string());
+                                "payload".to_string()
+                            }
+                            None => payload_field(&payload_type).0.to_string(),
+                        };
+                        let struct_type = scrutinee_type
+                            .as_deref()
+                            .map(|typ| match option_payload_of(typ) {
+                                Some(payload) => option_struct_name(payload),
+                                None => typ.split('<').next().unwrap_or(typ).trim().to_string(),
+                            })
+                            .unwrap_or_default();
+                        Some((
+                            binding_name.unwrap_or_default(),
+                            payload_type,
+                            format!("{field}|{struct_type}"),
+                        ))
+                    }
+                }
+                _ => None,
+            };
+
+            self.push_scope();
+            if let Some((name, typ, _)) = &binding {
+                self.declare(name, Some(typ.clone()));
+            }
+            let mut body = self.lower_expr(&arm.body);
+            self.pop_scope();
+            if let Some((name, typ, field_and_struct)) = &binding {
+                let (field, struct_type) = field_and_struct
+                    .split_once('|')
+                    .unwrap_or((field_and_struct.as_str(), ""));
+                // `SirExpr::Block(statements, final)` — the binding is a statement
+                // the backend hoists ahead of the arm's value.
+                body = SirExpr::Block(
+                    vec![SirStatement::Let {
+                        name: name.clone(),
+                        typ: Some(typ.clone()),
+                        value: SirExpr::FieldAccess {
+                            object: Box::new(scrutinee_expr.clone()),
+                            field: field.to_string(),
+                            struct_type: struct_type.to_string(),
+                        },
+                    }],
+                    Some(Box::new(body)),
+                );
+            }
+
             let pattern_condition = match &arm.pattern {
                 // Strings compare through the runtime; other literals use `==`.
                 Pattern::Literal(Literal::String(text)) => Some(SirExpr::BinOp {
@@ -2604,6 +2734,28 @@ impl Lowerer {
                     op: SirBinOp::Eq,
                     right: Box::new(SirExpr::Var(format!("{}_{}", parts[0], parts[1]))),
                 }),
+                // `Some(x)` / `Enum.Variant(x)` tests the tag.
+                Pattern::EnumVariant(enum_name, variant, _) => {
+                    let ordinal = *self
+                        .enum_ordinals
+                        .get(&format!("{enum_name}_{variant}"))
+                        .unwrap_or(&0);
+                    Some(SirExpr::BinOp {
+                        left: Box::new(SirExpr::FieldAccess {
+                            object: Box::new(scrutinee_expr.clone()),
+                            field: "tag".to_string(),
+                            struct_type: self
+                                .expr_type(scrutinee)
+                                .map(|typ| match option_payload_of(&typ) {
+                                    Some(payload) => option_struct_name(payload),
+                                    None => typ.split('<').next().unwrap_or(&typ).trim().to_string(),
+                                })
+                                .unwrap_or_default(),
+                        }),
+                        op: SirBinOp::Eq,
+                        right: Box::new(SirExpr::Literal(SirLiteral::Int(ordinal))),
+                    })
+                }
                 // Wildcards and patterns without a test become the fallback.
                 _ => None,
             };
@@ -2651,14 +2803,6 @@ impl Lowerer {
         }
     }
 
-    fn lower_un_op(&self, op: &AstUnOp) -> SirUnOp {
-        match op {
-            AstUnOp::Neg => SirUnOp::Neg,
-            AstUnOp::Not => SirUnOp::Not,
-            AstUnOp::Deref => SirUnOp::Neg, // Placeholder for Deref
-            AstUnOp::AddrOf => SirUnOp::Not, // Placeholder for AddrOf
-        }
-    }
 }
 
 /// The struct fields that hold an enum payload: the discriminant plus one slot
@@ -2978,6 +3122,73 @@ fn mangle_type(typ: &str) -> String {
 mod tests {
     use super::*;
     use crate::{Lexer, Parser};
+
+    /// `&x` used to lower to `!x` — `lower_un_op` mapped `AddrOf` to `SirUnOp::Not`,
+    /// a placeholder nobody replaced. And an explicit borrow had no type, so
+    /// `lower_call_args` could not see it was already a reference and wrapped it a
+    /// second time. Both call shapes must end up with exactly one address-of.
+    #[test]
+    fn explicit_and_implicit_borrow_take_one_address() {
+        let program = lower(
+            "struct File { handle: int }\n\
+             fn fread_all(file: &mut File) -> int { return 1; }\n\
+             fn main() {\n\
+                 let mut file = File { handle: 3 };\n\
+                 let a = fread_all(&mut file);\n\
+                 let b = fread_all(file);\n\
+             }\n",
+        );
+        let main = program.functions.iter().find(|f| f.name == "main").expect("main");
+        let argument = |index: usize| -> SirExpr {
+            let SirStatement::Let { value, .. } = &main.body[index] else {
+                panic!("expected a let: {:?}", main.body[index]);
+            };
+            let SirExpr::Typed { expr, .. } = value else {
+                panic!("a call should be typed: {value:?}");
+            };
+            let SirExpr::Call { args, .. } = expr.as_ref() else {
+                panic!("expected a call: {expr:?}");
+            };
+            args[0].clone()
+        };
+        for index in [1, 2] {
+            let arg = argument(index);
+            let SirExpr::AddressOf(inner) = &arg else {
+                panic!("expected exactly one address-of, got {arg:?}");
+            };
+            let peeled = match inner.as_ref() {
+                SirExpr::Typed { expr, .. } => expr.as_ref(),
+                other => other,
+            };
+            assert!(
+                matches!(peeled, SirExpr::Var(name) if name == "file"),
+                "the address must target the variable, not `!file` or `&&file`: {inner:?}"
+            );
+        }
+    }
+
+    /// A `match` in value position never bound its payload: `lower_match_chain` handled
+    /// `Literal` and `Path` and sent everything else to `_ => None`, so `Some(x)` left
+    /// `x` undeclared. `read_file` in `stdlib/io` is written exactly this way.
+    #[test]
+    fn a_match_in_value_position_binds_its_payload() {
+        let program = lower(
+            "struct File { handle: int }\n\
+             fn make() -> Option<File> { return None; }\n\
+             fn main() {\n\
+                 let found = match make() {\n\
+                     Some(file) => { print(file.handle); 1 },\n\
+                     None => 0,\n\
+                 };\n\
+             }\n",
+        );
+        let main = program.functions.iter().find(|f| f.name == "main").expect("main");
+        let rendered = format!("{:?}", main.body);
+        assert!(
+            rendered.contains("\"file\""),
+            "the payload must be bound as `file`: {rendered}"
+        );
+    }
 
     fn lower(source: &str) -> SirProgram {
         let mut lexer = Lexer::new(source);
