@@ -223,7 +223,7 @@ with `wc -l` rather than by hand; a stale table is how this one drifted from
 | Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
 | Tests | 199 passing, 0 failing, 0 ignored (`cargo test --workspace`); 4 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
 | License | MIT (see [LICENSE](LICENSE)) |
-| Releases | None published yet |
+| Releases | Two GitHub Releases exist — [`v0.6.1`](https://github.com/drsamonline/NEO/releases/tag/v0.6.1) and [`v0.6.0`](https://github.com/drsamonline/NEO/releases/tag/v0.6.0) — both tagged on the same commit and **both carrying no assets**. `release.yml` is verified by a dry run (three platform archives, checksums, packaged-compiler smoke test) and has not yet produced a real one. See [`DEV_PLAN.md`](DEV_PLAN.md) Stage 6 |
 
 ### Suggested GitHub topics
 

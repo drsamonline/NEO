@@ -291,12 +291,30 @@ represented.
 
 ### Stage 6 — Release and distribution (in progress)
 
-The hand-written workflow is real but has **never executed** — it is tag-triggered, and
-no tag has been pushed. "It works" is currently an assumption.
+The hand-written workflow is **verified by a dry run**, not by assumption. It had
+never executed when this line was first written; it has now.
+
+**And looking for the first time found two things the repository was wrong about.**
+Two GitHub Releases already existed — `v0.6.0` and `v0.6.1`, published 2026-11-11 —
+and `README.md` said "Releases: None published yet". Both releases carry **no assets**,
+and both tags point at the **same commit** 73 behind `master`, so they are one snapshot
+published twice with nothing to download. The README and `COMPATIBILITY.md` now say
+that instead.
 
 - ✅ `workflow_dispatch` runs it as a **dry run**: verify, build all three platforms,
   package, smoke-test the packaged compiler, print the checksums, stop. No draft, no
   upload, no publication. `docs/tooling.md` → "Cutting a release" has the procedure.
+- ✅ **The dry run passed, on 2026-11-18.** All three platforms built and packaged:
+
+  | Archive | Size | SHA-256 |
+  |---|---|---|
+  | `nova-v0.6.1-x86_64-linux.tar.gz` | 3.8 MB | `72af6e95…d833a2` |
+  | `nova-v0.6.1-arm64-macos.tar.gz` | 3.5 MB | `3597ae67…39f76f` |
+  | `nova-v0.6.1-x86_64-windows.zip` | 3.1 MB | `27e07613…c10d48e` |
+
+  Each was smoke-tested by running the *packaged* compiler on `hello world` and
+  checking the emitted C contained the string. `publish` was correctly skipped, and
+  `gh api …/releases` confirmed nothing was created.
 - ✅ The verify step's logic is checked locally: `v0.6.1` passes against
   `Cargo.toml`/`VERSION`, `v0.7.0` fails. That is the gate that stops the four-version
   defect from shipping.
