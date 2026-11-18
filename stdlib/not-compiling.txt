@@ -2,11 +2,10 @@
 #
 # One module per line, the name first, then why. `ci.yml` fails if a module outside
 # this list does not compile, and also if a module inside it starts compiling — so
-# the list can only shrink. `core` and `math` are not listed, so they must keep
+# the list can only shrink. `core`, `io` and `math` are not listed, so they must keep
 # compiling.
 #
 # Every reason below was read from C that `nova-compiler emit` actually produced and
 # `cc` actually rejected, not inferred from the NOVA source.
 #
-io   Two defects left, both about a `match` used as a value. (1) `let level_str = match level { ... }` declares `int level_str` while the arms yield strings — "initialization of 'int' from 'char *'". The chain's result type is not inferred, so the binding falls back to `int`. (2) io.c:788: "request for member 'tag' in something not a structure or union" — a tag test emitted against a scrutinee that is a plain ordinal, not a tagged struct.
-text The same two, reached through `use io;`.
+text `join(strings: [String], separator: String)` needs an array of strings, and `NovaArray` holds `int` elements: `int *data`. text.c:932 passes an `int` where `nova_fn_strcat` wants `char *`. That is a runtime-representation gap, not a lowering bug — arrays of non-`int` do not exist yet.

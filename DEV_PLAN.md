@@ -456,13 +456,15 @@ downloaded here, compiled a program that `use math;` and printed `4 3 3 1024` wi
   nowhere correct for a borrow to go. `&` and `*` are expression constructors; the
   function is deleted. `expr_type_raw` also had no arm for a borrow, which is why an
   explicit `&mut file` was wrapped twice.
-- **A `match` used as a value does not infer its result type.** `let level_str = match
-  level { ... }` declares `int` while the arms yield strings, so `stdlib/io` emits
-  `initialization of 'int' from 'char *'`. `lower_match_chain` builds nested ternaries
-  and reports no type for the chain.
-- **A tag test is emitted against a plain ordinal.** `stdlib/io` reaches
-  `request for member 'tag' in something not a structure or union` — the `match` chain's
-  variant test assumes a tagged struct, and a payload-free enum is an `int`.
+- ~~A `match` used as a value does not infer its result type.~~ **Fixed**: the chain
+  takes its type from its arms.
+- ~~A tag test is emitted against a plain ordinal.~~ **Fixed**: `enum_payloads` has an
+  entry for every declared enum, empty when nothing carries data, so `contains_key` was
+  true for a payload-free enum. The test is now "has at least one payload".
+- **Arrays hold `int` only.** `NovaArray` is `{ int *data; len; cap; }`, so `[String]`
+  cannot work — `stdlib/text`'s `join(strings: [String], ...)` passes an `int` where a
+  `char *` is wanted. This is the last thing stopping `stdlib/text`, and it is a
+  representation decision rather than a bug.
 - `__builtin_*` OS and collection builtins resolve but trap through
   `nova_unsupported`.
 - `--release` selects an output directory; the compiler has no optimisation levels.
