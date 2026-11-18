@@ -946,6 +946,8 @@ pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
         | "__builtin_rename_file" | "__builtin_copy_file" | "__builtin_remove_file"
         | "__builtin_delete_file" | "__builtin_mkdir" | "__builtin_rmdir" => Type::Bool,
         "__builtin_file_size" | "__builtin_now" => Type::Int,
+        "__builtin_getenv" | "__builtin_cwd" | "__builtin_getcwd" => Type::String,
+        "__builtin_chdir" => Type::Bool,
         "__builtin_sleep" => Type::Unit,
         _ => return None,
     })

@@ -969,6 +969,11 @@ impl Lowerer {
             }
             "__builtin_mkdir" => Some(typed("nova_mkdir", lowered(self), "bool")),
             "__builtin_rmdir" => Some(typed("nova_rmdir", lowered(self), "bool")),
+            "__builtin_getenv" => Some(typed("nova_getenv", lowered(self), "string")),
+            "__builtin_cwd" | "__builtin_getcwd" => {
+                Some(typed("nova_cwd", vec![], "string"))
+            }
+            "__builtin_chdir" => Some(typed("nova_chdir", lowered(self), "bool")),
             "__builtin_now" => Some(typed("nova_now_ms", vec![], "int")),
             "__builtin_sleep" => Some(typed("nova_sleep_ms", lowered(self), "void")),
             "__builtin_array_len" => Some(typed(

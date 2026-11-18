@@ -89,6 +89,10 @@ void nova_fail(const char *message);
 void nova_panic(const char *message);
 void nova_exit(long long code);
 long long nova_unsupported(const char *name);
+const char *nova_getenv(const char *name);
+const char *nova_cwd(void);
+int nova_chdir(const char *path);
+
 
 /* Files and the clock. `nova_file_exists` and friends answer from `stat`, so a path
  * that does not exist is `false` rather than a runtime error. `nova_now_ms` is
@@ -492,6 +496,33 @@ void nova_sleep_ms(long long milliseconds) {
     pause.tv_sec = (time_t)(milliseconds / 1000);
     pause.tv_nsec = (long)((milliseconds % 1000) * 1000000);
     nanosleep(&pause, NULL);
+#endif
+}
+
+
+const char *nova_getenv(const char *name) {
+    if (name == NULL) return "";
+    const char *value = getenv(name);
+    return value == NULL ? "" : value;
+}
+
+const char *nova_cwd(void) {
+    /* Static storage, so the caller owns nothing and the result cannot dangle. */
+    static char directory[4096];
+#ifdef _WIN32
+    if (_getcwd(directory, sizeof directory) == NULL) return "";
+#else
+    if (getcwd(directory, sizeof directory) == NULL) return "";
+#endif
+    return directory;
+}
+
+int nova_chdir(const char *path) {
+    if (path == NULL) return 0;
+#ifdef _WIN32
+    return _chdir(path) == 0;
+#else
+    return chdir(path) == 0;
 #endif
 }
 

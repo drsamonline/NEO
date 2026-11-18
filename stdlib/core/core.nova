@@ -409,7 +409,13 @@ fn exit(code: int) -> ! {
 }
 
 /// Environment variable access
-fn getenv(name: String) -> Option<String> {
+///
+/// Returns the empty string when the variable is not set. It used to return
+/// `Option<String>` while the builtin returned a plain string, which the analyser
+/// rejected the moment the builtin gained a type — and `Option` would have conflated
+/// "unset" with "set to empty" anyway, because `getenv` distinguishes them with a null
+/// pointer that a `string` cannot carry.
+fn getenv(name: String) -> String {
     __builtin_getenv(name)
 }
 
