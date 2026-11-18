@@ -39,11 +39,18 @@ That is the promise a formatter can keep. "Not one byte changes" cannot be true,
 because removing trailing whitespace changes bytes; "not one token changes" can be
 true, and is what matters: the program is the same program.
 
-It does **not** re-indent or reflow anything inside a body. Indentation comes out as
-it went in. That is not laziness: the item tree records where a body starts and ends
-without looking inside it, so the formatter has no opinion about the inside and
-cannot be wrong about it. A formatter that rewrites bodies needs a lossless tree
-over every expression, which is the next stage — `docs/adr/0001` has the reasoning.
+It **does** re-indent every line of code to its bracket depth, four spaces per
+level, from the token stream — so it needs no parse and cannot disagree with the
+parser about anything.
+
+It does **not** break a long line, align arguments or reflow an expression. Those need
+to know what the expression *means*, which needs a lossless tree over every
+expression — `docs/adr/0001` has the reasoning.
+
+Two things it leaves exactly as they are: a line inside a string literal, where the
+leading spaces are content, and a comment-only line, so an indented example inside a
+doc comment survives. The cost of the second is that a misplaced comment keeps its
+own indentation.
 
 Because it never parses, it is total: it works on a file that is half-typed, which
 is when you most want to run it. `compiler/tests/format.rs` checks against every

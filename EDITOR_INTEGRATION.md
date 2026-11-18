@@ -50,7 +50,8 @@ host, and its structure is a reasonable starting point for a tree-sitter grammar
 
 - **No format-on-save integration.** `nova-compiler fmt` exists and is safe to run
   on any file — it never parses, so it works on half-typed code, and it changes no
-  token — but it only normalises whitespace and never re-indents a body. Wiring it to
+  token. It re-indents to bracket depth and normalises the space between items, but
+  it will not break a long line or reflow an expression. Wiring it to
   a save hook is a one-line task for whoever wants it; the CLI is
   `nova-compiler fmt <file>` and `--check` reports without writing.
 - No rename, for the same reason navigation is not a resolver.
