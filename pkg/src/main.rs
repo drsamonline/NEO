@@ -4,6 +4,7 @@
 //! and registry interactions for the NOVA ecosystem.
 
 mod commands;
+mod deps;
 mod manifest;
 mod resolver;
 mod registry;

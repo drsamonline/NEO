@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 const USAGE: &str = "\
 NOVA compiler
@@ -32,6 +33,8 @@ USAGE:
 
 OPTIONS:
     -o, --output <path>   output path (default: the source file's stem)
+        --module-root <dir>  also search <dir> for `use`d modules; repeatable.
+                          `nova-pkg` passes one per dependency.
         --target <name>   backend to emit: c (default), js, rust, or wasm
         --error-format <f>  human (default) or json — one JSON object per
                             diagnostic on stdout, nothing on stderr
@@ -181,6 +184,18 @@ static JSON_DIAGNOSTICS: AtomicBool = AtomicBool::new(false);
 
 /// Set by `fmt --check`: report whether the file is formatted, and change nothing.
 static CHECK_ONLY: AtomicBool = AtomicBool::new(false);
+
+/// Set by `--module-root`, repeatable. A dependency's source root arrives this way:
+/// `nova-pkg` reads `nova.toml` and passes one flag per dependency, so the compiler
+/// never reads a manifest and never fetches anything.
+static MODULE_ROOTS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+fn module_roots() -> Vec<PathBuf> {
+    MODULE_ROOTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
 
 fn json_diagnostics() -> bool {
     JSON_DIAGNOSTICS.load(Ordering::SeqCst)
@@ -364,6 +379,16 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Target, Vec<String>
                 }
             }
             "--check" => CHECK_ONLY.store(true, Ordering::SeqCst),
+            "--module-root" => {
+                i += 1;
+                match args.get(i) {
+                    Some(path) => MODULE_ROOTS
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .push(PathBuf::from(path)),
+                    None => die("`--module-root` needs a directory"),
+                }
+            }
             "--" => {
                 rest.extend(args[i + 1..].iter().cloned());
                 break;
@@ -439,7 +464,7 @@ fn compile_to(input: &Path, target: Target) -> String {
     };
 
     // `use name;` pulls the module's declarations into this program.
-    let program = match nova_compiler::modules::load_modules(program, input) {
+    let program = match nova_compiler::modules::load_modules(program, input, &module_roots()) {
         Ok(program) => program,
         Err(message) => die(&message),
     };

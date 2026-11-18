@@ -272,8 +272,17 @@ pub fn build(release: bool, no_incremental: bool) -> Result<(), CommandError> {
     
     println!("Building {} v{}...", manifest.package.name, manifest.package.version);
     
-    // First resolve dependencies
-    resolve_dependencies()?;
+    // Resolve dependencies to directories the compiler can search. A version-only
+    // dependency fails here with a message naming the registry as unimplemented,
+    // rather than being recorded and quietly ignored.
+    let dependencies = crate::deps::resolve(&manifest, &cwd)?;
+    if !dependencies.is_empty() {
+        let list: Vec<String> = dependencies
+            .iter()
+            .map(|dependency| format!("{} ({})", dependency.name, dependency.source))
+            .collect();
+        println!("  dependencies: {}", list.join(", "));
+    }
 
     if no_incremental {
         println!("note: the NOVA compiler has no incremental mode; every build is a full build");
@@ -298,6 +307,9 @@ pub fn build(release: bool, no_incremental: bool) -> Result<(), CommandError> {
     let library = is_library(&manifest);
     let compiler = compiler_command();
     let mut cmd = std::process::Command::new(&compiler);
+    for dependency in &dependencies {
+        cmd.arg("--module-root").arg(&dependency.root);
+    }
     if library {
         // No separate compilation yet: a library is emitted as C, not linked.
         cmd.arg("emit")

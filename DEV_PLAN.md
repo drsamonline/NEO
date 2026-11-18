@@ -38,7 +38,7 @@ the code and a CI run, and the run is named where it matters.
 | JS / Rust / WASM backends | ⚠️ exercised subset; C is the reference | `tests/parity/` in CI |
 | Runtime crate | ✅ compiles and tests; **not linked to generated C** | 33 runtime tests |
 | Standard library | ⚠️ 4 modules, thin | `stdlib_parse.rs` |
-| Package manager | ⚠️ `init`/`build`/`run` real; **registry mocked, deps not built** | `pkg` tests |
+| Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry mocked; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ REPL/breakpoints real; stack frames and DWARF mocked | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
@@ -278,9 +278,16 @@ represented.
   is derived from `crates/nova-common/src/token.rs`, and a language configuration.
   `tsc` and `vsce package` run in CI, and `tools/extension-check.py` fails if the
   grammar stops describing the compiler's keywords.
-- **Package manager**: replace the mock registry with git and path dependencies
-  plus a lockfile. A real registry is a product decision, not a compiler feature;
-  git dependencies are a week and remove the "mocked" asterisk entirely.
+- **Package manager**: replace the mock registry with git and path dependencies.
+  ✅ `pkg/src/deps.rs` resolves each dependency to a directory and passes
+  `--module-root` to the compiler, so `use utils;` finds a dependency's source. A
+  git dependency is cloned into `.nova/deps/<name>` and checked out at
+  `rev`/`tag`/`branch`; a version-only one fails with a message naming the registry
+  as unimplemented. The compiler still reads no manifest and fetches nothing.
+
+  **Not done:** a lockfile, and a transitive graph. Both are named in
+  `PACKAGE_ARCHITECTURE.md` rather than implied — two machines can currently resolve
+  the same `nova.toml` to different revisions.
 
 ### Stage 6 — Release and distribution (2 days)
 
