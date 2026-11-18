@@ -1,0 +1,19 @@
+// A mutable global, read and written across calls.
+//
+// The Rust backend emitted `static mut` but read and wrote it without `unsafe`,
+// so any program with a global produced Rust that does not compile — and nothing
+// in the corpus had a global, so nothing noticed. This program is that gap.
+
+static counter: int = 0;
+
+fn bump() -> int {
+    counter = counter + 1;
+    return counter;
+}
+
+fn main() -> int {
+    bump();
+    bump();
+    print(counter);
+    return 0;
+}

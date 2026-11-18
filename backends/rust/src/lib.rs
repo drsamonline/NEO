@@ -20,6 +20,9 @@ pub struct RustBackend {
     /// Declared return type of the function being written, used when a
     /// unit-valued builtin is returned from an `int`-inferred closure.
     current_return_type: String,
+    /// Names emitted as `static mut`, so every read and write can be wrapped in
+    /// `unsafe`. See `generate_global`.
+    globals: std::collections::HashSet<String>,
 }
 
 impl RustBackend {
@@ -30,6 +33,7 @@ impl RustBackend {
             signatures: std::collections::HashMap::new(),
             structs: std::collections::HashMap::new(),
             current_return_type: "void".to_string(),
+            globals: std::collections::HashSet::new(),
         }
     }
 
@@ -95,7 +99,11 @@ impl RustBackend {
             self.writeln("");
         }
 
-        // Generate globals as static mut (not ideal but works for simple cases)
+        // Generate globals as `static mut`, and remember which names they are so
+        // every access can be wrapped in `unsafe`. NOVA has no threads, so a
+        // single-threaded mutable global is what the C backend emits too; the
+        // difference is that Rust makes you say so. See `generate_global`.
+        self.globals = program.globals.iter().map(|g| g.name.clone()).collect();
         for global in &program.globals {
             self.generate_global(global);
         }
@@ -141,6 +149,15 @@ impl RustBackend {
         self.output.clone()
     }
 
+    /// A global as `static mut`.
+    ///
+    /// `static mut` rather than an atomic or a `thread_local!`: NOVA has no threads,
+    /// the C backend emits a plain mutable global for the same source, and every
+    /// read and write is wrapped in `unsafe` at the point it is emitted — so the
+    /// generated program compiles and says out loud that it is doing something the
+    /// Rust memory model does not check. An atomic would not work for a `string`
+    /// global; a `RefCell` in a `thread_local!` would, and is the better answer when
+    /// NOVA has a memory model to express.
     fn generate_global(&mut self, global: &SirGlobal) {
         let rust_type = self.rust_type(&global.typ);
         if let Some(init_expr) = &global.init_value {
@@ -374,6 +391,9 @@ impl RustBackend {
                     SirLiteral::Unit => "()".to_string(),
                 }
             }
+            // A global is `static mut`, and touching one without `unsafe` does not
+            // compile — the generated program failed on every global before this.
+            SirExpr::Var(name) if self.globals.contains(name) => format!("unsafe {{ {name} }}"),
             SirExpr::Var(name) => name.clone(),
             SirExpr::BinOp { left, op, right } => {
                 let left_str = self.expr_to_rust(left);
@@ -491,7 +511,12 @@ impl RustBackend {
                 block_code
             }
             SirExpr::Assign { target, value } => {
-                format!("{} = {}", target, self.expr_to_rust(value))
+                let value = self.expr_to_rust(value);
+                if self.globals.contains(target) {
+                    format!("unsafe {{ {target} = {value} }}")
+                } else {
+                    format!("{target} = {value}")
+                }
             }
             SirExpr::FieldAssign { object, field, value, .. } => {
                 format!(
