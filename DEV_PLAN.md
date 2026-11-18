@@ -221,13 +221,13 @@ deferral cannot be expanded correctly later.
   deferred body ranges. No parsing inside a body.
 - ✅ The outline in the language server is its first consumer, and an `impl`'s
   methods appear only by expanding its body.
-- ✅ `nova fmt`, item by item: `compiler/src/fmt.rs` normalises the space between
-  items — one blank line, no trailing whitespace, one final newline — and changes
-  **no byte inside an item**. It never parses, so it is total: it works on
-  half-typed code. `compiler/tests/format.rs` checks against every shipped program
-  that no item is altered, no comment is lost and formatting twice changes nothing.
-  **What it does not do:** indent or reflow a body. That needs a lossless tree over
-  every expression, which is the next line.
+- ✅ `nova fmt`: `compiler/src/fmt.rs` normalises whitespace — one blank line between
+  items, no trailing whitespace, one final newline — and **changes no token**. It
+  never parses, so it is total: it works on half-typed code.
+  `compiler/tests/format.rs` checks against every shipped program that the token
+  stream is identical, no comment is lost, the item structure is unchanged and
+  formatting twice changes nothing. **What it does not do:** re-indent or reflow a
+  body. That needs a lossless tree over every expression, which is the next line.
 - ⬜ A guard that the item tree and the parser agree about what an item is, the way
   `grammar-check.py` guards the grammar against the parser.
 - ⬜ Settle `trait`: `token.rs` has no `Trait` keyword, so `trait` lexes as an

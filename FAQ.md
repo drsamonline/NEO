@@ -31,19 +31,24 @@ nova-compiler fmt file.nova -o out   # or write elsewhere
 nova-compiler fmt file.nova --check  # exit 1 if it is not formatted
 ```
 
-It normalises the space **between** items — one blank line between top-level items,
-no trailing whitespace, one newline at end of file — and changes **no byte inside an
-item**. Indentation and internal spacing come out exactly as they went in.
+It normalises whitespace — one blank line between top-level items, no trailing
+whitespace, one newline at end of file — and **changes no token**. The output lexes
+to exactly the same tokens, with the same text, as the input.
 
-That is not laziness. The item tree records where a body starts and ends without
-looking inside it, so the formatter has no opinion about the inside and cannot be
-wrong about it. A formatter that rewrote bodies needs a lossless tree over every
-expression, which is the next stage — `docs/adr/0001` records the reasoning.
+That is the promise a formatter can keep. "Not one byte changes" cannot be true,
+because removing trailing whitespace changes bytes; "not one token changes" can be
+true, and is what matters: the program is the same program.
+
+It does **not** re-indent or reflow anything inside a body. Indentation comes out as
+it went in. That is not laziness: the item tree records where a body starts and ends
+without looking inside it, so the formatter has no opinion about the inside and
+cannot be wrong about it. A formatter that rewrites bodies needs a lossless tree
+over every expression, which is the next stage — `docs/adr/0001` has the reasoning.
 
 Because it never parses, it is total: it works on a file that is half-typed, which
 is when you most want to run it. `compiler/tests/format.rs` checks against every
-shipped program that no item is altered, no comment is lost, the item structure is
-unchanged, and formatting twice changes nothing.
+shipped program that the token stream is identical, no comment is lost, the item
+structure is unchanged, and formatting twice changes nothing.
 
 ### Why do two identifiers with the same name resolve to each other?
 

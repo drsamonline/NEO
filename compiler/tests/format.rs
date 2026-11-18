@@ -1,8 +1,9 @@
 //! The formatter's promise, checked against every program this repository ships.
 //!
-//! `nova fmt` says it changes the space between items and nothing else. That is a
-//! strong claim and it is checkable: every item of the input must appear verbatim
-//! in the output, and formatting the output again must change nothing.
+//! `nova fmt` says it changes whitespace and never a token. That is checkable, and
+//! it is the right claim: "the bytes are identical" cannot be true of a formatter
+//! whose job includes removing trailing whitespace, but "the tokens are identical"
+//! can.
 //!
 //! Note what is *not* asserted: that the repository is formatted. Requiring that
 //! would mean committing a large reformat, and the claim worth testing is that the
@@ -10,6 +11,7 @@
 
 use nova_compiler::fmt::format;
 use nova_compiler::syntax::ItemTree;
+use nova_compiler::Lexer;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -47,16 +49,14 @@ fn nova_files() -> Vec<PathBuf> {
     out
 }
 
-fn item_texts(source: &str) -> Vec<String> {
-    let chars: Vec<char> = source.chars().collect();
-    ItemTree::parse(source)
-        .items()
+/// Every token's kind and text, in order. Spans are deliberately excluded: blank
+/// lines move, so positions change and positions are not the promise.
+fn tokens(source: &str) -> Vec<(String, String)> {
+    let mut lexer = Lexer::new(source);
+    let (tokens, _diagnostics) = lexer.tokenize();
+    tokens
         .iter()
-        .map(|item| {
-            let start = item.span.start.offset.min(chars.len());
-            let end = item.span.end.offset.min(chars.len());
-            chars[start..end].iter().collect()
-        })
+        .map(|token| (format!("{:?}", token.kind), token.lexeme.clone()))
         .collect()
 }
 
@@ -71,16 +71,20 @@ fn there_is_something_to_check() {
 }
 
 #[test]
-fn every_item_survives_formatting_byte_identical() {
+fn formatting_changes_no_token() {
     for path in nova_files() {
         let source = fs::read_to_string(&path).expect("read");
         let formatted = format(&source);
-        for item in item_texts(&source) {
-            assert!(
-                formatted.contains(&item),
-                "{}: formatting altered an item\n--- item ---\n{item}",
-                path.display()
-            );
+        let before = tokens(&source);
+        let after = tokens(&formatted);
+        assert_eq!(
+            before.len(),
+            after.len(),
+            "{}: the token count changed",
+            path.display()
+        );
+        for (index, (a, b)) in before.iter().zip(after.iter()).enumerate() {
+            assert_eq!(a, b, "{}: token {index} changed", path.display());
         }
     }
 }
