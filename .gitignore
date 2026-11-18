@@ -8,3 +8,7 @@ benches/build/
 # hole.
 vscode-extension/node_modules/
 vscode-extension/out/
+
+# Fetched dependencies and the older registry metadata cache.
+.nova/
+nova_modules/
