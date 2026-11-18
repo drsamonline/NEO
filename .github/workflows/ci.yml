@@ -68,10 +68,17 @@ jobs:
             echo "running $example"
             ./target/debug/nova-compiler run "$example" > /dev/null
           done < <(find examples -name '*.nova' | sort)
-      - name: Every standard-library module emits C
+      - name: Every standard-library module emits C, and the C compiles
         run: |
+          # Compiling is the point. Emitting alone let `math` ship a module whose
+          # C could not be compiled at all — integer tuples where float ones were
+          # declared, and `%` applied to two doubles — for as long as the step only
+          # wrote the file out.
           for module in stdlib/*/*.nova; do
-            ./target/debug/nova-compiler emit "$module" -o "/tmp/$(basename "$module" .nova).c"
+            name="$(basename "$module" .nova)"
+            ./target/debug/nova-compiler emit "$module" -o "/tmp/$name.c"
+            cc -std=c11 -c "/tmp/$name.c" -o "/tmp/$name.o"
+            echo "compiled $name"
           done
       - name: Generated JavaScript runs
         run: |

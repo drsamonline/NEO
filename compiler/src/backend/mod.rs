@@ -577,6 +577,17 @@ impl CBackend {
                     SirBinOp::Or => "||",
                     SirBinOp::Range => "..",  // Range operator (shouldn't appear in final C code)
                 };
+                // `%` is defined for integers only. On floats the C is `fmod`, and
+                // which one applies is decided the same way the print functions are.
+                if matches!(op, SirBinOp::Mod)
+                    && (self.print_kind(left) == "float" || self.print_kind(right) == "float")
+                {
+                    return format!(
+                        "fmod({}, {})",
+                        self.expr_to_c(left),
+                        self.expr_to_c(right)
+                    );
+                }
                 format!("({} {} {})", self.expr_to_c(left), op_str, self.expr_to_c(right))
             }
             SirExpr::UnaryOp { op, operand } => {
