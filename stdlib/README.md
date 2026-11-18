@@ -1,16 +1,65 @@
-# Standard Library
+# The NOVA standard library
 
-The standard library is written in NOVA under `stdlib/`:
+Four modules, 250 functions. **167 of them can run; 83 cannot**, and this page is the
+only place that says which.
 
-- `core/core.nova` — math and collection helpers (`factorial`, `fibonacci`,
-  `sign`, `clamp`, `gcd`, `compose`, array helpers).
-- `io/io.nova` — input/output helpers.
-- `text/text.nova` — string helpers such as `join`, `split`, `substr` and word
-  capitalisation.
-- `math/math.nova` — numeric helpers.
+| Module | What it is |
+|---|---|
+| [`core`](core/README.md) | printing, arrays, strings, maths helpers, `Range`, the builtin wrappers |
+| [`io`](io/README.md) | files, streams, paths, terminal |
+| [`math`](math/README.md) | trigonometry, rounding, powers, roots |
+| [`text`](text/README.md) | splitting, joining, trimming, case, search |
 
-All four modules lex and parse in `compiler/tests/stdlib_parse.rs`, and all four
-emit C in CI. `use core;` resolves beside the importing source or through
-`stdlib/<name>/<name>.nova` in an ancestor directory. The exercised subset is
-covered by end-to-end tests (for example `compose` with closures); not every
-helper is executed on every backend.
+## What actually works
+
+<!-- stdlib-check:begin -->
+| Module | Functions | Usable | Blocked |
+|---|---|---|---|
+| `core` | 55 | 49 | 6 |
+| `io` | 60 | 16 | 44 |
+| `math` | 76 | 48 | 28 |
+| `text` | 59 | 54 | 5 |
+| **total** | **250** | **167** | **83** |
+<!-- stdlib-check:end -->
+
+The compiler knows **fourteen** `__builtin_*` functions. A stdlib function whose body
+calls any other name is a function the compiler cannot lower — it is scaffolding,
+written against builtins that were planned and not implemented.
+
+**"Usable" is the strongest claim available here, and it is a weak one.** It means the
+function calls no builtin the compiler does not implement. It does **not** mean the
+function is correct: the stdlib has no tests, which is a separate and larger gap. A
+function that is usable has been read, not run.
+
+`io` is the worst case: 44 of its 60 functions call builtins that do not exist
+(`__builtin_fopen`, `__builtin_fread_line`, `__builtin_stat`, `__builtin_mkdir` and
+the rest), so most of the module cannot be called at all. `text` and `core` are
+largely pure NOVA, which is why they fare better.
+
+## Keeping this true
+
+`tools/stdlib-check.py` derives the table from the source — it reads the builtin names
+out of `compiler/src/sema` and `compiler/src/lowerer`, then walks every function body —
+and fails the build if this page disagrees with it.
+
+```bash
+python3 tools/stdlib-check.py            # compare
+python3 tools/stdlib-check.py --print    # regenerate the table above
+```
+
+So a new stdlib function that needs a missing builtin cannot quietly join the
+"usable" column, and implementing a builtin shows up as a number moving.
+
+## Why the scaffolding is here at all
+
+Because the modules document intent: `io` says what file handling should look like,
+`math` says what the numeric surface should be. That is worth having while the
+language is being built. It is not worth *claiming* — which is why this page exists,
+why each module's own README says what it is, and why `DEV_PLAN.md` → "Known
+limitations" carries the same fact.
+
+## What is missing entirely
+
+No tests. There is no per-function test anywhere in `stdlib/`, and no CI job that
+calls a stdlib function other than the ones `examples/` and `tests/parity/` happen to
+use. That is the next real piece of work here, and it needs the builtins first.
