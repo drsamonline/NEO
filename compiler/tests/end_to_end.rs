@@ -207,6 +207,45 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
 /// The backend now emits a NOVA function whose name belongs to the C library as
 /// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
 /// of the defect and is now the guard against it returning.
+/// Does a `[float]` array survive being passed to `sum_float`?
+///
+/// **No. This test is ignored because it demonstrates a real defect, and it is kept so
+/// the defect is runnable rather than remembered.** Run it with
+/// `cargo test --test end_to_end -- --ignored a_float_array_sum`.
+///
+/// `NovaArray` holds `int` elements and `nova_array_get` returns `int`, so a float array
+/// is a promise the runtime cannot keep: `sum_float([1.5, 2.5])` returns **3**, not 4 —
+/// the literals were truncated to `1` and `2` before anything summed them.
+///
+/// `stdlib/math` therefore compiles, passes every gate, and computes the wrong answer
+/// for `mean`, `variance`, `stddev` and `median`. It un-ignores when
+/// [ADR 0006](../../docs/adr/0006-array-element-types.md) is implemented.
+#[test]
+#[ignore = "demonstrates that a [float] array is truncated to int — ADR 0006"]
+fn a_float_array_sum_is_not_truncated() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "float_array",
+        "\
+use math;
+
+fn main() -> int {
+    print(sum_float([1.5, 2.5]));
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "4",
+        "1.5 + 2.5 must be 4; `NovaArray` holds `int`, so a `[float]` array is \
+         truncated on the way in — see ADR 0006"
+    );
+}
+
 #[test]
 fn every_math_call_works() {
     if !c_compiler_available() {
