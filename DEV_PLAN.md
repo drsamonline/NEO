@@ -420,7 +420,22 @@ plan should borrow rather than invent.
   rather than a design: a `RefCell` in a `thread_local!` would be sound, and needs a
   memory model NOVA does not have yet.
 - The package registry is mocked.
-- **A program that imports `math` and calls more than `sqrt` segfaults.** The module
+- **Four `math` calls segfault, and the emitted C says why.** `floor`, `ceil`, `round`
+  and `powf` are **definitions of libm symbols** — the program emits
+  `int floor(double x) { return (int)nova_math_floor(x); }`, and `nova_math_floor` in
+  the runtime translation unit calls `floor`, which the linker resolves back to the
+  program's own. Unbounded recursion.
+
+  `sqrt` and `cbrt` are also libm names and do **not** crash, so the collision alone
+  does not explain the split; that is the open question. The fix is to stop emitting
+  NOVA functions under names the C library owns — a prefix on every emitted function
+  name, which touches definitions, declarations, call sites and closure references, so
+  it wants a compiler to check it rather than a guess.
+
+  `compiler/tests/end_to_end.rs` characterises the current split: three work, four
+  crash. Fixing the collision makes that test fail, which is how the fix gets recorded.
+
+- ~~**A program that imports `math` and calls more than `sqrt` segfaults.**~~ — see above. The module
   compiles now (it no longer redeclares `core`'s `PI`/`E`/`PHI`), and
   `use math; print(sqrt(16.0));` builds and prints `4`. A version that also called
   `floor`, `ceil`, `round`, `powf`, `cbrt` and compared `PI > 3.14` built and then
