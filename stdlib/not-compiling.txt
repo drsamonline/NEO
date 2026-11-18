@@ -7,5 +7,4 @@
 # Every reason below is quoted from a compiler's output, not inferred from the source.
 #
 io   io.c:169: initializer element is not constant — a global initialised with a call. io.c:478: incompatible types when initializing type 'int' using type 'File'; io.c:486: request for member 'handle' in something not a structure. The module's File struct is used where an int is declared.
-math math.c:149-151: redefinition of 'PI', 'E' and 'PHI' — math.nova declares the same three constants core.nova does, and `use core;` merges both.
 text text.c:231: initializer element is not constant. text.c:540-559: the same File confusion as io, reached through `use io;`.
