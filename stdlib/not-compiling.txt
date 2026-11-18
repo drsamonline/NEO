@@ -2,9 +2,10 @@
 #
 # One module per line, the name first, then why. `ci.yml` fails if a module outside
 # this list does not compile, and also if a module inside it starts compiling — so
-# the list can only shrink. `core` is not listed, so it must keep compiling.
+# the list can only shrink. `core` and `math` are not listed, so they must keep
+# compiling.
 #
 # Every reason below is quoted from a compiler's output, not inferred from the source.
 #
-io   io.c:478: incompatible types when initializing type 'int' using type 'File'; io.c:486: request for member 'handle' in something not a structure. `fn fclose(file: &mut File)` declares a reference to a struct, and references are lowered only for array parameters — the parameter arrives as an `int`, so the `File` argument does not fit and every `file.handle` is a member access on an int.
-text text.c:540-559: the same 'File' reference defect as io, reached through `use io;`.
+io   io.c:169: initializer element is not constant. io.c:478: incompatible types when initializing type 'int' using type 'File' — a `&mut File` parameter still arrives as an int even though `c_type` maps `&Struct` to `Struct*`, so the signature path is not the one that produces it. io.c:491-503: 'file' undeclared, a consequence of the same. io.c:599: redefinition of 'chdir'. io.c:739: initialization of 'int' from 'char *' makes integer from pointer without a cast.
+text text.c:540-559: the same 'File' reference defects as io, reached through `use io;`.
