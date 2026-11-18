@@ -193,6 +193,34 @@ impl Lowerer {
                     .collect();
                 Some(format!("({})", types.join(", ")))
             }
+            // Without this arm a binary expression has no type at all, so every
+            // element of a tuple built from one fell back to `int`. That is why
+            // `stdlib/math`'s `normalize2` emitted a `NovaTuple_int_int` where a
+            // `NovaTuple_float_float` was declared.
+            Expr::Binary(left, op, right) => {
+                if matches!(
+                    op,
+                    AstBinOp::Eq
+                        | AstBinOp::Ne
+                        | AstBinOp::Lt
+                        | AstBinOp::Le
+                        | AstBinOp::Gt
+                        | AstBinOp::Ge
+                        | AstBinOp::And
+                        | AstBinOp::Or
+                ) {
+                    return Some("bool".to_string());
+                }
+                let left_type = self.expr_type(left);
+                let right_type = self.expr_type(right);
+                // The same rule the C backend uses to pick a print function: if
+                // either side is a float, the result is.
+                if left_type.as_deref() == Some("float") || right_type.as_deref() == Some("float") {
+                    Some("float".to_string())
+                } else {
+                    left_type.or(right_type)
+                }
+            }
             Expr::Array(_) => Some("Array".to_string()),
             // A block expression's type is the type of its trailing expression.
             Expr::Block(block) => block

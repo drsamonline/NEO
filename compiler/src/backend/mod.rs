@@ -292,6 +292,24 @@ impl CBackend {
         }
     }
 
+    /// A character literal as C source.
+    ///
+    /// Printable ASCII goes in single quotes with the specials escaped; anything
+    /// else becomes a numeric cast, because a multi-byte character inside a C
+    /// character constant is not portable and usually not what was meant.
+    fn escape_c_char(c: char) -> String {
+        match c {
+            '\'' => "'\\''".to_string(),
+            '\\' => "'\\\\'".to_string(),
+            '\n' => "'\\n'".to_string(),
+            '\r' => "'\\r'".to_string(),
+            '\t' => "'\\t'".to_string(),
+            '\0' => "'\\0'".to_string(),
+            c if (' '..='~').contains(&c) => format!("'{c}'"),
+            c => format!("(char){}", c as u32),
+        }
+    }
+
     /// Escape a NOVA string for a C string literal, including control characters.
     fn escape_c_string(value: &str) -> String {
         let mut escaped = String::with_capacity(value.len());
@@ -556,7 +574,11 @@ impl CBackend {
                 SirLiteral::Float(f) => format!("{}", f),
                 SirLiteral::Bool(b) => if *b { "1" } else { "0" }.to_string(),
                 SirLiteral::String(s) => format!("\"{}\"", Self::escape_c_string(s)),
-                SirLiteral::Char(c) => format!("'{}'", c),
+                // The old form was a bare quoted placeholder, which is not an
+                // escape. A char literal holding a quote or a backslash produced C
+                // that would not compile: `io.nova` has a quoted-quote literal,
+                // which emitted three quotes in a row and ended it early.
+                SirLiteral::Char(c) => Self::escape_c_char(*c),
                 SirLiteral::Unit => "".to_string(),
             },
             SirExpr::Var(name) => name.clone(),
@@ -577,6 +599,17 @@ impl CBackend {
                     SirBinOp::Or => "||",
                     SirBinOp::Range => "..",  // Range operator (shouldn't appear in final C code)
                 };
+                // `%` is defined for integers only. On floats the C is `fmod`, and
+                // which one applies is decided the same way the print functions are.
+                if matches!(op, SirBinOp::Mod)
+                    && (self.print_kind(left) == "float" || self.print_kind(right) == "float")
+                {
+                    return format!(
+                        "fmod({}, {})",
+                        self.expr_to_c(left),
+                        self.expr_to_c(right)
+                    );
+                }
                 format!("({} {} {})", self.expr_to_c(left), op_str, self.expr_to_c(right))
             }
             SirExpr::UnaryOp { op, operand } => {
@@ -842,5 +875,50 @@ impl CBackend {
             SirExpr::FieldAccess { .. } => "int",
             SirExpr::Block(_, _) => "int",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `'{}'` was the whole of the old escaping, so a char literal holding a quote
+    /// produced three quotes in a row and ended the C literal early.
+    #[test]
+    fn a_char_literal_is_escaped() {
+        assert_eq!(CBackend::escape_c_char('a'), "'a'");
+        assert_eq!(CBackend::escape_c_char('\''), "'\\''");
+        assert_eq!(CBackend::escape_c_char('\\'), "'\\\\'");
+        assert_eq!(CBackend::escape_c_char('\n'), "'\\n'");
+        assert_eq!(CBackend::escape_c_char('\t'), "'\\t'");
+        // Outside printable ASCII a C character constant is not portable, so the
+        // value is written as a cast instead.
+        assert_eq!(CBackend::escape_c_char('क'), "(char)2325");
+    }
+
+    /// `%` is defined for integers only. On floats the C has to be `fmod`, and the
+    /// choice is made the same way the print functions are chosen.
+    #[test]
+    fn modulo_on_floats_emits_fmod() {
+        let float_mod = SirExpr::BinOp {
+            left: Box::new(SirExpr::Typed {
+                expr: Box::new(SirExpr::Literal(SirLiteral::Float(7.5))),
+                typ: "float".to_string(),
+            }),
+            op: SirBinOp::Mod,
+            right: Box::new(SirExpr::Typed {
+                expr: Box::new(SirExpr::Literal(SirLiteral::Float(2.0))),
+                typ: "float".to_string(),
+            }),
+        };
+        let backend = CBackend::new();
+        assert_eq!(backend.expr_to_c(&float_mod), "fmod(7.5, 2)");
+
+        let int_mod = SirExpr::BinOp {
+            left: Box::new(SirExpr::Literal(SirLiteral::Int(7))),
+            op: SirBinOp::Mod,
+            right: Box::new(SirExpr::Literal(SirLiteral::Int(2))),
+        };
+        assert_eq!(backend.expr_to_c(&int_mod), "(7 % 2)");
     }
 }
