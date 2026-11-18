@@ -1,0 +1,6 @@
+exit: 1
+---
+<case>: semantic errors:
+  <case>:9:17: [E0400] `Option<File>` cannot be represented: an `Option` payload is `int`, `float`, `bool`, `char` or `string`
+    help: return the value directly, or use a primitive payload; see docs/adr/0003
+error: semantic analysis failed

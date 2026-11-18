@@ -37,7 +37,7 @@ against each other in CI by `tools/error-code-check.py`.
 |---|---|
 | lexer | none — lexical errors carry a message and a span |
 | parser | none — parse errors carry a message and a span |
-| semantic analysis | **E0002**, **E0061**, **E0308** |
+| semantic analysis | **E0002**, **E0061**, **E0308**, **E0400** |
 | backends | none — an unsupported feature is rejected with a sentence, not a code |
 
 The codes are attached in `compiler/src/sema/mod.rs` with
@@ -48,6 +48,21 @@ rg -o 'E0[0-9]{3}' compiler/src/sema/ | sort -u
 ```
 
 ---
+
+## E0400 — an `Option` payload must be a primitive
+
+`Option<T>` is one C struct with an `int`, a `double` and a `char*` payload slot, so
+`T` can be `int`, `float`, `bool`, `char` or `string` and nothing else. A struct
+payload would need one `Option` per payload type, which the compiler does not emit yet.
+
+```
+error [E0400]: `Option<File>` cannot be represented: an `Option` payload is `int`,
+              `float`, `bool`, `char` or `string`
+```
+
+The rule exists so this is a diagnostic at the source line rather than a C error inside
+generated code. [`adr/0003-option-payload.md`](adr/0003-option-payload.md) has the
+reasoning, including why adding a `void*` slot would be worse than either alternative.
 
 ## E0002 — undefined name
 

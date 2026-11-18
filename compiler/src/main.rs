@@ -289,6 +289,17 @@ const ERROR_CODES: &[(&str, &str, &str)] = &[
          site.",
     ),
     (
+        "E0400",
+        "an `Option` payload must be a primitive",
+        "`Option<T>` is one C struct with an `int`, a `double` and a `char*` payload\n\
+         slot, so `T` can be `int`, `float`, `bool`, `char` or `string` and nothing\n\
+         else. A struct payload would need one `Option` per payload type, which the\n\
+         compiler does not emit yet.\n\n\
+         The rule exists so this is a diagnostic at the source line rather than a C\n\
+         error inside generated code. `docs/adr/0003-option-payload.md` has the\n\
+         reasoning, including why a `void*` slot would be worse.",
+    ),
+    (
         "E0308",
         "mismatched types",
         "One code covers four situations, distinguished by the message:\n\n\
