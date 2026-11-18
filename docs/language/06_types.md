@@ -36,6 +36,15 @@ position, which is why `string` can also be a variable name.
 | Reference | `&T`, `&mut T` | lowered **only** for array parameters |
 | Generic | `T` in `<A, B>` | monomorphised from concrete call sites |
 
+## References
+
+`&T` and `&mut T` are parsed as one type: `parse_unary` consumes the `mut` token and
+drops it, so nothing downstream can tell them apart. A reference to a struct is a `T*`
+in C; a reference to an array is a pointer to the array header, so a push inside the
+callee is visible to the caller.
+
+There is no borrow checker and no `&&T`. See [ADR 0005](../../docs/adr/0005-references.md).
+
 ## What is deliberately absent
 
 - **No ownership or borrow checking.** `&T` exists for array parameters and nothing

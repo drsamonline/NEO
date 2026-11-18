@@ -442,14 +442,27 @@ downloaded here, compiled a program that `use math;` and printed `4 3 3 1024` wi
   payload.** So `Option<Struct>` cannot be represented, which is why `stdlib/io`'s
   `fopen -> Option<File>` cannot compile. The emitted C is
   `(Option){ .tag = 0, .payload_i = (File){ ... } }`.
-- **A global initialised with a call is not a constant expression.** `stdlib/io`
-  declares `NovaArray SPINNER_FRAMES = nova_array_from(...)`, which C rejects at file
-  scope. String constants were fixed by emitting the literal; an array has no literal
-  form to fall back on.
-- ~~References are lowered only for array parameters.~~ **A `&mut Struct` parameter now
+- ~~A global initialised with a call is not a constant expression.~~ **Fixed**: such
+  globals are declared zeroed and assigned at the top of `main`, in declaration order
+  — [ADR 0004](docs/adr/0004-deferred-global-initialisers.md). A static backing array
+  was rejected because `nova_array_push` reallocs, and realloc on static storage is
+  undefined behaviour on the first push.
+- ~~References are lowered only for array parameters.~~ **A `&mut Struct` parameter
   works**: the parameter is a `T*`, and a field access through it is dereferenced, so
-  `fn fclose(file: &mut File)` emits `File* file` and `(*file).handle`. That was the
-  last thing stopping `stdlib/io` and `stdlib/text` from compiling.
+  `fn fclose(file: &mut File)` emits `File* file` and `(*file).handle`.
+- ~~`&x` lowered to `!x` and `*x` to `-x`.~~ **Fixed** —
+  [ADR 0005](docs/adr/0005-references.md). `lower_un_op` mapped `AddrOf → SirUnOp::Not`
+  and `Deref → SirUnOp::Neg` because `SirUnOp` has only those two variants and there was
+  nowhere correct for a borrow to go. `&` and `*` are expression constructors; the
+  function is deleted. `expr_type_raw` also had no arm for a borrow, which is why an
+  explicit `&mut file` was wrapped twice.
+- **A `match` used as a value does not infer its result type.** `let level_str = match
+  level { ... }` declares `int` while the arms yield strings, so `stdlib/io` emits
+  `initialization of 'int' from 'char *'`. `lower_match_chain` builds nested ternaries
+  and reports no type for the chain.
+- **A tag test is emitted against a plain ordinal.** `stdlib/io` reaches
+  `request for member 'tag' in something not a structure or union` — the `match` chain's
+  variant test assumes a tagged struct, and a payload-free enum is an `int`.
 - `__builtin_*` OS and collection builtins resolve but trap through
   `nova_unsupported`.
 - `--release` selects an output directory; the compiler has no optimisation levels.

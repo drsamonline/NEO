@@ -44,6 +44,8 @@ Everything written down, and where to start.
 | [`adr/0001-lossless-syntax-tree.md`](adr/0001-lossless-syntax-tree.md) | A lossless tree at item boundaries with deferred bodies, instead of a full CST migration or nothing |
 | [`adr/0002-traits.md`](adr/0002-traits.md) | Traits are not in the language, so the AST stops claiming they are |
 | [`adr/0003-option-payload.md`](adr/0003-option-payload.md) | `Option<T>` holds a primitive; a struct payload needs monomorphisation, and a `void*` slot would be a use-after-free |
+| [`adr/0004-deferred-global-initialisers.md`](adr/0004-deferred-global-initialisers.md) | A global whose initialiser runs code is assigned at the top of `main`, because `realloc` on a static backing array is undefined behaviour |
+| [`adr/0005-references.md`](adr/0005-references.md) | A borrow is a pointer, borrowing a reference is identity, and the `AddrOf → Not` placeholder is why `&x` used to mean `!x` |
 
 ## Contracts
 

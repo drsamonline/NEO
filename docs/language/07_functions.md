@@ -37,6 +37,7 @@ fn add(a: int, b: int) -> int {
 | `x: int` | by value | works |
 | `arr: &mut [T]` | a reference to an array header, so a push inside is visible outside | works |
 | `file: &mut File` | a reference to a struct — emitted as `File*` | works |
+| `&x` in an expression | an address-of; borrowing something already a reference is that same pointer | works — [ADR 0005](../../docs/adr/0005-references.md) |
 | `x` with no type | inferred | accepted, typed `int` |
 | `self` in an `impl` block | the receiver, emitted as a pointer | works |
 
@@ -75,6 +76,10 @@ and the runtime's call to `floor` recurses into it until the stack runs out.
 
 ## What is missing
 
+- **No mutability checking.** `&mut T` is spelling, not a capability: the language has no
+  borrow checker, so a `&mut` parameter can be called with a `&` and nothing objects.
+- **No `&&T`.** Borrowing a reference yields the same pointer rather than a pointer to a
+  pointer, deliberately — every by-address parameter would otherwise need two spellings.
 - **No default arguments, no overloading, no named arguments.**
 - **No `async`, no `await`.** The runtime crate has futures; the language does not.
 - **No visibility enforcement.** `pub` is parsed and ignored.
