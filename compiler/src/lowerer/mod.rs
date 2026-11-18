@@ -2631,13 +2631,23 @@ impl Lowerer {
                     if binding_name.is_none() {
                         None
                     } else {
-                        let payload_type = self
-                            .enum_payloads
-                            .get(enum_name)
-                            .and_then(|variants| variants.get(variant))
-                            .cloned()
-                            .unwrap_or_else(|| "int".to_string());
                         let scrutinee_type = self.expr_type(scrutinee);
+                        // For `Option` the payload type is the scrutinee's argument —
+                        // `Option<File>` binds a `File`. `enum_payloads` only knows
+                        // declared enums, so looking there alone gave `int` and the
+                        // binding was an `int` initialised from a `File` field.
+                        let payload_type = match scrutinee_type
+                            .as_deref()
+                            .and_then(option_payload_of)
+                        {
+                            Some(payload) => payload.to_string(),
+                            None => self
+                                .enum_payloads
+                                .get(enum_name)
+                                .and_then(|variants| variants.get(variant))
+                                .cloned()
+                                .unwrap_or_else(|| "int".to_string()),
+                        };
                         // An `Option` payload lives in `payload`; an enum's lives in the
                         // slot named after its type.
                         let field = match scrutinee_type.as_deref().and_then(option_payload_of) {
