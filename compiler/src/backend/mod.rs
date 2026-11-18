@@ -292,6 +292,24 @@ impl CBackend {
         }
     }
 
+    /// A character literal as C source.
+    ///
+    /// Printable ASCII goes in single quotes with the specials escaped; anything
+    /// else becomes a numeric cast, because a multi-byte character inside a C
+    /// character constant is not portable and usually not what was meant.
+    fn escape_c_char(c: char) -> String {
+        match c {
+            '\'' => "'\\''".to_string(),
+            '\\' => "'\\\\'".to_string(),
+            '\n' => "'\\n'".to_string(),
+            '\r' => "'\\r'".to_string(),
+            '\t' => "'\\t'".to_string(),
+            '\0' => "'\\0'".to_string(),
+            c if (' '..='~').contains(&c) => format!("'{c}'"),
+            c => format!("(char){}", c as u32),
+        }
+    }
+
     /// Escape a NOVA string for a C string literal, including control characters.
     fn escape_c_string(value: &str) -> String {
         let mut escaped = String::with_capacity(value.len());
@@ -556,7 +574,11 @@ impl CBackend {
                 SirLiteral::Float(f) => format!("{}", f),
                 SirLiteral::Bool(b) => if *b { "1" } else { "0" }.to_string(),
                 SirLiteral::String(s) => format!("\"{}\"", Self::escape_c_string(s)),
-                SirLiteral::Char(c) => format!("'{}'", c),
+                // The old form was a bare quoted placeholder, which is not an
+                // escape. A char literal holding a quote or a backslash produced C
+                // that would not compile: `io.nova` has a quoted-quote literal,
+                // which emitted three quotes in a row and ended it early.
+                SirLiteral::Char(c) => Self::escape_c_char(*c),
                 SirLiteral::Unit => "".to_string(),
             },
             SirExpr::Var(name) => name.clone(),
