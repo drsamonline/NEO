@@ -26,14 +26,20 @@ void      nova_array_push(NovaArray *array, int value);
 int       nova_array_pop(NovaArray *array);
 ```
 
-The standard library asks for more. Measured, not estimated:
+The standard library asks for more. Counted by `tools/stdlib-check.py`, which reports
+declared array types with a non-`int` element — declarations only, so `arr[i]` does not
+count:
 
-| Module | `[String]` | `[float]` |
-|---|---|---|
-| `core` | 1 — `args() -> [String]` | — |
-| `io` | 2 — `list_dir`, `format(template, args: [String])` | — |
-| `math` | — | 6 — `mean`, `sum_float`, `variance`, `stddev`, `median`, … |
-| `text` | 9 — `join`, `split`, … | — |
+| Module | Declared `[T]` where `T` is not `int` |
+|---|---|
+| `core` | 0 |
+| `io` | 4 |
+| `math` | 7 |
+| `text` | 9 |
+
+`text`'s nine are the reason it does not compile: `join(strings: [String])` passes an
+`int` where a `char *` is wanted. `math`'s seven are the reason it computes the wrong
+answer. `core`'s one — `args() -> [String]` — is in a function no example calls.
 
 **Two consequences, one of them a correctness problem rather than a missing feature.**
 
