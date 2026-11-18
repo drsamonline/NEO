@@ -67,6 +67,23 @@ def survey(known: set[str]) -> tuple[dict[str, tuple[int, int, int]], dict[str, 
     return per_module, missing
 
 
+#: Array declarations the runtime cannot honour. `NovaArray` is `int *data`, so `[T]`
+#: for any other `T` is either rejected by the C compiler or silently truncated —
+#: `stdlib/math`'s `sum_float([1.5, 2.5])` returns 3, not 4. ADR 0006 quotes this count,
+#: so it is generated rather than grepped.
+#: A *declared* array type, not an index expression: `x: [T]`, `-> [T]`, or a struct
+#: field `name: [T]`. `arr[i]` must not match, which is why the colon is required.
+NON_INT_ARRAY = re.compile(r"(?::|->)\s*\[\s*(?!int\s*\])[A-Za-z_][A-Za-z0-9_]*\s*\]")
+
+
+def non_int_arrays() -> dict[str, int]:
+    """How many `[T]` declarations each module makes where `T` is not `int`."""
+    counts: dict[str, int] = {}
+    for path in sorted((ROOT / "stdlib").glob("*/*.nova")):
+        counts[path.parent.name] = len(NON_INT_ARRAY.findall(path.read_text()))
+    return counts
+
+
 def table(per_module: dict[str, tuple[int, int, int]]) -> str:
     total = [0, 0, 0]
     lines = [
@@ -106,6 +123,16 @@ def main() -> int:
         print("FAIL the table in stdlib/README.md does not match the source")
         print("     regenerate it with: python3 tools/stdlib-check.py --print")
         return 1
+
+    # Reported, not gated: these are legal NOVA that the runtime cannot honour, and the
+    # count belongs to ADR 0006 rather than to a threshold nobody has set.
+    counts = non_int_arrays()
+    if any(counts.values()):
+        print("\narray declarations of a non-`int` element type (ADR 0006):")
+        for module, count in counts.items():
+            if count:
+                print(f"  {module}: {count}")
+        print("  `NovaArray` holds `int`, so these are truncated or rejected downstream")
 
     print(f"\nthe table matches: {sum(v[2] for v in per_module.values())} function(s) call a")
     print("builtin the compiler does not implement, and the README says so")
