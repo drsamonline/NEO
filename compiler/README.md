@@ -34,6 +34,10 @@ Then, from the repository root:
 # Only produce C: print it, or write it with -o
 ./target/release/nova-compiler examples/hello.nova
 ./target/release/nova-compiler emit examples/hello.nova -o /tmp/hello.c
+
+# Format in place. Normalises whitespace and changes no token; `--check` reports
+# without writing, and exits 1 if a change is needed.
+./target/release/nova-compiler fmt examples/hello.nova
 ```
 
 Options: `-o/--output <path>`, `--target c|js|rust|wasm` (`c` is the default and the
@@ -62,6 +66,10 @@ To compile emitted C by hand:
 
 ```bash
 ./target/release/nova-compiler emit examples/hello.nova -o /tmp/hello.c
+
+# Format in place. Normalises whitespace and changes no token; `--check` reports
+# without writing, and exits 1 if a change is needed.
+./target/release/nova-compiler fmt examples/hello.nova
 cc /tmp/hello.c /tmp/nova_runtime.c -o /tmp/hello
 ```
 

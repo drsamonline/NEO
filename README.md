@@ -105,6 +105,9 @@ cargo build --release
 # Check which toolchains and backends are ready (add --json for scripts)
 ./target/release/nova-compiler doctor
 
+# Format a file — whitespace only; no token changes
+./target/release/nova-compiler fmt examples/hello.nova
+
 # Compile and run a program
 ./target/release/nova-compiler run examples/hello.nova
 

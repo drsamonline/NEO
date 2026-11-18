@@ -1,4 +1,4 @@
-64.53
+64.86
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -7,8 +7,8 @@
 # same commit and say in the message why the drop is acceptable — do not lower it
 # quietly in a later commit, which is how a ratchet becomes decoration.
 #
-# First measured 2026-11-18: 7,675 of 11,880 lines = 64.60%.
-# Lowered to 64.33% (7,671 of 11,924) when the language server gained navigation:
-# the new code is exercised, but through a child process that llvm-cov cannot see.
-# Raised to 64.53% (7,849 of 12,164) when the item tree landed — new code, written
-# with its tests, so the ratchet moved up for once.
+# 64.60% first measured 2026-11-18 (7,675 of 11,880).
+# 64.33% (7,671 of 11,924) when navigation landed — its tests drive a child process
+# that llvm-cov cannot see.
+# 64.53% (7,849 of 12,164) when the item tree landed.
+# 64.86% (8,023 of 12,370) when the formatter landed, written with its tests.

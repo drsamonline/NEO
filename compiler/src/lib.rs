@@ -14,6 +14,7 @@ pub use nova_common::sir;
 pub mod backend;
 pub mod lowerer;
 pub mod syntax;
+pub mod fmt;
 pub mod modules;
 pub mod runtime;
 

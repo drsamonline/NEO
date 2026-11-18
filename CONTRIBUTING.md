@@ -80,6 +80,11 @@ done
 
 A feature without a test at the layer it lives in is not finished.
 
+`nova-compiler fmt` is available and safe to run on any file, including one that is
+half-typed — it never parses, so it cannot fail. It normalises the space between
+items only; do not expect it to fix indentation inside a body. It changes no token,
+so running it can never alter what a program means.
+
 ## Commits
 
 Conventional Commits: `type(scope): imperative subject`, 72 characters or less,

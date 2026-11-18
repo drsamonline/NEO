@@ -120,9 +120,15 @@ be replaced later without touching its consumers.
 
 ## Next steps, in order
 
-1. **Fold the item tree into the formatter's first milestone**: format item
-   separators and indentation using item spans, leaving bodies byte-identical. That
-   is a formatter that is honest about what it does not touch.
+1. ✅ **The formatter's first milestone** — `compiler/src/fmt.rs`. Item separators,
+   trailing whitespace and the final newline are normalised; **no token changes**, and
+   the formatter never parses, so it is total. `compiler/tests/format.rs` checks the
+   token stream against every shipped program.
+
+   The invariant moved while building it: "not one byte changes" cannot hold, because
+   removing trailing whitespace changes bytes. "Not one token changes" holds, is
+   testable, and is the promise that matters. The remaining half is the *inside* of a
+   body, which is where `rowan` would come in.
 2. **Guard the item tree against the parser**, the way `grammar-check.py` guards the
    grammar: for every `examples/**/*.nova`, the item kinds the tree reports must
    match the top-level `Item`s the parser produces. Without that, two
