@@ -2674,6 +2674,8 @@ impl Lowerer {
                 let (field, struct_type) = field_and_struct
                     .split_once('|')
                     .unwrap_or((field_and_struct.as_str(), ""));
+                // `SirExpr::Block(statements, final)` — the binding is a statement
+                // the backend hoists ahead of the arm's value.
                 body = SirExpr::Block(
                     vec![SirStatement::Let {
                         name: name.clone(),
@@ -2684,7 +2686,7 @@ impl Lowerer {
                             struct_type: struct_type.to_string(),
                         },
                     }],
-                    Box::new(body),
+                    Some(Box::new(body)),
                 );
             }
 
