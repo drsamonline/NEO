@@ -59,8 +59,8 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - `nova-compiler test --parity` compares stdout and exit status across all four
   backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
   program.
-- **199 tests pass** (`cargo test --workspace`; WASM execution tests need
-  `node` and `wat2wasm`). Verified in CI, run 44083756917.
+- **247 tests pass** (`cargo test --workspace`; WASM execution tests need
+  `node` and `wat2wasm`). Verified in CI.
 
 **✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
 - The Rust `runtime/` crate (memory, GC, I/O, threading, async) compiles and is
@@ -221,9 +221,9 @@ with `wc -l` rather than by hand; a stale table is how this one drifted from
 | Live demo | [drsamonline.github.io/NEO](https://drsamonline.github.io/NEO/) |
 | Author | [Dr Sohil Momin](https://drsamonline.github.io/) |
 | Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
-| Tests | 199 passing, 0 failing, 0 ignored (`cargo test --workspace`); 4 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
+| Tests | 247 passing, 0 failing, 0 ignored (`cargo test --workspace`); 7 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
 | License | MIT (see [LICENSE](LICENSE)) |
-| Releases | Two GitHub Releases exist — [`v0.6.1`](https://github.com/drsamonline/NEO/releases/tag/v0.6.1) and [`v0.6.0`](https://github.com/drsamonline/NEO/releases/tag/v0.6.0) — both tagged on the same commit and **both carrying no assets**. `release.yml` is verified by a dry run (three platform archives, checksums, packaged-compiler smoke test) and has not yet produced a real one. See [`DEV_PLAN.md`](DEV_PLAN.md) Stage 6 |
+| Releases | [`v0.7.0`](https://github.com/drsamonline/NEO/releases/tag/v0.7.0) — three platform archives with SHA-256 checksums. The two earlier releases (`v0.6.0`, `v0.6.1`) are empty: both tagged on one commit with no artifacts. |
 
 ### Suggested GitHub topics
 
@@ -265,6 +265,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-**Last Updated**: 2026-11-14
+**Last Updated**: 2026-11-18
 **Current stage**: Phase 3 partial, Phase 4 in progress (see [DEV_PLAN.md](DEV_PLAN.md); it is authoritative)
-**Test suite**: 199 passing, 0 failing (verified in CI)
+**Test suite**: 247 passing, 0 failing (verified in CI)
