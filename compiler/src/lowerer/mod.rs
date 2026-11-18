@@ -3123,6 +3123,73 @@ mod tests {
     use super::*;
     use crate::{Lexer, Parser};
 
+    /// `&x` used to lower to `!x` — `lower_un_op` mapped `AddrOf` to `SirUnOp::Not`,
+    /// a placeholder nobody replaced. And an explicit borrow had no type, so
+    /// `lower_call_args` could not see it was already a reference and wrapped it a
+    /// second time. Both call shapes must end up with exactly one address-of.
+    #[test]
+    fn explicit_and_implicit_borrow_take_one_address() {
+        let program = lower(
+            "struct File { handle: int }\n\
+             fn fread_all(file: &mut File) -> int { return 1; }\n\
+             fn main() {\n\
+                 let mut file = File { handle: 3 };\n\
+                 let a = fread_all(&mut file);\n\
+                 let b = fread_all(file);\n\
+             }\n",
+        );
+        let main = program.functions.iter().find(|f| f.name == "main").expect("main");
+        let argument = |index: usize| -> SirExpr {
+            let SirStatement::Let { value, .. } = &main.body[index] else {
+                panic!("expected a let: {:?}", main.body[index]);
+            };
+            let SirExpr::Typed { expr, .. } = value else {
+                panic!("a call should be typed: {value:?}");
+            };
+            let SirExpr::Call { args, .. } = expr.as_ref() else {
+                panic!("expected a call: {expr:?}");
+            };
+            args[0].clone()
+        };
+        for index in [1, 2] {
+            let arg = argument(index);
+            let SirExpr::AddressOf(inner) = &arg else {
+                panic!("expected exactly one address-of, got {arg:?}");
+            };
+            let peeled = match inner.as_ref() {
+                SirExpr::Typed { expr, .. } => expr.as_ref(),
+                other => other,
+            };
+            assert!(
+                matches!(peeled, SirExpr::Var(name) if name == "file"),
+                "the address must target the variable, not `!file` or `&&file`: {inner:?}"
+            );
+        }
+    }
+
+    /// A `match` in value position never bound its payload: `lower_match_chain` handled
+    /// `Literal` and `Path` and sent everything else to `_ => None`, so `Some(x)` left
+    /// `x` undeclared. `read_file` in `stdlib/io` is written exactly this way.
+    #[test]
+    fn a_match_in_value_position_binds_its_payload() {
+        let program = lower(
+            "struct File { handle: int }\n\
+             fn make() -> Option<File> { return None; }\n\
+             fn main() {\n\
+                 let found = match make() {\n\
+                     Some(file) => { print(file.handle); 1 },\n\
+                     None => 0,\n\
+                 };\n\
+             }\n",
+        );
+        let main = program.functions.iter().find(|f| f.name == "main").expect("main");
+        let rendered = format!("{:?}", main.body);
+        assert!(
+            rendered.contains("\"file\""),
+            "the payload must be bound as `file`: {rendered}"
+        );
+    }
+
     fn lower(source: &str) -> SirProgram {
         let mut lexer = Lexer::new(source);
         let (tokens, diagnostics) = lexer.tokenize();
