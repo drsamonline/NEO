@@ -25,8 +25,12 @@ Everything written down, and where to start.
 | [`compiler.md`](compiler.md) | The compiler's stages, one paragraph each |
 | [`architecture.md`](architecture.md) | The design at a systems level |
 | [`language.md`](language.md) | The language's shape, and a pointer to the chapters |
-| [`language/README.md`](language/README.md) | The specification's status: 1 of 25 chapters written, and why the rest are stubs |
-| [`language/00_overview.md`](language/00_overview.md) | The one written chapter |
+| [`language/README.md`](language/README.md) | The specification's status: 5 of 25 chapters written, and why the rest are stubs |
+| [`language/00_overview.md`](language/00_overview.md) | What NOVA is, and how a program becomes a binary |
+| [`language/01_lexical_grammar.md`](language/01_lexical_grammar.md) | Comments, identifiers, numbers, strings, escapes — derived from the lexer |
+| [`language/03_keywords.md`](language/03_keywords.md) | The 25 reserved words, read out of `token.rs` |
+| [`language/05_literals.md`](language/05_literals.md) | What each literal form means once it is a token |
+| [`language/06_types.md`](language/06_types.md) | The type names, the composites, and the widths that are accepted and ignored |
 | [`RUNTIME_PROGRESS.md`](RUNTIME_PROGRESS.md) | The Rust runtime crate: what it provides and what it does not |
 
 ## Decisions
