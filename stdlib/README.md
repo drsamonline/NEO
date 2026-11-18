@@ -1,6 +1,6 @@
 # The NOVA standard library
 
-Four modules, 249 functions. **207 of them can run; 42 cannot**, and this page is the
+Four modules, 249 functions. **211 of them can run; 38 cannot**, and this page is the
 only place that says which.
 
 | Module | What it is |
@@ -15,16 +15,27 @@ only place that says which.
 <!-- stdlib-check:begin -->
 | Module | Functions | Usable | Blocked |
 |---|---|---|---|
-| `core` | 55 | 51 | 4 |
-| `io` | 59 | 27 | 32 |
+| `core` | 55 | 54 | 1 |
+| `io` | 59 | 28 | 31 |
 | `math` | 76 | 75 | 1 |
 | `text` | 59 | 54 | 5 |
-| **total** | **249** | **207** | **42** |
+| **total** | **249** | **211** | **38** |
 <!-- stdlib-check:end -->
 
 The compiler knows **forty-three** `__builtin_*` functions. A stdlib function whose body
 calls any other name is a function the compiler cannot lower — it is scaffolding,
 written against builtins that were planned and not implemented.
+
+**⚠️ `math`'s float-array functions return wrong answers.** `NovaArray` holds `int`, so a
+`[float]` array is truncated before it is read: `sum_float([1.5, 2.5])` is **3**, not 4.
+`mean`, `variance`, `stddev` and `median` all build on it. The module compiles, and the
+stdlib compile gate cannot see it — [ADR 0006](../docs/adr/0006-array-element-types.md)
+records the measurement and the fix, and `a_float_array_sum_is_not_truncated` in
+`compiler/tests/end_to_end.rs` is the runnable proof:
+
+```bash
+cargo test --test end_to_end -- --ignored a_float_array_sum
+```
 
 **"Usable" is the strongest claim available here, and it is a weak one.** It means the
 function calls no builtin the compiler does not implement. It does **not** mean the
