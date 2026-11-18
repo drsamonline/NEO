@@ -87,7 +87,10 @@ jobs:
               failed="$failed $name"
               continue
             fi
-            if cc -std=c11 -c "/tmp/$name.c" -o "/tmp/$name.o" 2>"/tmp/$name.err"; then
+            # `-Werror=builtin-declaration-mismatch` makes the C compiler enumerate
+            # the name collisions for us: a NOVA function called `floor` is a
+            # definition of libm's `floor`, and this is the warning that says so.
+            if cc -std=c11 -Werror=builtin-declaration-mismatch -c "/tmp/$name.c" -o "/tmp/$name.o" 2>"/tmp/$name.err"; then
               echo "compiled $name"
             else
               echo "::group::$name does not compile"; cat "/tmp/$name.err"; echo "::endgroup::"

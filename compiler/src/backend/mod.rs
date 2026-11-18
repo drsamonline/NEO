@@ -201,7 +201,11 @@ impl CBackend {
             // libm — the stdlib wraps all of these
             "sqrt", "cbrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh",
             "cosh", "tanh", "exp", "log", "log2", "log10", "floor", "ceil", "round", "powf",
-            "fmod", "remainder", "hypot", "trunc", "fabs", "pow",
+            "fmod", "remainder", "hypot", "trunc", "fabs", "pow", "nan", "infinity",
+            "isnan", "isinf", "isfinite", "signbit", "fmin", "fmax", "fdim", "ldexp",
+            "modf", "frexp", "log1p", "expm1", "erf", "erfc", "tgamma", "lgamma",
+            "copysign", "nextafter", "nearbyint", "rint", "lround", "llround", "exp2",
+            "asinh", "acosh", "atanh",
             // libc — the stdlib wraps some of these too
             "printf", "fprintf", "sprintf", "snprintf", "puts", "putchar", "getchar",
             "malloc", "calloc", "realloc", "free", "exit", "abort", "atexit",
