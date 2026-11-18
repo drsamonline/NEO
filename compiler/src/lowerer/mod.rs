@@ -596,11 +596,12 @@ impl Lowerer {
         }
 
         let return_type = func.return_type.as_ref().map(type_display);
-        for typ in return_type.iter().chain(
-            func.params
-                .iter()
-                .map(|param| &type_display(&param.typ)),
-        ) {
+        let declared_types: Vec<String> = return_type
+            .iter()
+            .cloned()
+            .chain(func.params.iter().map(|param| type_display(&param.typ)))
+            .collect();
+        for typ in &declared_types {
             note_option_payload(&mut self.option_payloads, typ);
         }
         let previous_expected = self.expected_type.replace(
