@@ -2,9 +2,11 @@
 #
 # One module per line, the name first, then why. `ci.yml` fails if a module outside
 # this list does not compile, and also if a module inside it starts compiling — so
-# the list can only shrink.
+# the list can only shrink. `core` and `math` are not listed, so they must keep
+# compiling.
 #
-# Every reason below is quoted from C that `nova-compiler emit` actually produced.
+# Every reason below was read from C that `nova-compiler emit` actually produced and
+# `zig cc` actually rejected, not inferred from the NOVA source.
 #
-# Empty. All four modules compile. Keep it that way: adding a line here is a
-# regression, not a plan.
+io   Two defects, neither of them `Option` any more. (1) io.c:191: `NovaArray SPINNER_FRAMES = nova_array_from((int[]){...}, 4);` — a global initialised with a call is not a compile-time constant. (2) io.c:513: `fread_all(&((!file)))` — the `mut` in a `Some(mut file)` pattern leaks into the expression, so the binding is not the payload.
+text The same two, reached through `use io;` (text.c:259 and text.c:581).
