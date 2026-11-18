@@ -2613,7 +2613,81 @@ impl Lowerer {
 
         for arm in arms.iter().rev() {
             let guard = arm.guard.as_ref().map(|guard| self.lower_expr(guard));
-            let body = self.lower_expr(&arm.body);
+
+            // `Some(x) => ...` as a value has to bind `x` too. The statement form
+            // (`lower_match_statement`) always did; this chain did not, so a `match`
+            // in trailing-expression position — which is how `read_file` is written —
+            // left the payload undeclared and every use of it failed with
+            // "undeclared identifier". The binding is attached to the arm's body as a
+            // block, which the backend hoists.
+            let binding: Option<(String, String, String)> = match &arm.pattern {
+                Pattern::EnumVariant(enum_name, variant, Some(inner)) => {
+                    // A wildcard or a nested pattern binds nothing; the tag test still
+                    // applies.
+                    let binding_name = match inner.as_ref() {
+                        Pattern::Identifier(name) if name != "_" => Some(name.clone()),
+                        _ => None,
+                    };
+                    if binding_name.is_none() {
+                        None
+                    } else {
+                        let payload_type = self
+                            .enum_payloads
+                            .get(enum_name)
+                            .and_then(|variants| variants.get(variant))
+                            .cloned()
+                            .unwrap_or_else(|| "int".to_string());
+                        let scrutinee_type = self.expr_type(scrutinee);
+                        // An `Option` payload lives in `payload`; an enum's lives in the
+                        // slot named after its type.
+                        let field = match scrutinee_type.as_deref().and_then(option_payload_of) {
+                            Some(payload) => {
+                                self.option_payloads.insert(payload.to_string());
+                                "payload".to_string()
+                            }
+                            None => payload_field(&payload_type).0.to_string(),
+                        };
+                        let struct_type = scrutinee_type
+                            .as_deref()
+                            .map(|typ| match option_payload_of(typ) {
+                                Some(payload) => option_struct_name(payload),
+                                None => typ.split('<').next().unwrap_or(typ).trim().to_string(),
+                            })
+                            .unwrap_or_default();
+                        Some((
+                            binding_name.unwrap_or_default(),
+                            payload_type,
+                            format!("{field}|{struct_type}"),
+                        ))
+                    }
+                }
+                _ => None,
+            };
+
+            self.push_scope();
+            if let Some((name, typ, _)) = &binding {
+                self.declare(name, Some(typ.clone()));
+            }
+            let mut body = self.lower_expr(&arm.body);
+            self.pop_scope();
+            if let Some((name, typ, field_and_struct)) = &binding {
+                let (field, struct_type) = field_and_struct
+                    .split_once('|')
+                    .unwrap_or((field_and_struct.as_str(), ""));
+                body = SirExpr::Block(
+                    vec![SirStatement::Let {
+                        name: name.clone(),
+                        typ: Some(typ.clone()),
+                        value: SirExpr::FieldAccess {
+                            object: Box::new(scrutinee_expr.clone()),
+                            field: field.to_string(),
+                            struct_type: struct_type.to_string(),
+                        },
+                    }],
+                    Box::new(body),
+                );
+            }
+
             let pattern_condition = match &arm.pattern {
                 // Strings compare through the runtime; other literals use `==`.
                 Pattern::Literal(Literal::String(text)) => Some(SirExpr::BinOp {
@@ -2646,6 +2720,28 @@ impl Lowerer {
                     op: SirBinOp::Eq,
                     right: Box::new(SirExpr::Var(format!("{}_{}", parts[0], parts[1]))),
                 }),
+                // `Some(x)` / `Enum.Variant(x)` tests the tag.
+                Pattern::EnumVariant(enum_name, variant, _) => {
+                    let ordinal = *self
+                        .enum_ordinals
+                        .get(&format!("{enum_name}_{variant}"))
+                        .unwrap_or(&0);
+                    Some(SirExpr::BinOp {
+                        left: Box::new(SirExpr::FieldAccess {
+                            object: Box::new(scrutinee_expr.clone()),
+                            field: "tag".to_string(),
+                            struct_type: self
+                                .expr_type(scrutinee)
+                                .map(|typ| match option_payload_of(&typ) {
+                                    Some(payload) => option_struct_name(payload),
+                                    None => typ.split('<').next().unwrap_or(&typ).trim().to_string(),
+                                })
+                                .unwrap_or_default(),
+                        }),
+                        op: SirBinOp::Eq,
+                        right: Box::new(SirExpr::Literal(SirLiteral::Int(ordinal))),
+                    })
+                }
                 // Wildcards and patterns without a test become the fallback.
                 _ => None,
             };
