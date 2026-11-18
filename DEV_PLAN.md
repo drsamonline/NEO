@@ -382,6 +382,25 @@ plan should borrow rather than invent.
 
 ---
 
+## Checking a change without a Rust toolchain
+
+`static.rust-lang.org` is not reachable from this environment, so `rustup` cannot install
+a toolchain and every Rust change is verified by CI alone — roughly four minutes a round
+trip. Two blind multi-site changes cost three or four cycles each to correct.
+
+**The C half can be checked locally.** `pip install ziglang` provides Zig 0.17.1, whose
+`zig cc` compiles, links and runs C with libm:
+
+```bash
+Z=$(python3 -c 'import ziglang,os;print(os.path.dirname(ziglang.__file__))')/zig
+$Z cc -std=c11 -c generated.c -o /dev/null     # does the emitted C compile?
+$Z cc generated.c nova_runtime.c -o prog -lm   # and does it run?
+```
+
+That is enough to prototype a codegen design, to reproduce a C-level failure without
+waiting for a runner, and to check the runtime shim. It is not enough to compile the
+compiler.
+
 ## Known limitations (deliberate, documented)
 
 - `int` → `float` is the only implicit conversion.
