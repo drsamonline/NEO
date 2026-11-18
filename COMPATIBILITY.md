@@ -41,16 +41,37 @@ One version for the whole workspace (`Cargo.toml` → `[workspace.package]`), an
 `VERSION` must match it. `CHANGELOG.md` records what changed; `[Unreleased]` always
 sits above the newest release.
 
-## Nothing is installable yet
+## Installable from a release, not from a package manager
 
-Not on crates.io, not on npm. `Cargo.toml` says `publish = false` on every crate,
+Not on crates.io, not on npm — `Cargo.toml` says `publish = false` on every crate,
 which is what makes that statement checkable rather than aspirational.
 
-Two GitHub Releases exist — `v0.6.0` and `v0.6.1` — and **neither carries an
-artifact**: the release pages are empty. Both tags also point at the same commit, so
-they are one snapshot published twice. Neither is a thing you can download and run.
+**`v0.7.0` is the first release that ships binaries:**
 
-The pipeline that would fix that is verified: a dry run builds `x86_64-linux`,
-`arm64-macos` and `x86_64-windows` archives, writes a SHA-256 beside each, and runs
-the packaged compiler on all three. No tag has been pushed since it was written, and
-`v0.6.1` already exists — so the first real release needs a version above it.
+| Archive | Size |
+|---|---|
+| `nova-v0.7.0-x86_64-linux.tar.gz` | 3.8 MB |
+| `nova-v0.7.0-arm64-macos.tar.gz` | 3.5 MB |
+| `nova-v0.7.0-x86_64-windows.zip` | 3.1 MB |
+
+Each has a `.sha256` beside it and contains the four binaries — `nova-compiler`,
+`nova-pkg`, `nova-lsp`, `nova-dbg` — plus `stdlib/`, `examples/`, the licence and the
+changelog.
+
+### What an artifact needs at run time
+
+- **A C compiler on `PATH`.** `nova-compiler build` and `run` lower to C and link it
+  with the host compiler, so a machine with no `cc` gets a clear error rather than a
+  working build. `emit` needs nothing.
+- **glibc 2.39 or newer on Linux.** The binary is built on `ubuntu-latest` (24.04).
+  On Debian 12 (glibc 2.36) it prints `weak version GLIBC_2.39 not found` and still
+  runs; older still is untested. Building from source avoids the question entirely.
+- `node` and `wat2wasm` for the WASM execution tests, not for the compiler itself.
+
+Verified by downloading the published `x86_64-linux` archive, checking its SHA-256
+against the published one, running `nova-compiler --version` (`nova-compiler 0.7.0`)
+and emitting C for `examples/hello.nova` — which produced
+`nova_print_str("Hello, NOVA");` and wrote `nova_runtime.h` beside it.
+
+The two earlier releases, `v0.6.0` and `v0.6.1`, remain empty: both tagged on one
+commit, neither carrying an artifact.
