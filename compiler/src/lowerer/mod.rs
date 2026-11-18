@@ -280,6 +280,10 @@ impl Lowerer {
                 ))
             }
             Expr::Call(callee, args) => match callee.unspanned() {
+                // A builtin's type comes from the one table the analyser also uses.
+                Expr::Identifier(name) if name.starts_with("__builtin_") => {
+                    crate::sema::builtin_return_type(name).map(|typ| typ.to_string())
+                }
                 Expr::Identifier(name) if name == "Some" => {
                     let payload = args
                         .first()

@@ -913,7 +913,14 @@ fn is_array_like(typ: &Type) -> bool {
     }
 }
 
-fn builtin_return_type(name: &str) -> Option<Type> {
+/// The declared result type of a `__builtin_*`, or `None` for one whose type depends on
+/// its argument.
+///
+/// `pub(crate)` because the lowerer needs the same answer: `Some(__builtin_parse_float(s))`
+/// takes its payload type from this call, and without it the payload defaulted to `int`
+/// and the program returned an `Option_int` where `Option_float` was declared. Two tables
+/// would drift.
+pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
     Some(match name {
         "__builtin_panic" | "__builtin_exit" => Type::Never,
         "__builtin_print" | "__builtin_println" => Type::Unit,
