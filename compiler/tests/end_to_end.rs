@@ -207,6 +207,38 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
 /// The backend now emits a NOVA function whose name belongs to the C library as
 /// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
 /// of the defect and is now the guard against it returning.
+/// Does a `[float]` array survive being passed to `sum_float`?
+///
+/// `NovaArray` holds `int` elements and `nova_array_get` returns `int`, so a float
+/// array is a promise the runtime cannot keep. ADR 0006 says `stdlib/math` compiles and
+/// returns wrong numbers because of it. This test is how that claim was checked rather
+/// than assumed — it asserts the correct answer, so it fails while the truncation is
+/// real.
+#[test]
+fn a_float_array_sum_is_not_truncated() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "float_array",
+        "\
+use math;
+
+fn main() -> int {
+    print(sum_float([1.5, 2.5]));
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "4",
+        "1.5 + 2.5 must be 4; `NovaArray` holds `int`, so a `[float]` array is \
+         truncated on the way in — see ADR 0006"
+    );
+}
+
 #[test]
 fn every_math_call_works() {
     if !c_compiler_available() {
