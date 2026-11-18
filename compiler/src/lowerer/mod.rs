@@ -303,9 +303,11 @@ impl Lowerer {
                     if !func.generics.is_empty() {
                         self.generic_decls.insert(func.name.clone(), func.clone());
                     }
+                    // `type_display`, not `.name`: the arguments matter. `Option<File>`
+                    // became `Option`, which is not a type any struct is named after.
                     self.signatures.insert(
                         func.name.clone(),
-                        func.return_type.as_ref().map(|t| t.name.clone()),
+                        func.return_type.as_ref().map(type_display),
                     );
                     self.param_types.insert(
                         func.name.clone(),
