@@ -172,10 +172,9 @@ fn getcwd() -> String {
     __builtin_getcwd()
 }
 
-/// Change working directory
-fn chdir(path: String) -> bool {
-    __builtin_chdir(path)
-}
+// `chdir` is not declared here. `use core.*;` already brings it in, and a second
+// declaration made the merged program emit `redefinition of 'chdir'` — one copy from
+// this module, one from `core`.
 
 /// Check if path is a directory
 fn is_directory(path: String) -> bool {

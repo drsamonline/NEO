@@ -5,8 +5,7 @@
 # the list can only shrink. `core` and `math` are not listed, so they must keep
 # compiling.
 #
-# Every reason below is quoted from C that `nova-compiler emit` actually produced,
+io   (1) `Option<File>` cannot exist — `Option` is one C struct with `int`, `double` and `char*` payload slots and none for a struct, so `Some(File { ... })` is assigned to `payload_i`. That is ADR 0003, not a codegen bug. (2) `NovaArray SPINNER_FRAMES = nova_array_from((int[]){...}, 4);` is a call at file scope — "initializer element is not constant". The duplicate `chdir` was removed in #51; `chdir` itself remains a name the C library also uses, which is why `core`'s copy is still a collision risk if a program imports it.
 # not inferred from the NOVA source.
 #
-io   Three defects, none of them small. (1) `Option<File>` cannot exist: the emitted Option has `int payload_i; double payload_f; char* payload_s;` and no struct payload, so `fopen`'s `Some(File { ... })` is `(Option){ .tag = 0, .payload_i = (File){ ... } }` — "incompatible types when initializing type 'int' using type 'File'". (2) `NovaArray SPINNER_FRAMES = nova_array_from((int[]){...}, 4);` is a call at file scope — "initializer element is not constant". (3) `chdir` is redefined, because a stdlib function and the C library share the name.
 text text.c:540-559: the same `Option<File>` and global-initialiser defects as io, reached through `use io;`.

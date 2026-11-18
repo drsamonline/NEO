@@ -40,6 +40,7 @@ Everything written down, and where to start.
 | [`adr/README.md`](adr/README.md) | How decisions are recorded here |
 | [`adr/0001-lossless-syntax-tree.md`](adr/0001-lossless-syntax-tree.md) | A lossless tree at item boundaries with deferred bodies, instead of a full CST migration or nothing |
 | [`adr/0002-traits.md`](adr/0002-traits.md) | Traits are not in the language, so the AST stops claiming they are |
+| [`adr/0003-option-payload.md`](adr/0003-option-payload.md) | `Option<T>` holds a primitive; a struct payload needs monomorphisation, and a `void*` slot would be a use-after-free |
 
 ## Contracts
 
