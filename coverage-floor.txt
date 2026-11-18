@@ -1,4 +1,4 @@
-65.62
+65.63
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -19,3 +19,4 @@
 # 65.33% (8,336 of 12,760) when the tuple type and float modulo landed.
 # 65.61% (8,385 of 12,780) when string constants became literals at file scope.
 # 65.62% (8,396 of 12,795) when the duplicate `chdir` came out.
+# 65.63% (8,401 of 12,800) when the C library name collision was fixed.
