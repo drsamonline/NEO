@@ -31,6 +31,12 @@ function calls no builtin the compiler does not implement. It does **not** mean 
 function is correct: the stdlib has no tests, which is a separate and larger gap. A
 function that is usable has been read, not run.
 
+**And it is per function, not per module.** `math` scores 75 of 76 and still cannot be
+imported: the module emits C but the C does not compile, because `normalize2` builds an
+`NovaTuple_int_int` where a `NovaTuple_float_float` is declared and `mod_int` applies
+`%` to two doubles. So `use math;` fails for reasons this table does not measure. The
+per-function number answers "does this call a missing builtin", and nothing else.
+
 `math` went from 48 usable to **75** when the floating-point builtins landed, and
 `io` gained three parsing functions. `io` is still the worst case: 42 of its 60
 functions call builtins that do not exist (`__builtin_fopen`, `__builtin_fread_line`,

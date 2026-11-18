@@ -409,6 +409,12 @@ plan should borrow rather than invent.
   rather than a design: a `RefCell` in a `thread_local!` would be sound, and needs a
   memory model NOVA does not have yet.
 - The package registry is mocked.
+- **`stdlib/math` emits C that does not compile.** `normalize2`/`normalize3` build an
+  `NovaTuple_int_int` where a `NovaTuple_float_float` is declared — tuple element types
+  are inferred as `int` — and `mod_int` applies `%` to two doubles. `use math;`
+  therefore fails even though 75 of its 76 functions call only implemented builtins.
+  The CI step "Every standard-library module emits C" only *emits*, which is why
+  nothing caught it; it should compile the result.
 
 ---
 

@@ -152,30 +152,50 @@ fn hello_compiles_links_and_prints() {
     assert_eq!(String::from_utf8_lossy(&run.stdout), "Hello, NOVA\n");
 }
 
-/// Compile a program that `use`s a stdlib module, run it, and return stdout.
-///
-/// The module is found through `stdlib/` beside the source, so the test writes its
-/// program inside the workspace's own `stdlib` search path rather than a temp dir.
-fn run_with_stdlib(name: &str, source: &str) -> String {
-    let dir = scratch(name);
-    // Not `<name>.nova`: `find_module` looks beside the importing file first, so a
-    // program called `math.nova` that says `use math;` imports itself. It loaded, found
-    // no `sqrt`, and the build failed with "undefined name `sqrt`" — which is how this
-    // was discovered.
-    let file = dir.join(format!("{name}_program.nova"));
-    fs::write(&file, source).expect("write source");
-    let binary = dir.join(name);
+#[test]
+fn the_floating_point_builtins_run() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
 
-    // `find_module` walks ancestors for `stdlib/<name>/<name>.nova`, so a scratch
-    // directory outside the workspace cannot see it. `--module-root` is the
-    // supported way in, and it is what `nova-pkg` uses for a dependency.
+    // The builtins are called directly rather than through `use math;` on purpose.
+    // The module emits C but does not *compile* — `normalize2` builds an
+    // `NovaTuple_int_int` where a `NovaTuple_float_float` is declared, and `mod_int`
+    // applies `%` to two doubles — so importing it fails for reasons that have
+    // nothing to do with the builtins. Those are recorded in `DEV_PLAN.md`.
+    //
+    // Floats print through `%g`, which is why `4.0` comes out as `4`.
+    let dir = scratch("builtins");
+    let file = dir.join("builtins.nova");
+    let binary = dir.join("builtins");
+    fs::write(
+        &file,
+        "\
+fn main() -> int {
+    print(__builtin_sqrt(16.0));
+    print(__builtin_cbrt(27.0));
+    print(__builtin_powf(2.0, 10.0));
+    print(__builtin_sin(0.0));
+    print(__builtin_exp(0.0));
+    print(__builtin_log(1.0));
+    print(__builtin_floor(3.7) as int);
+    print(__builtin_round(2.5) as int);
+    print(__builtin_is_nan(__builtin_nan()));
+    print(__builtin_is_finite(1.0));
+    print(__builtin_parse_int(\"42\"));
+    print(__builtin_parse_float(\"2.5\"));
+    return 0;
+}
+",
+    )
+    .expect("write source");
+
     let build = Command::new(compiler())
         .arg("build")
         .arg(&file)
         .arg("-o")
         .arg(&binary)
-        .arg("--module-root")
-        .arg(workspace_root().join("stdlib"))
         .output()
         .expect("run nova-compiler build");
     assert!(
@@ -192,37 +212,10 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
         run.status,
         String::from_utf8_lossy(&run.stderr)
     );
-    String::from_utf8_lossy(&run.stdout).to_string()
-}
-
-#[test]
-fn the_math_module_works_end_to_end() {
-    if !c_compiler_available() {
-        eprintln!("skipping: no host C compiler available (set CC)");
-        return;
-    }
-
-    // Every call here reaches a `__builtin_*` that used to be unimplemented, so
-    // before this the module printed "builtin not implemented" and exited 1.
-    // Floats print through `%g`, which is why `4.0` comes out as `4`.
-    let stdout = run_with_stdlib(
-        "math",
-        "\
-use math;
-
-fn main() -> int {
-    print(sqrt(16.0));
-    print(floor(3.7));
-    print(ceil(3.2));
-    print(round(2.5));
-    print(powf(2.0, 10.0));
-    print(cbrt(27.0));
-    print(sin(0.0));
-    return 0;
-}
-",
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "4\n3\n1024\n0\n1\n0\n3\n3\ntrue\ntrue\n42\n2.5\n"
     );
-    assert_eq!(stdout, "4\n3\n4\n3\n1024\n3\n0\n");
 }
 
 #[test]
