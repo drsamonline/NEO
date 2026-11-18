@@ -37,6 +37,8 @@ about a decision are about a reading of it that nobody chose.
 | [0001](0001-lossless-syntax-tree.md) | A lossless tree at item boundaries with deferred bodies, rather than a full CST migration or nothing | accepted |
 | [0002](0002-traits.md) | Traits are not in the language; the dead `Item::Trait` is removed rather than kept as an aspiration | accepted |
 | [0003](0003-option-payload.md) | `Option<T>` holds a primitive, not a struct; a `void*` slot would turn a compile error into a use-after-free | accepted |
+| [0004](0004-deferred-global-initialisers.md) | A non-constant global initialiser runs at the top of `main`; a static backing array would make the first `push` undefined behaviour | accepted |
+| [0005](0005-references.md) | A borrow is a pointer; borrowing a reference is identity; `&x` used to lower to `!x` | accepted |
 
 ## Writing one
 
