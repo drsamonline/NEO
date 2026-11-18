@@ -241,7 +241,32 @@ fn every_math_call_that_used_to_crash_is_isolated() {
 
         let run = Command::new(&binary).output().expect("run built binary");
         if !run.status.success() {
-            failures.push(format!("{name}: exited with {}", run.status));
+            // The emitted C is the evidence. A crash with no C to read is a rumour.
+            let emitted = dir.join("program.c");
+            let _ = Command::new(compiler())
+                .arg("emit")
+                .arg(&file)
+                .arg("-o")
+                .arg(&emitted)
+                .arg("--module-root")
+                .arg(workspace_root().join("stdlib"))
+                .output();
+            let c = fs::read_to_string(&emitted).unwrap_or_default();
+            let interesting: Vec<&str> = c
+                .lines()
+                .filter(|line| {
+                    line.contains("floor")
+                        || line.contains("ceil")
+                        || line.contains("round")
+                        || line.contains("powf")
+                        || line.contains("nova_math_")
+                })
+                .collect();
+            failures.push(format!(
+                "{name}: exited with {}\n    --- emitted C ---\n    {}",
+                run.status,
+                interesting.join("\n    ")
+            ));
             continue;
         }
         let stdout = String::from_utf8_lossy(&run.stdout);
