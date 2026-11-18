@@ -1,4 +1,4 @@
-65.96
+65.91
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -24,3 +24,7 @@
 # the new sema check is exercised by a diagnostics golden, which drives a subprocess
 # that llvm-cov cannot see — the same blind spot that lowered the floor in #29.
 # 65.96% (8,596 of 13,033) when the borrow, global and match-chain fixes landed with their tests.
+# 65.91% (8,622 of 13,082) when eleven file and clock builtins landed. It fell by 0.05
+# because the new match arms are exercised by programs the end-to-end tests compile and
+# run as subprocesses, which llvm-cov cannot see — the same blind spot that lowered the
+# floor for navigation and for the Option work.

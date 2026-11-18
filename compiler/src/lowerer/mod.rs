@@ -956,6 +956,21 @@ impl Lowerer {
             "__builtin_strcmp" => Some(typed("nova_strcmp", lowered(self), "int")),
             "__builtin_strcat" => Some(typed("nova_strcat", lowered(self), "string")),
             "__builtin_substr" => Some(typed("nova_substr", lowered(self), "string")),
+            // Files and the clock. Every one answers through `stat` or the OS rather
+            // than trapping, so a missing path is `false` and not a runtime error.
+            "__builtin_file_exists" => Some(typed("nova_file_exists", lowered(self), "bool")),
+            "__builtin_file_size" => Some(typed("nova_file_size", lowered(self), "int")),
+            "__builtin_is_file" => Some(typed("nova_is_file", lowered(self), "bool")),
+            "__builtin_is_directory" => Some(typed("nova_is_directory", lowered(self), "bool")),
+            "__builtin_rename_file" => Some(typed("nova_rename_file", lowered(self), "bool")),
+            "__builtin_copy_file" => Some(typed("nova_copy_file", lowered(self), "bool")),
+            "__builtin_remove_file" | "__builtin_delete_file" => {
+                Some(typed("nova_remove_file", lowered(self), "bool"))
+            }
+            "__builtin_mkdir" => Some(typed("nova_mkdir", lowered(self), "bool")),
+            "__builtin_rmdir" => Some(typed("nova_rmdir", lowered(self), "bool")),
+            "__builtin_now" => Some(typed("nova_now_ms", vec![], "int")),
+            "__builtin_sleep" => Some(typed("nova_sleep_ms", lowered(self), "void")),
             "__builtin_array_len" => Some(typed(
                 "nova_array_len",
                 vec![self.lower_array_value(args.first()?)],

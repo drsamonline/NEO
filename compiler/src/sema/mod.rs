@@ -940,6 +940,13 @@ pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
         | "__builtin_infinity" | "__builtin_parse_float" => Type::Float,
         "__builtin_is_nan" | "__builtin_is_infinite" | "__builtin_is_finite" => Type::Bool,
         "__builtin_parse_int" => Type::Int,
+        // Files and the clock. Each answers through `stat` or the OS rather than
+        // trapping, so a path that does not exist is `false`.
+        "__builtin_file_exists" | "__builtin_is_file" | "__builtin_is_directory"
+        | "__builtin_rename_file" | "__builtin_copy_file" | "__builtin_remove_file"
+        | "__builtin_delete_file" | "__builtin_mkdir" | "__builtin_rmdir" => Type::Bool,
+        "__builtin_file_size" | "__builtin_now" => Type::Int,
+        "__builtin_sleep" => Type::Unit,
         _ => return None,
     })
 }
