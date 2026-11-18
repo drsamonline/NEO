@@ -1,9 +1,14 @@
 # The NOVA language specification — status
 
-**This specification is not written yet.** Twenty-four of the twenty-five chapters
+**This specification is mostly unwritten.** Twenty-one of the twenty-five chapters
 below are a title and one sentence. The landing page calls this "25 chapters
 covering grammar, types, memory, concurrency, packages and the semantic IR"; that
 is the plan, not the state.
+
+Five are written, and they were written from the code rather than from intent:
+[the overview](00_overview.md), [lexical grammar](01_lexical_grammar.md),
+[keywords](03_keywords.md), [literals](05_literals.md) and [types](06_types.md).
+Each one names the file it was derived from, so a reader can check it.
 
 What exists today, and what you should read instead:
 
@@ -22,12 +27,12 @@ What exists today, and what you should read instead:
 | # | Chapter | State |
 |---|---|---|
 | 00 | [Overview](00_overview.md) | ✅ written |
-| 01 | [Lexical grammar](01_lexical_grammar.md) | — |
+| 01 | [Lexical grammar](01_lexical_grammar.md) | ✅ written |
 | 02 | [Tokens](02_tokens.md) | — |
-| 03 | [Keywords](03_keywords.md) | — |
+| 03 | [Keywords](03_keywords.md) | ✅ written |
 | 04 | [Identifiers](04_identifiers.md) | — |
-| 05 | [Literals](05_literals.md) | — |
-| 06 | [Types](06_types.md) | — |
+| 05 | [Literals](05_literals.md) | ✅ written |
+| 06 | [Types](06_types.md) | ✅ written |
 | 07 | [Functions](07_functions.md) | — |
 | 08 | [Modules](08_modules.md) | — |
 | 09 | [Control flow](09_control_flow.md) | — |
