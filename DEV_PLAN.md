@@ -221,8 +221,13 @@ deferral cannot be expanded correctly later.
   deferred body ranges. No parsing inside a body.
 - ✅ The outline in the language server is its first consumer, and an `impl`'s
   methods appear only by expanding its body.
-- ⬜ `nova fmt`, item by item: separators and indentation from item spans, bodies
-  left byte-identical. A formatter honest about what it does not touch.
+- ✅ `nova fmt`, item by item: `compiler/src/fmt.rs` normalises the space between
+  items — one blank line, no trailing whitespace, one final newline — and changes
+  **no byte inside an item**. It never parses, so it is total: it works on
+  half-typed code. `compiler/tests/format.rs` checks against every shipped program
+  that no item is altered, no comment is lost and formatting twice changes nothing.
+  **What it does not do:** indent or reflow a body. That needs a lossless tree over
+  every expression, which is the next line.
 - ⬜ A guard that the item tree and the parser agree about what an item is, the way
   `grammar-check.py` guards the grammar against the parser.
 - ⬜ Settle `trait`: `token.rs` has no `Trait` keyword, so `trait` lexes as an
@@ -232,8 +237,9 @@ deferral cannot be expanded correctly later.
 **What it does not buy:** type-checking is not faster — `sema` needs bodies. The
 laziness is real only for features that can decline to look inside.
 
-**Done when:** `nova fmt` round-trips every file in `examples/` and `stdlib/`
-byte-identically, and the item tree and parser agree on every example in CI.
+**Done when:** the item tree and the parser agree on every example in CI, and a
+formatter can rewrite the *inside* of a body without changing meaning — which is
+the remaining half of this stage.
 
 ### Stage 5 — Close the tooling milestones that are now cheap (1 week)
 

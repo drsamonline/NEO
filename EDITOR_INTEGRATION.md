@@ -48,7 +48,10 @@ host, and its structure is a reasonable starting point for a tree-sitter grammar
 
 ## What is not offered
 
-- No formatter, because there is no lossless tree to format from yet
-  (`DEV_PLAN.md` Stage 4).
+- **No format-on-save integration.** `nova-compiler fmt` exists and is safe to run
+  on any file — it never parses, so it works on half-typed code — but it only
+  normalises the space between items and changes nothing inside a body. Wiring it to
+  a save hook is a one-line task for whoever wants it; the CLI is
+  `nova-compiler fmt <file>` and `--check` reports without writing.
 - No rename, for the same reason navigation is not a resolver.
 - No debug adapter. `nova-dbg` is a standalone REPL; it does not speak DAP.

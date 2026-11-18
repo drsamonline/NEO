@@ -36,7 +36,9 @@ symbol, so shadowing in nested scopes is not distinguished. That needs a lossles
 syntax tree with a scope map, which is the Stage 4 work in `DEV_PLAN.md` and the
 same thing a formatter needs.
 
-There is no formatter, because there is no lossless tree to format from.
+The formatter exists (`nova-compiler fmt`) but is not wired to save: it normalises
+the space between top-level items and changes nothing inside a body. Wiring it to
+`editor.formatOnSave` is a small addition, not a missing capability.
 
 ## Settings
 

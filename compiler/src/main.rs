@@ -23,6 +23,8 @@ USAGE:
     nova-compiler emit <source.nova> [-o FILE]   write the generated C to FILE
     nova-compiler build <source.nova> [-o PATH]  compile and link an executable
     nova-compiler run <source.nova> [-- ARGS...] build, then run the executable
+    nova-compiler fmt <source.nova> [-o FILE]    format it; bodies are left untouched
+    nova-compiler fmt <source.nova> --check      exit 1 if it is not formatted
     nova-compiler test --parity <source.nova>  run one program on every backend and compare
     nova-compiler doctor [--json]              check toolchains and backend readiness
     nova-compiler explain [Exxxx]              long form of an error code, or list them
@@ -55,6 +57,11 @@ fn main() {
         Some("-V") | Some("--version") | Some("version") => {
             reject_extra_args(&args[1..], "version");
             println!("nova-compiler {}", env!("CARGO_PKG_VERSION"));
+        }
+        Some("fmt") | Some("format") => {
+            let (input, output, _target, rest) = parse_args(&args[1..]);
+            reject_extra_args(&rest, "fmt");
+            fmt_command(&input, output.as_deref());
         }
         Some("emit") => {
             let (input, output, target, rest) = parse_args(&args[1..]);
@@ -171,6 +178,9 @@ fn require_c(target: Target, command: &str) {
 /// `static mut` removed from the runtime — an atomic is the sound version of the
 /// thing that was wanted.
 static JSON_DIAGNOSTICS: AtomicBool = AtomicBool::new(false);
+
+/// Set by `fmt --check`: report whether the file is formatted, and change nothing.
+static CHECK_ONLY: AtomicBool = AtomicBool::new(false);
 
 fn json_diagnostics() -> bool {
     JSON_DIAGNOSTICS.load(Ordering::SeqCst)
@@ -353,6 +363,7 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, Target, Vec<String>
                     )),
                 }
             }
+            "--check" => CHECK_ONLY.store(true, Ordering::SeqCst),
             "--" => {
                 rest.extend(args[i + 1..].iter().cloned());
                 break;
@@ -457,6 +468,43 @@ fn compile_to(input: &Path, target: Target) -> String {
                 ));
             }
             WasmBackend::new().generate(&sir)
+        }
+    }
+}
+
+/// `fmt`: rewrite the space between items, and nothing else.
+///
+/// The formatter is total — it never parses, so it cannot fail — which means it
+/// works on a file that is half-typed. That is the point: a formatter you cannot
+/// run on broken code is a formatter you cannot run while editing.
+fn fmt_command(input: &Path, output: Option<&Path>) {
+    let source = fs::read_to_string(input)
+        .unwrap_or_else(|e| die(&format!("cannot read {}: {e}", input.display())));
+    let formatted = nova_compiler::fmt::format(&source);
+
+    if CHECK_ONLY.load(Ordering::SeqCst) {
+        if formatted == source {
+            exit(0);
+        }
+        eprintln!("{}: not formatted", input.display());
+        exit(1);
+    }
+
+    if formatted == source {
+        eprintln!("{} is already formatted", input.display());
+        return;
+    }
+
+    match output {
+        Some(path) => {
+            fs::write(path, &formatted)
+                .unwrap_or_else(|e| die(&format!("cannot write {}: {e}", path.display())));
+            eprintln!("✓ wrote {}", path.display());
+        }
+        None => {
+            fs::write(input, &formatted)
+                .unwrap_or_else(|e| die(&format!("cannot write {}: {e}", input.display())));
+            eprintln!("✓ formatted {}", input.display());
         }
     }
 }
