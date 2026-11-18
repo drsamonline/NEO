@@ -6,5 +6,5 @@
 #
 # Every reason below is quoted from a compiler's output, not inferred from the source.
 #
-io   io.c:169: initializer element is not constant — a global initialised with a call. io.c:478: incompatible types when initializing type 'int' using type 'File'; io.c:486: request for member 'handle' in something not a structure. The module's File struct is used where an int is declared.
-text text.c:231: initializer element is not constant. text.c:540-559: the same File confusion as io, reached through `use io;`.
+io   io.c:478: incompatible types when initializing type 'int' using type 'File'; io.c:486: request for member 'handle' in something not a structure. `fn fclose(file: &mut File)` declares a reference to a struct, and references are lowered only for array parameters — the parameter arrives as an `int`, so the `File` argument does not fit and every `file.handle` is a member access on an int.
+text text.c:540-559: the same 'File' reference defect as io, reached through `use io;`.

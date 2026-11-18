@@ -1,4 +1,4 @@
-65.33
+65.61
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -17,3 +17,4 @@
 # 65.23% (8,274 of 12,684) when path and git dependencies landed.
 # 65.26% (8,290 of 12,703) when the floating-point builtins landed.
 # 65.33% (8,336 of 12,760) when the tuple type and float modulo landed.
+# 65.61% (8,385 of 12,780) when string constants became literals at file scope.
