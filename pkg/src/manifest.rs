@@ -135,7 +135,7 @@ pub enum DependencySpec {
 }
 
 /// Detailed dependency configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DependencyDetails {
     /// Version requirement
     pub version: Option<String>,

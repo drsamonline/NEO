@@ -77,20 +77,22 @@ fn resolve_one(
                 root.display()
             )));
         }
+        let source = format!("path {}", root.display());
         return Ok(Resolved {
             name: name.to_string(),
             root,
-            source: format!("path {}", root.display()),
+            source,
         });
     }
 
     if let Some(url) = &details.git {
         let root = project.join(DEPENDENCY_DIR).join(name);
         fetch(name, url, details, &root)?;
+        let source = format!("git {url}");
         return Ok(Resolved {
             name: name.to_string(),
             root,
-            source: format!("git {url}"),
+            source,
         });
     }
 
