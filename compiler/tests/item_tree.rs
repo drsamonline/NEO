@@ -73,7 +73,7 @@ fn from_parser(program: &Program) -> Vec<(ItemKind, Option<String>)> {
             Item::Enum(e) => Some((ItemKind::Enum, Some(e.name.clone()))),
             Item::Const(c) => Some((ItemKind::Const, Some(c.name.clone()))),
             Item::TypeAlias(t) => Some((ItemKind::TypeAlias, Some(t.name.clone()))),
-            Item::Module(m) => Some((ItemKind::Module, Some(m.name.clone()))),
+            Item::Mod(m) => Some((ItemKind::Module, Some(m.name.clone()))),
             // These carry a path or a type rather than a declared name.
             Item::Use(_) => Some((ItemKind::Use, None)),
             Item::Impl(_) => Some((ItemKind::Impl, None)),
