@@ -133,8 +133,9 @@ be replaced later without touching its consumers.
    grammar: for every `examples/**/*.nova`, the item kinds the tree reports must
    match the top-level `Item`s the parser produces. Without that, two
    representations will drift.
-3. **Decide `trait`**: add the keyword, or drop `Item::Trait` and the parser's
-   handling of it.
+3. ✅ **Decided `trait`** — dropped. It was never a keyword, the grammar had no
+   production and the parser could not produce one, so `Item::Trait` was dead code.
+   See [0002](0002-traits.md).
 4. **Then, and only then**, consider `rowan` for the inside of bodies — with the
    item tree's consumers unchanged, because they never depended on how a body is
    represented.

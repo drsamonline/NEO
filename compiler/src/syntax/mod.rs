@@ -34,9 +34,10 @@ use nova_common::{Span, Token, TokenKind};
 
 /// What kind of top-level item this is.
 ///
-/// There is no `Trait`: `token.rs` has no `Trait` keyword, so `trait` lexes as an
-/// ordinary identifier and no token-level tool can find one. Adding the keyword is
-/// a language change, not a parser detail — see `DEV_PLAN.md`.
+/// There is no `Trait`, and there is no `Item::Trait` either: `trait` is not a
+/// keyword, the grammar has no production for it and the parser cannot produce one.
+/// See `docs/adr/0002-traits.md` — the keyword, the grammar production and the
+/// parser land together or not at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemKind {
     Function,
