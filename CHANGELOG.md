@@ -626,8 +626,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 ## [0.6.1]
 
 - Release cut so the tag describes the code it ships: this is the first release since 0.6.0.
-- No date is recorded here because no GitHub release or tag date was found in the
-  repository; fill it in at the next tag.
+
+_No date, because no tag exists yet. The release workflow refuses a tag that does not
+match `Cargo.toml` and `VERSION`, and the tag's own date becomes the release date._
 
 ## [1.0.0-alpha] - Phase 1: Compiler Core Complete - 2024
 

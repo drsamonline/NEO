@@ -3,6 +3,11 @@ name: Release
 # A tag is the only thing that publishes. Nothing here runs on a branch push, so a
 # red build can never produce a release artifact.
 #
+# `workflow_dispatch` runs the same pipeline as a **dry run**: verify, build all
+# three platforms, package, smoke-test the packaged compiler, print the checksums —
+# and stop. No draft is created, nothing is uploaded, nothing is published. That is
+# how this workflow is tested without cutting a release.
+#
 # No third-party actions: `gh` is preinstalled on every GitHub runner, so the
 # release is created and uploaded with the CLI rather than with an action whose
 # SHA would need pinning and bumping. The only actions used are the two already
@@ -11,6 +16,21 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to dry-run, as it would be tagged"
+        required: true
+        default: "v0.6.1"
+      dry_run:
+        description: "Build and package, but do not create or publish a release"
+        type: boolean
+        default: true
+
+env:
+  # On a tag push this is the tag; on a dispatch it is the version being rehearsed.
+  # One variable so no step has to know which event started it.
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 permissions:
   contents: write      # the one workflow that needs it; every other is read-only
@@ -31,7 +51,7 @@ jobs:
 
       - name: The tag matches the crate version
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${TAG#v}"
           crate="$(python3 -c 'import tomllib;print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["version"])')"
           file="$(cat VERSION)"
           echo "tag=$tag crate=$crate VERSION=$file"
@@ -70,11 +90,13 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
       - name: Create the draft release
+        # Skipped on a dry run. The job still runs so `build` can depend on it.
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          tag="${GITHUB_REF_NAME}"
+          tag="${TAG}"
           # Notes come from CHANGELOG.md: the section for this version if it is
           # there, otherwise a pointer, never an invented summary.
           python3 - "$tag" > notes.md <<'PY'
@@ -116,7 +138,7 @@ jobs:
       - name: Package
         run: |
           set -eu
-          tag="${GITHUB_REF_NAME}"
+          tag="${TAG}"
           case "${{ runner.os }}" in
             Linux)   target="x86_64-linux" ;;
             macOS)   target="$(uname -m)-macos" ;;
@@ -157,7 +179,7 @@ jobs:
       - name: Smoke-test the packaged compiler
         run: |
           set -eu
-          tag="${GITHUB_REF_NAME}"
+          tag="${TAG}"
           stage="$(ls -d dist/nova-${tag}-* | head -1)"
           exe="$stage/nova-compiler"
           if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
@@ -168,21 +190,39 @@ jobs:
           grep -q "release ok" /tmp/smoke.c
 
       - name: Upload to the release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          tag="${GITHUB_REF_NAME}"
+          tag="${TAG}"
           gh release upload "$tag" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+
+      # A dry run proves everything the upload would have proved except the upload
+      # itself: the three platforms build, the packaged compiler runs, the archive
+      # has a checksum. The artifacts are printed so the log is the evidence.
+      - name: Report what a real run would have uploaded
+        if: github.event_name != 'push'
+        run: |
+          set -eu
+          echo "::group::dry run — nothing was created or published"
+          ls -l dist/
+          echo "checksums:"
+          cat dist/*.sha256
+          echo "::endgroup::"
+          echo "Dry run complete for $TAG on ${{ runner.os }}. Push a \`$TAG\` tag to publish."
+
 
   # The draft stays a draft until every platform has uploaded. Publishing is the
   # one step that cannot be undone, so it happens only after all three succeeded.
   publish:
     name: Publish the release
+    # The only irreversible step, so it is the only one a dry run cannot reach.
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Flip the draft to published
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+        run: gh release edit "$TAG" --draft=false

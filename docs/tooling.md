@@ -42,7 +42,7 @@ Each is runnable locally with no toolchain, which is why they are Python.
 | `fuzz.yml` | **G5** `cargo-fuzz` on lexer, parser and front end, seeded | **advisory** — until a weekly 10-minute run is clean |
 | `mutants.yml` | **G7** `cargo-mutants` on the lowerer and C backend, weekly | **advisory** — until the survivors are triaged |
 | `bench.yml` | Wall-clock bench and compiler-speed bench, weekly and on demand | no — a trend, not a gate |
-| `release.yml` | Tag → verify → draft release → three-platform build with a packaged-compiler smoke test → publish | on tag only |
+| `release.yml` | Tag → verify → draft release → three-platform build with a packaged-compiler smoke test → publish. `workflow_dispatch` runs the same pipeline as a **dry run** and stops before creating anything | on tag, or on demand |
 | `lint` job in `ci.yml` | `cargo fmt --check`, `clippy -D warnings` | **advisory** — the tree has never been formatted |
 
 ## Why some are advisory
@@ -57,6 +57,27 @@ An advisory check is a decision with a reason written next to it, not an oversig
 - **fmt/clippy** — `cargo fmt --check` on a tree that has never been formatted fails
   on every file at once. It goes blocking in the same change that lands
   `cargo fmt --all`.
+
+## Cutting a release
+
+```bash
+# 1. Promote [Unreleased] in CHANGELOG.md to a version heading, and bump the version
+#    in Cargo.toml ([workspace.package]) and VERSION. All three must agree or the
+#    workflow stops at its first step.
+# 2. Rehearse: Actions → Release → Run workflow, with the tag you intend to push.
+#    That builds all three platforms, packages, smoke-tests the packaged compiler and
+#    prints the checksums. It creates no release.
+# 3. Publish:
+git tag v0.7.0 && git push --tags
+```
+
+The dry run exists because this workflow was written in a pull request and, until it
+runs, "it works" is an assumption. It is the one piece of the repository that cannot
+be checked by pushing a branch.
+
+**The verify step is what stops the version bug from shipping.** It refuses a tag
+whose version disagrees with `Cargo.toml` or `VERSION` — the defect that once left
+four different version numbers in one repository.
 
 ## What is not covered
 
