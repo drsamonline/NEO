@@ -417,6 +417,11 @@ It is not a release — debug build, no packaging, seven-day retention. It exist
 runner's filesystem is otherwise unreachable, so a change can only be judged by pass/fail
 when it could be judged by running it.
 
+`scripts/dev-loop.sh <branch>` does the four steps and sets `CC` up, so the whole round
+trip is one command. **Verified end to end**: a compiler built from `master` on a runner,
+downloaded here, compiled a program that `use math;` and printed `4 3 3 1024` with
+`zig cc` as the C compiler.
+
 ## Known limitations (deliberate, documented)
 
 - `int` → `float` is the only implicit conversion.
