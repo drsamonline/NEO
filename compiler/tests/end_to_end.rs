@@ -158,7 +158,11 @@ fn hello_compiles_links_and_prints() {
 /// program inside the workspace's own `stdlib` search path rather than a temp dir.
 fn run_with_stdlib(name: &str, source: &str) -> String {
     let dir = scratch(name);
-    let file = dir.join(format!("{name}.nova"));
+    // Not `<name>.nova`: `find_module` looks beside the importing file first, so a
+    // program called `math.nova` that says `use math;` imports itself. It loaded, found
+    // no `sqrt`, and the build failed with "undefined name `sqrt`" — which is how this
+    // was discovered.
+    let file = dir.join(format!("{name}_program.nova"));
     fs::write(&file, source).expect("write source");
     let binary = dir.join(name);
 
@@ -1775,13 +1779,13 @@ fn emitted_c_links_against_the_generated_runtime() {
     );
 
     let binary = dir.join("hello");
-    let build = Command::new(cc())
-        .arg(&c_file)
-        .arg(&runtime_c)
-        .arg("-o")
-        .arg(&binary)
-        .output()
-        .expect("link generated C with the runtime");
+    let mut link = Command::new(cc());
+    link.arg(&c_file).arg(&runtime_c).arg("-o").arg(&binary);
+    // The runtime shim calls libm (`sqrt`, `sin`, …), so a Linux link needs `-lm`.
+    if !cfg!(windows) {
+        link.arg("-lm");
+    }
+    let build = link.output().expect("link generated C with the runtime");
     assert!(
         build.status.success(),
         "cc failed:\n{}",
