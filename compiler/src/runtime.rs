@@ -24,6 +24,10 @@ pub const HEADER: &str = r#"/* nova_runtime.h - NOVA runtime shim (ABI v3).
 #define NOVA_RUNTIME_H
 
 #include <stdbool.h>
+/* The header is what generated C sees, and generated code now calls `fmod` when a
+ * NOVA `%` has a float operand. Without this include that call is implicitly
+ * declared, which C rejects. */
+#include <math.h>
 
 #ifdef __cplusplus
 extern "C" {

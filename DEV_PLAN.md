@@ -420,7 +420,9 @@ plan should borrow rather than invent.
   rather than a design: a `RefCell` in a `thread_local!` would be sound, and needs a
   memory model NOVA does not have yet.
 - The package registry is mocked.
-- **Four `math` calls segfault, and the emitted C says why.** `floor`, `ceil`, `round`
+- ~~**Four `math` calls segfault, and the emitted C says why.**~~ — fixed: a NOVA
+  function whose name belongs to the C library is emitted as `nova_fn_<name>`. The
+  original diagnosis follows, because it is what made the fix obvious. `floor`, `ceil`, `round`
   and `powf` are **definitions of libm symbols** — the program emits
   `int floor(double x) { return (int)nova_math_floor(x); }`, and `nova_math_floor` in
   the runtime translation unit calls `floor`, which the linker resolves back to the
