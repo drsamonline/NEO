@@ -226,6 +226,12 @@ impl Lowerer {
                 }
             }
             Expr::Array(_) => Some("Array".to_string()),
+            // A `match` used as a value has the type of its arms. Without this arm the
+            // chain reported no type, `let level_str = match level { ... }` fell back to
+            // `int`, and `stdlib/io` emitted `initialization of 'int' from 'char *'`.
+            // The first arm decides; a mismatch between arms is the analyser's problem,
+            // and it already checks that.
+            Expr::Match(_, arms) => arms.first().and_then(|arm| self.expr_type(&arm.body)),
             // `&x` / `&mut x` is a reference to its operand. This arm is the hinge for
             // `lower_call_args`: its `is_reference` test reads this type, so an explicit
             // borrow must report one or the argument is wrapped a second time (`&&file`).
