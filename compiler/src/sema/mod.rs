@@ -211,6 +211,11 @@ impl SemanticAnalyzer {
         let Some(payload) = return_type.generics.first() else {
             return;
         };
+        // A generic parameter is fine: `array_pop<T>(...) -> Option<T>` is
+        // instantiated at the call site, and the instantiation is checked there.
+        if func.generics.iter().any(|generic| generic == &payload.name) {
+            return;
+        }
         if is_primitive_type_name(&payload.name) {
             return;
         }
@@ -994,6 +999,7 @@ fn is_primitive_type_name(name: &str) -> bool {
             | "f64"
             | "bool"
             | "string"
+            | "String"
             | "str"
             | "char"
             | "unit"
