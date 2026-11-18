@@ -385,6 +385,11 @@ plan should borrow rather than invent.
   `nova_unsupported`.
 - `--release` selects an output directory; the compiler has no optimisation levels.
 - The runtime crate is not linked to generated C; the C shim is.
+- A NOVA `static` becomes Rust `static mut`, and every read and write of it is
+  wrapped in `unsafe`. That is what makes it compile at all — E0133 otherwise — and
+  `tests/parity/statics.nova` pins it across all four backends. It is a limitation
+  rather than a design: a `RefCell` in a `thread_local!` would be sound, and needs a
+  memory model NOVA does not have yet.
 - The package registry is mocked.
 
 ---
