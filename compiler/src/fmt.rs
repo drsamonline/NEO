@@ -121,8 +121,12 @@ fn reindent(source: &str) -> String {
         }
         let number = index + 1;
         match indent_of.get(&number) {
-            // A code line: rewrite its leading whitespace.
-            Some(&level) if !protected.contains(&number) => {
+            // A code line: rewrite its leading whitespace. A line with no visible
+            // content is never indented — the lexer's end-of-file token sits on a
+            // line of its own, and indenting that line put four spaces after the
+            // final newline, which made the formatter non-idempotent on any file
+            // whose last block is unclosed. Found by the malformed-input test.
+            Some(&level) if !protected.contains(&number) && !line.trim().is_empty() => {
                 out.push_str(&INDENT.repeat(level));
                 out.push_str(line.trim_start());
             }
@@ -363,6 +367,17 @@ mod tests {
         ] {
             idempotent(source);
             assert_tokens_preserved(source);
+        }
+    }
+
+    #[test]
+    fn an_unclosed_block_does_not_leave_trailing_indent() {
+        // The end-of-file token sits on the line after the last newline; indenting
+        // it produced `"fn broken() {\n    \n"` on the second pass.
+        for source in ["fn broken() {", "fn broken() {\n"] {
+            let once = format(source);
+            assert_eq!(once, "fn broken() {\n", "unexpected output: {once:?}");
+            assert_eq!(format(&once), once, "not idempotent for {source:?}");
         }
     }
 
