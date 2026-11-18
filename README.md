@@ -230,6 +230,7 @@ with `wc -l` rather than by hand; a stale table is how this one drifted from
 
 ![Language specification map](docs/preview-language.png)
 
+- [Documentation index](docs/README.md) - Everything written down, in one place
 - [Development Plan](DEV_PLAN.md) - Current progress and roadmap
 - [Architecture](ARCHITECTURE.md) - System design
 - [Language spec status](docs/language/README.md) - what is specified and what is still unwritten

@@ -104,6 +104,20 @@ consistent with the code. If your change makes a number in one of them wrong,
 fix the number in the same commit. Counts in the README are `wc -l` output —
 regenerate them, do not estimate them.
 
+Four rules, all checked by `tools/docs-check.py` in CI:
+
+1. **No placeholders.** A document under 120 bytes is a stub, and a stub is worse
+   than nothing because a reader follows it and learns that links here go nowhere.
+   Fill it or delete it.
+2. **No orphans.** Every document must be reachable from `README.md` or
+   `docs/README.md`. A new page that nobody links is a page nobody finds.
+3. **Every workflow says what it guards**, in a comment before its `on:` key.
+4. **Every tool has a docstring** saying what it checks and why.
+
+If you add a page, add it to [`docs/README.md`](docs/README.md). If you add a
+decision that was hard to make, add an ADR — [`docs/adr/README.md`](docs/adr/README.md)
+has the format. A decision nobody wrote down is indistinguishable from an accident.
+
 Add user-facing changes to the `[Unreleased]` section of `CHANGELOG.md`.
 `[Unreleased]` always sits above the newest release.
 

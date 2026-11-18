@@ -92,6 +92,7 @@ in place they are the acceptance check for everything else.
 | **G5 Fuzz** ✅ in place, advisory | `cargo-fuzz` on lexer, parser and the whole front end — 60s per target per PR, 10 minutes weekly — `fuzz.yml`, seeded from `examples/` and `tests/parity/` | panics, hangs, stack overflow on malformed input |
 | **G6 Coverage** ✅ in place | `cargo llvm-cov` → LCOV, line coverage compared to `coverage-floor.txt`, which may only go up — `coverage.yml` | tests that assert nothing, untested branches |
 | **G7 Mutation** ✅ in place, advisory | `cargo-mutants` on the lowerer and C backend, Saturdays — `mutants.yml` | tests that pass for the wrong reason |
+| **Docs** ✅ in place | `tools/docs-check.py` — no document under 120 bytes, every document reachable from a front door, every workflow and tool explained | a placeholder, an orphan page, or a check nobody understands |
 
 ---
 
@@ -312,6 +313,8 @@ plan should borrow rather than invent.
 - **Stop maintaining a bespoke release workflow** once `dist` is in.
 - **Stop the wall-clock benchmark gate.** Done — it moved to a weekly job.
 - **Stop writing plan documents.** This is the fifth. There should be one.
+- **Stop leaving placeholders.** `tools/docs-check.py` now fails a build for a
+  document under 120 bytes, an unlinked page, or a workflow with no explanation.
 
 ---
 

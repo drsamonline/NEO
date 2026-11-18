@@ -1,6 +1,11 @@
 
 name: CI
 
+# The main gate: does it build, do the tests pass, and does every program in the
+# repository still compile and run? Everything here is blocking.
+#
+# `docs/tooling.md` says what each workflow guards and why some are advisory.
+
 on:
   push:
   pull_request:
@@ -40,6 +45,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+      # No toolchain needed, so it runs first: a documentation regression is the
+      # cheapest failure to report and the most annoying one to discover later.
+      - name: Every document is written, reachable and explained
+        run: python3 tools/docs-check.py
+
       - name: The grammar still describes the compiler
         run: python3 tools/grammar-check.py
       - name: Every shipped example is a NOVA program
