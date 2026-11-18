@@ -55,6 +55,15 @@ whatever the caller built was truncated to integers on the way in. `mean`, `vari
 numbers is worse than one that does not compile**, and nothing in the gates catches it
 because the gate only asks whether the C compiles.
 
+**Measured, not inferred.** `sum_float([1.5, 2.5])` returns **3**, not 4 — the literals
+were truncated to `1` and `2` before anything summed them. The test
+`a_float_array_sum_is_not_truncated` in `compiler/tests/end_to_end.rs` asserts the correct
+answer and is `#[ignore]`d with this defect as its reason, so it stays runnable:
+
+```bash
+cargo test --test end_to_end -- --ignored a_float_array_sum
+```
+
 ## Options
 
 **(a) `void *data` plus an element size.**
