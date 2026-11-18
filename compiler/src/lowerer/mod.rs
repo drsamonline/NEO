@@ -46,6 +46,9 @@ pub struct Lowerer {
     method_declarations: HashMap<String, Function>,
     /// True once `Some`/`None` are lowered, so the `Option` struct is emitted.
     uses_option: bool,
+    /// Type of each top-level `const`/`static`, so a reference to one can be typed
+    /// outside any scope.
+    global_types: HashMap<String, String>,
     /// Every payload type `Option` was instantiated with, so one struct can be
     /// emitted per type instead of one struct with three primitive slots.
     option_payloads: std::collections::BTreeSet<String>,
@@ -128,6 +131,7 @@ impl Lowerer {
             method_generics: HashMap::new(),
             method_declarations: HashMap::new(),
             uses_option: false,
+            global_types: HashMap::new(),
             option_payloads: std::collections::BTreeSet::new(),
             generic_decls: HashMap::new(),
             pending: Vec::new(),
@@ -161,6 +165,9 @@ impl Lowerer {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).cloned())
+            // A top-level `const`/`static` lives in no scope, so `COLOR_BOLD + "x"` had
+            // no operand type and the `+` could not be recognised as concatenation.
+            .or_else(|| self.global_types.get(name).cloned())
     }
 
     /// The type of a literal, which is all the inference this compiler has.
@@ -441,9 +448,16 @@ impl Lowerer {
                 }
                 nova_common::Item::Const(const_def) => {
                     let init_value = self.lower_expr(&const_def.value);
+                    let declared = const_def
+                        .typ
+                        .as_ref()
+                        .map(type_display)
+                        .unwrap_or_else(|| "int".to_string());
+                    self.global_types
+                        .insert(const_def.name.clone(), declared.clone());
                     globals.push(SirGlobal {
                         name: const_def.name.clone(),
-                        typ: const_def.typ.as_ref().map(|t| t.name.clone()).unwrap_or_else(|| "int".to_string()),
+                        typ: declared,
                         init_value: Some(init_value),
                     });
                 }
