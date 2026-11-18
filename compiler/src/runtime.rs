@@ -89,6 +89,23 @@ void nova_fail(const char *message);
 void nova_panic(const char *message);
 void nova_exit(long long code);
 long long nova_unsupported(const char *name);
+/* Arrays of `double`. `NovaArray` holds `int`, and a `double` does not fit in an `int`
+ * slot, so a float array gets its own header and its own functions rather than a cast.
+ * The element type is known at every construction and use site in the compiler, which
+ * is what makes monomorphising here cheap — see docs/adr/0006. */
+typedef struct {
+    double *data;
+    long long len;
+    long long cap;
+} NovaArray_float;
+
+NovaArray_float nova_array_float_from(const double *items, long long len);
+long long nova_array_float_len(NovaArray_float array);
+double nova_array_float_get(NovaArray_float array, long long index);
+void nova_array_float_set(NovaArray_float array, long long index, double value);
+void nova_array_float_push(NovaArray_float *array, double value);
+double nova_array_float_pop(NovaArray_float *array);
+
 const char *nova_getenv(const char *name);
 const char *nova_cwd(void);
 int nova_chdir(const char *path);
@@ -524,6 +541,60 @@ int nova_chdir(const char *path) {
 #else
     return chdir(path) == 0;
 #endif
+}
+
+
+NovaArray_float nova_array_float_from(const double *items, long long len) {
+    NovaArray_float array;
+    array.len = len;
+    array.cap = len < 4 ? 4 : len;
+    array.data = (double *)malloc(sizeof(double) * (size_t)array.cap);
+    if (array.data == NULL) nova_fail("out of memory");
+    for (long long i = 0; i < len; i++) array.data[i] = items[i];
+    return array;
+}
+
+long long nova_array_float_len(NovaArray_float array) {
+    return array.len;
+}
+
+double nova_array_float_get(NovaArray_float array, long long index) {
+    if (index < 0 || index >= array.len) {
+        nova_fail("array index out of bounds");
+    }
+    return array.data[index];
+}
+
+void nova_array_float_set(NovaArray_float array, long long index, double value) {
+    if (index < 0 || index >= array.len) {
+        nova_fail("array index out of bounds");
+    }
+    array.data[index] = value;
+}
+
+void nova_array_float_push(NovaArray_float *array, double value) {
+    if (array == NULL) {
+        nova_fail("push on a missing array");
+    }
+    if (array->len >= array->cap) {
+        long long cap = array->cap > 0 ? array->cap * 2 : 4;
+        double *grown = (double *)realloc(array->data, (size_t)cap * sizeof(double));
+        if (grown == NULL) {
+            nova_fail("out of memory");
+        }
+        array->data = grown;
+        array->cap = cap;
+    }
+    array->data[array->len] = value;
+    array->len = array->len + 1;
+}
+
+double nova_array_float_pop(NovaArray_float *array) {
+    if (array == NULL || array->len <= 0) {
+        nova_fail("pop on an empty array");
+    }
+    array->len = array->len - 1;
+    return array->data[array->len];
 }
 
 long long nova_unsupported(const char *name) {

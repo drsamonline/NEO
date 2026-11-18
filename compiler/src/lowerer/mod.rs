@@ -901,6 +901,25 @@ impl Lowerer {
     }
 
     /// An array header for a mutating call, and whether it is already a pointer.
+    /// Whether an expression's type is an array of `double`.
+    ///
+    /// `NovaArray` holds `int`, so a `[float]` array needs its own header and its own
+    /// runtime functions — [ADR 0006](../../docs/adr/0006-array-element-types.md).
+    fn is_float_array(&self, expr: &Expr) -> bool {
+        self.expr_type(expr)
+            .map(|typ| {
+                let bare = typ
+                    .trim_start_matches('&')
+                    .trim_start_matches("mut ")
+                    .trim();
+                matches!(
+                    bare,
+                    "[float]" | "[f32]" | "[f64]" | "Array<float>" | "Array<f32>" | "Array<f64>"
+                )
+            })
+            .unwrap_or(false)
+    }
+
     fn lower_array_handle(&mut self, expr: &Expr) -> (SirExpr, bool) {
         let is_reference = self
             .expr_type(expr)
@@ -976,11 +995,14 @@ impl Lowerer {
             "__builtin_chdir" => Some(typed("nova_chdir", lowered(self), "bool")),
             "__builtin_now" => Some(typed("nova_now_ms", vec![], "int")),
             "__builtin_sleep" => Some(typed("nova_sleep_ms", lowered(self), "void")),
-            "__builtin_array_len" => Some(typed(
-                "nova_array_len",
-                vec![self.lower_array_value(args.first()?)],
-                "int",
-            )),
+            "__builtin_array_len" => {
+                let callee = if self.is_float_array(args.first()?) {
+                    "nova_array_float_len"
+                } else {
+                    "nova_array_len"
+                };
+                Some(typed(callee, vec![self.lower_array_value(args.first()?)], "int"))
+            }
             // Push and pop mutate the header (length, capacity), so they take
             // the array by address unless it is already a `&mut` reference.
             "__builtin_array_push" => {
@@ -991,7 +1013,12 @@ impl Lowerer {
                     SirExpr::AddressOf(Box::new(array))
                 };
                 let value = self.lower_expr(args.get(1)?);
-                Some(typed("nova_array_push", vec![array, value], "void"))
+                let callee = if self.is_float_array(args.first()?) {
+                    "nova_array_float_push"
+                } else {
+                    "nova_array_push"
+                };
+                Some(typed(callee, vec![array, value], "void"))
             }
             "__builtin_array_pop" | "__builtin_array_pop_ref" => {
                 let (array, is_reference) = self.lower_array_handle(args.first()?);
@@ -1000,6 +1027,9 @@ impl Lowerer {
                 } else {
                     SirExpr::AddressOf(Box::new(array))
                 };
+                if self.is_float_array(args.first()?) {
+                    return Some(typed("nova_array_float_pop", vec![array], "float"));
+                }
                 Some(typed("nova_array_pop", vec![array], "int"))
             }
             // Floating-point maths. Every one is a C library call under a name the
@@ -2172,11 +2202,25 @@ impl Lowerer {
                         };
                     }
                 }
+                // A float array reads through its own runtime function and reports
+                // `float`; everything else stays an `int` element, so `print(arr[i])`
+                // keeps working.
+                if self.is_float_array(obj) {
+                    return SirExpr::Typed {
+                        expr: Box::new(SirExpr::Call {
+                            callee: "nova_array_float_get".to_string(),
+                            args: vec![
+                                self.lower_array_value(obj),
+                                self.lower_expr(index),
+                            ],
+                        }),
+                        typ: "float".to_string(),
+                    };
+                }
                 let access = SirExpr::Index {
                     array: Box::new(self.lower_array_value(obj)),
                     index: Box::new(self.lower_expr(index)),
                 };
-                // Elements are typed `int` for now, so `print(arr[i])` works.
                 SirExpr::Typed {
                     expr: Box::new(access),
                     typ: "int".to_string(),

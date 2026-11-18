@@ -298,10 +298,17 @@ impl CBackend {
             .trim_start_matches("mut ")
             .trim_start();
         if base.contains('[') || base.eq_ignore_ascii_case("array") {
-            return if by_reference {
-                "NovaArray*".to_string()
-            } else {
-                "NovaArray".to_string()
+            // A float array has its own header: `NovaArray` holds `int` and a `double`
+            // does not fit in an `int` slot (ADR 0006).
+            let float = matches!(
+                base.trim(),
+                "[float]" | "[f32]" | "[f64]" | "Array<float>" | "Array<f32>" | "Array<f64>"
+            );
+            return match (float, by_reference) {
+                (true, true) => "NovaArray_float*".to_string(),
+                (true, false) => "NovaArray_float".to_string(),
+                (false, true) => "NovaArray*".to_string(),
+                (false, false) => "NovaArray".to_string(),
             };
         }
         // A method's `self` is a pointer to the struct.
@@ -773,7 +780,19 @@ impl CBackend {
                     return "nova_array_from(0, 0)".to_string();
                 }
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_c(item)).collect();
+                // The element type is visible in the literal itself: a `[float]` array
+                // is written with float literals, and `NovaArray` cannot hold one.
+                let float = items
+                    .iter()
+                    .any(|item| matches!(item, SirExpr::Literal(SirLiteral::Float(_))));
                 // Heap-allocated, so a later push can grow it safely.
+                if float {
+                    return format!(
+                        "nova_array_float_from((double[]){{ {} }}, {})",
+                        values.join(", "),
+                        items.len()
+                    );
+                }
                 format!(
                     "nova_array_from((int[]){{ {} }}, {})",
                     values.join(", "),
