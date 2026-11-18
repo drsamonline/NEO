@@ -398,6 +398,14 @@ plan should borrow rather than invent.
 - `match` supports literals, string literals, `Enum.Variant`, bindings and guards.
   A variant with more than one payload is not lowered.
 - Arrays are `NovaArray` with `int` elements, bounds-checked at runtime.
+- **`Option<T>` has three payload slots — `int`, `double`, `char*` — and no struct
+  payload.** So `Option<Struct>` cannot be represented, which is why `stdlib/io`'s
+  `fopen -> Option<File>` cannot compile. The emitted C is
+  `(Option){ .tag = 0, .payload_i = (File){ ... } }`.
+- **A global initialised with a call is not a constant expression.** `stdlib/io`
+  declares `NovaArray SPINNER_FRAMES = nova_array_from(...)`, which C rejects at file
+  scope. String constants were fixed by emitting the literal; an array has no literal
+  form to fall back on.
 - ~~References are lowered only for array parameters.~~ **A `&mut Struct` parameter now
   works**: the parameter is a `T*`, and a field access through it is dereferenced, so
   `fn fclose(file: &mut File)` emits `File* file` and `(*file).handle`. That was the
