@@ -226,6 +226,29 @@ impl Lowerer {
                 }
             }
             Expr::Array(_) => Some("Array".to_string()),
+            // `&x` / `&mut x` is a reference to its operand. This arm is the hinge for
+            // `lower_call_args`: its `is_reference` test reads this type, so an explicit
+            // borrow must report one or the argument is wrapped a second time (`&&file`).
+            //
+            // The parser erases `&` vs `&mut` (`parse_unary` consumes `mut` and drops
+            // it), so a borrow is spelled `&mut T` — which is what a by-address
+            // parameter is declared as. An operand of unknown type still yields a
+            // reference: the borrow is syntactically a reference whether or not
+            // inference succeeded.
+            Expr::Unary(AstUnOp::AddrOf, operand) => {
+                let inner = self.expr_type(operand).unwrap_or_else(|| "int".to_string());
+                if inner.trim_start().starts_with('&') {
+                    Some(inner)
+                } else {
+                    Some(format!("&mut {inner}"))
+                }
+            }
+            // `*p` reads through a reference; its type is the referent's.
+            Expr::Unary(AstUnOp::Deref, operand) => {
+                let inner = self.expr_type(operand)?;
+                let rest = inner.trim_start().strip_prefix('&')?.trim_start();
+                Some(rest.strip_prefix("mut ").unwrap_or(rest).trim_start().to_string())
+            }
             // A block expression's type is the type of its trailing expression.
             Expr::Block(block) => block
                 .final_expr
@@ -1717,12 +1740,31 @@ impl Lowerer {
                     expr
                 }
             }
-            Expr::Unary(op, operand) => {
-                SirExpr::UnaryOp {
-                    op: self.lower_un_op(op),
-                    operand: Box::new(self.lower_expr(operand)),
+            Expr::Unary(op, operand) => match op {
+                // `&x` takes the address. Borrowing a value that is already a reference
+                // is that same pointer — NOVA has no `&&T` — so `touch(&mut file)` inside
+                // a function whose `file` is already `&mut File` stays one `File*`.
+                AstUnOp::AddrOf => {
+                    let lowered = self.lower_expr(operand);
+                    if self
+                        .expr_type(operand)
+                        .is_some_and(|typ| typ.trim_start().starts_with('&'))
+                    {
+                        lowered
+                    } else {
+                        SirExpr::AddressOf(Box::new(lowered))
+                    }
                 }
-            }
+                AstUnOp::Deref => SirExpr::Deref(Box::new(self.lower_expr(operand))),
+                AstUnOp::Neg => SirExpr::UnaryOp {
+                    op: SirUnOp::Neg,
+                    operand: Box::new(self.lower_expr(operand)),
+                },
+                AstUnOp::Not => SirExpr::UnaryOp {
+                    op: SirUnOp::Not,
+                    operand: Box::new(self.lower_expr(operand)),
+                },
+            },
             Expr::Call(callee, args) => {
                 // Calling a function-typed value goes through the closure ABI.
                 if let Some(typ) = self.expr_type(callee) {
@@ -2651,14 +2693,6 @@ impl Lowerer {
         }
     }
 
-    fn lower_un_op(&self, op: &AstUnOp) -> SirUnOp {
-        match op {
-            AstUnOp::Neg => SirUnOp::Neg,
-            AstUnOp::Not => SirUnOp::Not,
-            AstUnOp::Deref => SirUnOp::Neg, // Placeholder for Deref
-            AstUnOp::AddrOf => SirUnOp::Not, // Placeholder for AddrOf
-        }
-    }
 }
 
 /// The struct fields that hold an enum payload: the discriminant plus one slot

@@ -27,6 +27,10 @@ pub struct CBackend {
     hoisted: RefCell<Vec<String>>,
     /// Unique suffix for hoisted block temporaries, shared by cloned contexts.
     block_counter: Rc<Cell<usize>>,
+    /// Assignments for globals whose initialiser is not a C constant expression.
+    /// Written at the top of `main`, in declaration order, so the file-scope
+    /// declaration stays a valid zero-initialised tentative definition.
+    deferred_global_inits: Vec<String>,
 }
 
 impl CBackend {
@@ -39,12 +43,14 @@ impl CBackend {
             string_vars: HashSet::new(),
             hoisted: RefCell::new(Vec::new()),
             block_counter: Rc::new(Cell::new(0)),
+            deferred_global_inits: Vec::new(),
         }
     }
 
     /// Generate C code from a SIR program
     pub fn generate(&mut self, program: &SirProgram) -> String {
         self.output.clear();
+        self.deferred_global_inits.clear();
         self.struct_names = program.structs.iter().map(|s| s.name.clone()).collect();
         self.tagged = program
             .structs
@@ -73,18 +79,33 @@ impl CBackend {
         }
         let _ = writeln!(self.output);
         
-        // Generate global variables
+        // Generate global variables. A C file-scope initialiser must be a constant
+        // expression. A string constant is rendered as its literal
+        // (`global_init_to_c`); an array literal lowers to a `nova_array_from` call,
+        // which is not constant, so those globals are declared zero-initialised here
+        // and assigned at the top of `main`.
+        //
+        // Deferring rather than pointing at a static backing array is deliberate:
+        // `nova_array_push` grows with `realloc`, and `realloc` on anything that did
+        // not come from `malloc` is undefined behaviour — the first push would abort.
+        // `NovaArray` has no ownership flag to tell the two apart.
         for global in &program.globals {
             let typ_str = self.c_type(&global.typ);
-            let _ = write!(self.output, "{} {}", typ_str, global.name);
-            if let Some(init) = &global.init_value {
-                // A file-scope initialiser has to be a constant expression. A string
-                // constant lowered to `nova_strdup("...")` is a call, so C rejects it:
-                // "initializer element is not constant". The literal itself has static
-                // storage and is exactly what the global should point at.
-                let _ = write!(self.output, " = {}", self.global_init_to_c(init));
+            match &global.init_value {
+                Some(init) if Self::is_constant_initializer(init) => {
+                    let rendered = self.global_init_to_c(init);
+                    let _ = writeln!(self.output, "{} {} = {};", typ_str, global.name, rendered);
+                }
+                Some(init) => {
+                    let _ = writeln!(self.output, "{} {};", typ_str, global.name);
+                    let rendered = self.expr_to_c(init);
+                    self.deferred_global_inits
+                        .push(format!("{} = {}", global.name, rendered));
+                }
+                None => {
+                    let _ = writeln!(self.output, "{} {};", typ_str, global.name);
+                }
             }
-            let _ = writeln!(self.output, ";");
         }
         if !program.globals.is_empty() {
             let _ = writeln!(self.output);
@@ -140,6 +161,11 @@ impl CBackend {
             // C requires `int main`, whatever NOVA declared. The value the NOVA
             // program returns (if any) is returned from here.
             let _ = writeln!(self.output, "int main(void) {{");
+            // Globals whose initialiser runs code are assigned here, before any
+            // statement can read them, in declaration order.
+            for init in std::mem::take(&mut self.deferred_global_inits) {
+                let _ = writeln!(self.output, "    {init};");
+            }
         } else {
             let return_type = self.c_type(func.return_type.as_deref().unwrap_or("void"));
             let _ = write!(self.output, "{} {}(", return_type, Self::emitted_name(&func.name));
@@ -356,6 +382,32 @@ impl CBackend {
     /// Printable ASCII goes in single quotes with the specials escaped; anything
     /// else becomes a numeric cast, because a multi-byte character inside a C
     /// character constant is not portable and usually not what was meant.
+    /// Whether a global initialiser is a C constant expression and may stay at file
+    /// scope.
+    ///
+    /// Literals are. A `nova_strdup` of a string literal counts because
+    /// `global_init_to_c` renders it as the literal itself. An array literal does
+    /// not: it lowers to a `nova_array_from` call, and that is what made
+    /// `NovaArray SPINNER_FRAMES = nova_array_from(...)` fail to compile.
+    fn is_constant_initializer(init: &SirExpr) -> bool {
+        match init {
+            SirExpr::Literal(_) => true,
+            SirExpr::Typed { expr, .. } => Self::is_constant_initializer(expr),
+            SirExpr::UnaryOp {
+                op: SirUnOp::Neg,
+                operand,
+            } => matches!(
+                operand.as_ref(),
+                SirExpr::Literal(SirLiteral::Int(_) | SirLiteral::Float(_))
+            ),
+            SirExpr::Call { callee, args } if callee == "nova_strdup" => matches!(
+                args.first(),
+                Some(SirExpr::Literal(SirLiteral::String(_)))
+            ),
+            _ => false,
+        }
+    }
+
     /// A global's initialiser, as C that is allowed at file scope.
     ///
     /// The one rewrite that matters: a string constant arrives as
