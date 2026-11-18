@@ -236,6 +236,12 @@ impl CBackend {
                 return format!("{}*", base);
             }
         }
+        // A reference to a struct is a pointer to it, exactly like `&[T]` above.
+        // Without this branch `&mut File` fell through to the unknown-type default
+        // and the parameter arrived as an `int`, so the `File` argument did not fit.
+        if by_reference && self.struct_names.iter().any(|name| name == base) {
+            return format!("{base}*");
+        }
         if self.struct_names.iter().any(|name| name == typ) {
             return typ.to_string();
         }

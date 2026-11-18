@@ -398,12 +398,10 @@ plan should borrow rather than invent.
 - `match` supports literals, string literals, `Enum.Variant`, bindings and guards.
   A variant with more than one payload is not lowered.
 - Arrays are `NovaArray` with `int` elements, bounds-checked at runtime.
-- References are lowered only for array parameters. **A `&mut Struct` parameter is the
-  concrete cost of that**: `stdlib/io`'s `fn fclose(file: &mut File)` arrives as an
-  `int`, so the emitted C says `incompatible types when initializing type 'int' using
-  type 'File'` and every `file.handle` is a member access on an int. `io` and `text`
-  cannot compile until reference parameters work for structs — see
-  `stdlib/not-compiling.txt`.
+- ~~References are lowered only for array parameters.~~ **A `&mut Struct` parameter now
+  works**: the parameter is a `T*`, and a field access through it is dereferenced, so
+  `fn fclose(file: &mut File)` emits `File* file` and `(*file).handle`. That was the
+  last thing stopping `stdlib/io` and `stdlib/text` from compiling.
 - `__builtin_*` OS and collection builtins resolve but trap through
   `nova_unsupported`.
 - `--release` selects an output directory; the compiler has no optimisation levels.

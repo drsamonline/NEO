@@ -1783,7 +1783,16 @@ impl Lowerer {
                 // A field target keeps the object and the field name, so codegen
                 // can emit `object.field = value` instead of losing the target.
                 Expr::Field(object, field) => SirExpr::FieldAssign {
-                    object: Box::new(self.lower_expr(object)),
+                    object: Box::new({
+                        let mut lowered = self.lower_expr(object);
+                        if self
+                            .expr_type(object)
+                            .is_some_and(|typ| typ.trim_start().starts_with('&'))
+                        {
+                            lowered = SirExpr::Deref(Box::new(lowered));
+                        }
+                        lowered
+                    }),
                     field: field.clone(),
                     value: Box::new(self.lower_expr(value)),
                     struct_type: self.expr_type(object).unwrap_or_default(),
@@ -1960,8 +1969,19 @@ impl Lowerer {
                         };
                     }
                 }
+                // `file.handle` where `file: &mut File` — a reference to a struct is
+                // a C pointer, so the member access has to go through it. Without the
+                // dereference C says "request for member 'handle' in something not a
+                // structure", which is what `stdlib/io` hit.
+                let mut object = self.lower_expr(obj);
+                if self
+                    .expr_type(obj)
+                    .is_some_and(|typ| typ.trim_start().starts_with('&'))
+                {
+                    object = SirExpr::Deref(Box::new(object));
+                }
                 let access = SirExpr::FieldAccess {
-                    object: Box::new(self.lower_expr(obj)),
+                    object: Box::new(object),
                     field: field.clone(),
                     struct_type: self.expr_type(obj).unwrap_or_default(),
                 };
