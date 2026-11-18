@@ -1,6 +1,6 @@
 # The NOVA standard library
 
-Four modules, 250 functions. **196 of them can run; 54 cannot**, and this page is the
+Four modules, 249 functions. **196 of them can run; 53 cannot**, and this page is the
 only place that says which.
 
 | Module | What it is |
@@ -16,10 +16,10 @@ only place that says which.
 | Module | Functions | Usable | Blocked |
 |---|---|---|---|
 | `core` | 55 | 49 | 6 |
-| `io` | 60 | 18 | 42 |
+| `io` | 59 | 18 | 41 |
 | `math` | 76 | 75 | 1 |
 | `text` | 59 | 54 | 5 |
-| **total** | **250** | **196** | **54** |
+| **total** | **249** | **196** | **53** |
 <!-- stdlib-check:end -->
 
 The compiler knows **forty-three** `__builtin_*` functions. A stdlib function whose body
