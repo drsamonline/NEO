@@ -90,6 +90,22 @@ void nova_panic(const char *message);
 void nova_exit(long long code);
 long long nova_unsupported(const char *name);
 
+/* Files and the clock. `nova_file_exists` and friends answer from `stat`, so a path
+ * that does not exist is `false` rather than a runtime error. `nova_now_ms` is
+ * milliseconds since the epoch, and `nova_sleep_ms` takes the same unit. */
+int nova_file_exists(const char *path);
+long long nova_file_size(const char *path);
+int nova_is_file(const char *path);
+int nova_is_directory(const char *path);
+int nova_rename_file(const char *from, const char *to);
+int nova_copy_file(const char *from, const char *to);
+int nova_remove_file(const char *path);
+int nova_mkdir(const char *path);
+int nova_rmdir(const char *path);
+long long nova_now_ms(void);
+void nova_sleep_ms(long long milliseconds);
+
+
 /* Floating-point maths. `float` is C `double` throughout, so these are the
  * C library functions under a name the compiler can emit. `nova-compiler build`
  * links with `-lm` for exactly this reason. */
@@ -145,6 +161,15 @@ pub const SOURCE: &str = r#"/* nova_runtime.c - NOVA runtime shim (ABI v3).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#ifndef _WIN32
+#include <time.h>
+#include <unistd.h>
+#else
+#include <direct.h>
+#include <windows.h>
+#endif
 #include <math.h>
 
 void nova_print_int(long long value) {
@@ -376,6 +401,91 @@ long long nova_parse_int(const char *value) {
 }
 double nova_parse_float(const char *value) {
     return strtod(value != NULL ? value : "", NULL);
+}
+
+
+/* Files and the clock. */
+int nova_file_exists(const char *path) {
+    struct stat info;
+    return path != NULL && stat(path, &info) == 0;
+}
+
+long long nova_file_size(const char *path) {
+    struct stat info;
+    if (path == NULL || stat(path, &info) != 0) return -1;
+    return (long long)info.st_size;
+}
+
+int nova_is_file(const char *path) {
+    struct stat info;
+    return path != NULL && stat(path, &info) == 0 && S_ISREG(info.st_mode);
+}
+
+int nova_is_directory(const char *path) {
+    struct stat info;
+    return path != NULL && stat(path, &info) == 0 && S_ISDIR(info.st_mode);
+}
+
+int nova_rename_file(const char *from, const char *to) {
+    return rename(from, to) == 0;
+}
+
+int nova_copy_file(const char *from, const char *to) {
+    FILE *in = fopen(from, "rb");
+    if (in == NULL) return 0;
+    FILE *out = fopen(to, "wb");
+    if (out == NULL) { fclose(in); return 0; }
+    char buffer[4096];
+    size_t read = 0;
+    int ok = 1;
+    while ((read = fread(buffer, 1, sizeof buffer, in)) > 0) {
+        if (fwrite(buffer, 1, read, out) != read) { ok = 0; break; }
+    }
+    fclose(in);
+    if (fclose(out) != 0) ok = 0;
+    return ok;
+}
+
+int nova_remove_file(const char *path) {
+    return remove(path) == 0;
+}
+
+int nova_mkdir(const char *path) {
+#ifdef _WIN32
+    return _mkdir(path) == 0;
+#else
+    return mkdir(path, 0777) == 0;
+#endif
+}
+
+int nova_rmdir(const char *path) {
+#ifdef _WIN32
+    return _rmdir(path) == 0;
+#else
+    return rmdir(path) == 0;
+#endif
+}
+
+long long nova_now_ms(void) {
+#ifdef _WIN32
+    return (long long)clock();
+#else
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    return (long long)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+#endif
+}
+
+void nova_sleep_ms(long long milliseconds) {
+    if (milliseconds <= 0) return;
+#ifdef _WIN32
+    Sleep((DWORD)milliseconds);
+#else
+    struct timespec pause;
+    pause.tv_sec = (time_t)(milliseconds / 1000);
+    pause.tv_nsec = (long)((milliseconds % 1000) * 1000000);
+    nanosleep(&pause, NULL);
+#endif
 }
 
 long long nova_unsupported(const char *name) {
