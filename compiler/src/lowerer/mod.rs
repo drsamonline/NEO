@@ -46,6 +46,9 @@ pub struct Lowerer {
     method_declarations: HashMap<String, Function>,
     /// True once `Some`/`None` are lowered, so the `Option` struct is emitted.
     uses_option: bool,
+    /// Type of each top-level `const`/`static`, so a reference to one can be typed
+    /// outside any scope.
+    global_types: HashMap<String, String>,
     /// Every payload type `Option` was instantiated with, so one struct can be
     /// emitted per type instead of one struct with three primitive slots.
     option_payloads: std::collections::BTreeSet<String>,
@@ -128,6 +131,7 @@ impl Lowerer {
             method_generics: HashMap::new(),
             method_declarations: HashMap::new(),
             uses_option: false,
+            global_types: HashMap::new(),
             option_payloads: std::collections::BTreeSet::new(),
             generic_decls: HashMap::new(),
             pending: Vec::new(),
@@ -161,6 +165,9 @@ impl Lowerer {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).cloned())
+            // A top-level `const`/`static` lives in no scope, so `COLOR_BOLD + "x"` had
+            // no operand type and the `+` could not be recognised as concatenation.
+            .or_else(|| self.global_types.get(name).cloned())
     }
 
     /// The type of a literal, which is all the inference this compiler has.
@@ -226,6 +233,12 @@ impl Lowerer {
                 }
             }
             Expr::Array(_) => Some("Array".to_string()),
+            // A `match` used as a value has the type of its arms. Without this arm the
+            // chain reported no type, `let level_str = match level { ... }` fell back to
+            // `int`, and `stdlib/io` emitted `initialization of 'int' from 'char *'`.
+            // The first arm decides; a mismatch between arms is the analyser's problem,
+            // and it already checks that.
+            Expr::Match(_, arms) => arms.first().and_then(|arm| self.expr_type(&arm.body)),
             // `&x` / `&mut x` is a reference to its operand. This arm is the hinge for
             // `lower_call_args`: its `is_reference` test reads this type, so an explicit
             // borrow must report one or the argument is wrapped a second time (`&&file`).
@@ -267,6 +280,10 @@ impl Lowerer {
                 ))
             }
             Expr::Call(callee, args) => match callee.unspanned() {
+                // A builtin's type comes from the one table the analyser also uses.
+                Expr::Identifier(name) if name.starts_with("__builtin_") => {
+                    crate::sema::builtin_return_type(name).map(|typ| typ.to_string())
+                }
                 Expr::Identifier(name) if name == "Some" => {
                     let payload = args
                         .first()
@@ -435,9 +452,16 @@ impl Lowerer {
                 }
                 nova_common::Item::Const(const_def) => {
                     let init_value = self.lower_expr(&const_def.value);
+                    let declared = const_def
+                        .typ
+                        .as_ref()
+                        .map(type_display)
+                        .unwrap_or_else(|| "int".to_string());
+                    self.global_types
+                        .insert(const_def.name.clone(), declared.clone());
                     globals.push(SirGlobal {
                         name: const_def.name.clone(),
-                        typ: const_def.typ.as_ref().map(|t| t.name.clone()).unwrap_or_else(|| "int".to_string()),
+                        typ: declared,
                         init_value: Some(init_value),
                     });
                 }
@@ -1718,6 +1742,21 @@ impl Lowerer {
             }
             Expr::Identifier(name) => self.lower_variable(name),
             Expr::Binary(left, op, right) => {
+                // `+` on two strings concatenates. Without this the C backend emitted
+                // `a + b` on `char *` and C rejected it — `stdlib/io` builds its log
+                // prefixes that way.
+                if matches!(op, AstBinOp::Add)
+                    && self.expr_type(left).is_some_and(|typ| is_string_type(&typ))
+                    && self.expr_type(right).is_some_and(|typ| is_string_type(&typ))
+                {
+                    return SirExpr::Typed {
+                        expr: Box::new(SirExpr::Call {
+                            callee: "nova_strcat".to_string(),
+                            args: vec![self.lower_expr(left), self.lower_expr(right)],
+                        }),
+                        typ: "string".to_string(),
+                    };
+                }
                 let expr = SirExpr::BinOp {
                     left: Box::new(self.lower_expr(left)),
                     op: self.lower_bin_op(op),
@@ -2343,7 +2382,16 @@ impl Lowerer {
         let is_payload_enum = scrutinee_type
             .as_deref()
             .map(|typ| typ.split('<').next().unwrap_or(typ))
-            .is_some_and(|base| base == "Option" || self.enum_payloads.contains_key(base));
+            // `enum_payloads` has an entry for every declared enum, empty when no
+            // variant carries data, so `contains_key` was true for a payload-free enum
+            // and the switch tested `.tag` on what is really an `int`.
+            .is_some_and(|base| {
+                base == "Option"
+                    || self
+                        .enum_payloads
+                        .get(base)
+                        .is_some_and(|variants| !variants.is_empty())
+            });
         let scrutinee_expr = if is_payload_enum {
             SirExpr::FieldAccess {
                 object: Box::new(record_expr.clone()),
@@ -2996,6 +3044,11 @@ fn note_option_payload(payloads: &mut std::collections::BTreeSet<String>, typ: &
     if let Some(payload) = option_payload_of(typ) {
         payloads.insert(payload.to_string());
     }
+}
+
+/// Whether a type string names a string.
+fn is_string_type(typ: &str) -> bool {
+    matches!(typ.trim(), "String" | "string" | "str" | "&str")
 }
 
 fn option_payload_of(typ: &str) -> Option<&str> {
