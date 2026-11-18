@@ -3127,10 +3127,19 @@ mod tests {
             )),
             "the payload binding must be declared in the arm"
         );
-        assert!(
-            program.structs.iter().any(|struct_def| struct_def.name == "Option"),
-            "the Option struct must be emitted"
-        );
+        // One struct per payload type, holding the payload by value — not one struct
+        // with `int`, `double` and `char*` slots (ADR 0003).
+        let option = program
+            .structs
+            .iter()
+            .find(|struct_def| struct_def.name == "Option_int")
+            .expect("Option_int must be emitted");
+        let fields: Vec<(&str, &str)> = option
+            .fields
+            .iter()
+            .map(|field| (field.name.as_str(), field.typ.as_str()))
+            .collect();
+        assert_eq!(fields, vec![("tag", "int"), ("payload", "int")]);
     }
 
     #[test]
