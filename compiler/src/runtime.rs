@@ -106,8 +106,8 @@ void nova_array_float_set(NovaArray_float array, long long index, double value);
 void nova_array_float_push(NovaArray_float *array, double value);
 double nova_array_float_pop(NovaArray_float *array);
 
-const char *nova_getenv(const char *name);
-const char *nova_cwd(void);
+char *nova_getenv(const char *name);
+char *nova_cwd(void);
 int nova_chdir(const char *path);
 
 
@@ -517,13 +517,14 @@ void nova_sleep_ms(long long milliseconds) {
 }
 
 
-const char *nova_getenv(const char *name) {
+char *nova_getenv(const char *name) {
     if (name == NULL) return "";
-    const char *value = getenv(name);
+    char *value = getenv(name);
+    /* NOVA strings are `char *`; nothing here writes through the result. */
     return value == NULL ? "" : value;
 }
 
-const char *nova_cwd(void) {
+char *nova_cwd(void) {
     /* Static storage, so the caller owns nothing and the result cannot dangle. */
     static char directory[4096];
 #ifdef _WIN32
