@@ -409,7 +409,15 @@ plan should borrow rather than invent.
   rather than a design: a `RefCell` in a `thread_local!` would be sound, and needs a
   memory model NOVA does not have yet.
 - The package registry is mocked.
-- **`stdlib/math` emits C that does not compile.** `normalize2`/`normalize3` build an
+- **A program that imports `math` and calls more than `sqrt` segfaults.** The module
+  compiles now (it no longer redeclares `core`'s `PI`/`E`/`PHI`), and
+  `use math; print(sqrt(16.0));` builds and prints `4`. A version that also called
+  `floor`, `ceil`, `round`, `powf`, `cbrt` and compared `PI > 3.14` built and then
+  died with SIGSEGV. Narrowed that far and no further: the crash is one of those six,
+  and the test in `compiler/tests/end_to_end.rs` pins the smallest program that works
+  rather than guessing which.
+- ~~**`stdlib/math` emits C that does not compile.**~~ — fixed by deleting the
+  duplicate constants. `math` is out of `stdlib/not-compiling.txt`. `normalize2`/`normalize3` build an
   `NovaTuple_int_int` where a `NovaTuple_float_float` is declared — tuple element types
   are inferred as `int` — and `mod_int` applies `%` to two doubles. `use math;`
   therefore fails even though 75 of its 76 functions call only implemented builtins.

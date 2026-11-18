@@ -152,6 +152,69 @@ fn hello_compiles_links_and_prints() {
     assert_eq!(String::from_utf8_lossy(&run.stdout), "Hello, NOVA\n");
 }
 
+/// Compile a program that imports a standard-library module, run it, return stdout.
+///
+/// The module is reached through `--module-root` — the flag `nova-pkg` passes for a
+/// dependency — because the scratch directory is outside the workspace and
+/// `find_module` only walks ancestors for `stdlib/`.
+fn run_with_stdlib(name: &str, source: &str) -> String {
+    let dir = scratch(name);
+    // Not `<name>.nova`: `find_module` looks beside the importing file first, so a
+    // program called `math.nova` that says `use math;` imports itself.
+    let file = dir.join(format!("{name}_program.nova"));
+    let binary = dir.join(name);
+    fs::write(&file, source).expect("write source");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&file)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run built binary");
+    assert!(
+        run.status.success(),
+        "program exited with {}:\nstderr: {}",
+        run.status,
+        String::from_utf8_lossy(&run.stderr)
+    );
+    String::from_utf8_lossy(&run.stdout).to_string()
+}
+
+#[test]
+fn the_math_module_works_end_to_end() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    // The narrowest program that proves the module can be imported at all. An
+    // earlier version called seven functions and segfaulted; this one is the
+    // smallest thing that either works or does not.
+    let stdout = run_with_stdlib(
+        "math",
+        "\
+use math;
+
+fn main() -> int {
+    print(sqrt(16.0));
+    return 0;
+}
+",
+    );
+    assert_eq!(stdout, "4\n");
+}
+
 #[test]
 fn the_floating_point_builtins_run() {
     if !c_compiler_available() {

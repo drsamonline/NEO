@@ -5,14 +5,11 @@
 
 use core.*;
 
-/// More precise PI
-const PI: float = 3.14159265358979323846;
-
-/// Euler's number
-const E: float = 2.71828182845904523536;
-
-/// Golden ratio
-const PHI: float = 1.61803398874989484820;
+// `PI`, `E` and `PHI` are not declared here. `use core.*;` already brings them in,
+// and declaring them again made this module emit C with `redefinition of 'PI'` —
+// which is why it could never be compiled. The old values here carried more digits
+// and a comment claiming they were "more precise"; they are the same `double`, because
+// 3.141592653589793 is already every bit a 64-bit float can hold.
 
 /// Square root of 2
 const SQRT2: float = 1.41421356237309504880;
