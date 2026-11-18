@@ -203,21 +203,36 @@ belongs with the LSP navigation work in Stage 5.
 **Done when:** no fuzz target has found a panic in 24 hours of accumulated runtime,
 and coverage may not fall.
 
-### Stage 4 — A real syntax tree (2 weeks, or explicitly deferred)
+### Stage 4 — A real syntax tree: hybrid, not either/or (in progress)
 
-`nova fmt` is impossible today and LSP navigation is a string search, both for the
-same reason: the AST is lossy. Comments and whitespace are not in it, so nothing
-can reproduce source text, and a name's position is not a range in the tree.
+This was written as a choice between a full `rowan` migration and declining. Both
+are worse than the third option, which is now the decision: **a lossless tree at
+item boundaries, with bodies deferred and expanded on demand.** Recorded in
+[`docs/adr/0001-lossless-syntax-tree.md`](docs/adr/0001-lossless-syntax-tree.md),
+with the precedent — IntelliJ chameleons, rust-analyzer's `ItemTree`, rustc's lazy
+token streams, tree-sitter's `ERROR` nodes.
 
-- Move to a lossless concrete syntax tree (`rowan`), keeping the typed AST as a
-  layer above it. This is the change rust-analyzer is built on.
-- With it: `nova fmt`, precise go-to-definition and references, and rename.
+The invariant that makes it sound: **a deferred node holds a span into the source
+and nothing else.** A deferral that stores anything derived is lossy, and a lossy
+deferral cannot be expanded correctly later.
+
+- ✅ `compiler/src/syntax/mod.rs` — top-level items with exact spans, names and
+  deferred body ranges. No parsing inside a body.
+- ✅ The outline in the language server is its first consumer, and an `impl`'s
+  methods appear only by expanding its body.
+- ⬜ `nova fmt`, item by item: separators and indentation from item spans, bodies
+  left byte-identical. A formatter honest about what it does not touch.
+- ⬜ A guard that the item tree and the parser agree about what an item is, the way
+  `grammar-check.py` guards the grammar against the parser.
+- ⬜ Settle `trait`: `token.rs` has no `Trait` keyword, so `trait` lexes as an
+  identifier and no token-level tool can find a trait declaration, though the AST
+  has `Item::Trait`.
+
+**What it does not buy:** type-checking is not faster — `sema` needs bodies. The
+laziness is real only for features that can decline to look inside.
 
 **Done when:** `nova fmt` round-trips every file in `examples/` and `stdlib/`
-byte-identically, and `references` returns real ranges.
-
-**If deferred:** say so in this file, and say what it costs — the LSP stays a
-string search and no formatter is possible.
+byte-identically, and the item tree and parser agree on every example in CI.
 
 ### Stage 5 — Close the tooling milestones that are now cheap (1 week)
 

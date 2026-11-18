@@ -14,7 +14,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use thiserror::Error;
 use crate::compiler_integration::{IncrementalCompiler, NovaSymbolKind};
-use nova_common::{Token, TokenKind};
+use nova_common::{Span, Token, TokenKind};
+use nova_compiler::syntax::{Item, ItemKind, ItemTree};
 use nova_compiler::Lexer;
 
 #[derive(Error, Debug)]
@@ -83,6 +84,79 @@ fn to_lsp(token: &Token) -> Option<Range> {
     Some(Range {
         start: Position { line, character: start },
         end: Position { line, character: start + width },
+    })
+}
+
+/// A `Span` as a protocol range.
+///
+/// The lexer records `end` as the position just past the last character, which is
+/// exactly what a range's exclusive end wants, so this needs no width arithmetic.
+fn span_to_lsp(span: &Span) -> Option<Range> {
+    if span.start.line == 0 || span.start.column == 0 {
+        return None;
+    }
+    Some(Range {
+        start: Position {
+            line: (span.start.line - 1) as u32,
+            character: (span.start.column - 1) as u32,
+        },
+        end: Position {
+            line: (span.end.line - 1) as u32,
+            character: (span.end.column - 1) as u32,
+        },
+    })
+}
+
+/// The outline kind for an item.
+///
+/// `use` is deliberately absent: a list of imports is not an outline, and showing
+/// one buries the declarations a reader is looking for. It stays in the item tree
+/// for whatever wants it.
+fn symbol_kind_for(kind: ItemKind) -> Option<SymbolKind> {
+    Some(match kind {
+        ItemKind::Function => SymbolKind::FUNCTION,
+        ItemKind::Struct => SymbolKind::STRUCT,
+        ItemKind::Enum => SymbolKind::ENUM,
+        ItemKind::Const => SymbolKind::CONSTANT,
+        ItemKind::TypeAlias => SymbolKind::TYPE_PARAMETER,
+        ItemKind::Module => SymbolKind::MODULE,
+        ItemKind::Impl => SymbolKind::CLASS,
+        ItemKind::Use => return None,
+    })
+}
+
+/// One item as an outline entry. An `impl`'s methods are expanded here, on demand,
+/// which is the whole point of deferring bodies: a file-level search never pays
+/// for them.
+fn symbol_for(tree: &ItemTree, item: &Item) -> Option<DocumentSymbol> {
+    let kind = symbol_kind_for(item.kind)?;
+    let range = span_to_lsp(&item.span)?;
+    let selection_range = item.name_span.as_ref().and_then(span_to_lsp).unwrap_or(range);
+    let name = item
+        .name
+        .clone()
+        .unwrap_or_else(|| item.kind.label().to_string());
+
+    let children = if item.kind == ItemKind::Impl {
+        let nested: Vec<DocumentSymbol> = tree
+            .children_of(item)
+            .iter()
+            .filter_map(|child| symbol_for(tree, child))
+            .collect();
+        if nested.is_empty() { None } else { Some(nested) }
+    } else {
+        None
+    };
+
+    Some(DocumentSymbol {
+        name,
+        detail: Some(item.kind.label().to_string()),
+        kind,
+        deprecated: None,
+        range,
+        selection_range,
+        children,
+        tags: None,
     })
 }
 
@@ -507,51 +581,21 @@ impl LanguageServer for Backend {
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
         let documents = self.documents.read().await;
-        
-        if let Some(doc) = documents.get(&uri) {
-            let mut symbols = Vec::new();
-            
-            // Extract function definitions
-            for (line_num, line) in doc.content.lines().enumerate() {
-                if let Some(start) = line.find("fn ") {
-                    if let Some(end) = line[start..].find('(') {
-                        let name = line[start + 3..start + end].trim().to_string();
-                        symbols.push(DocumentSymbol {
-                            name,
-                            detail: Some("function".to_string()),
-                            kind: SymbolKind::FUNCTION,
-                            deprecated: None,
-                            range: Range {
-                                start: Position {
-                                    line: line_num as u32,
-                                    character: 0,
-                                },
-                                end: Position {
-                                    line: line_num as u32,
-                                    character: line.len() as u32,
-                                },
-                            },
-                            selection_range: Range {
-                                start: Position {
-                                    line: line_num as u32,
-                                    character: start as u32,
-                                },
-                                end: Position {
-                                    line: line_num as u32,
-                                    character: (start + end) as u32,
-                                },
-                            },
-                            children: None,
-                            tags: None,
-                        });
-                    }
-                }
-            }
-            
-            return Ok(Some(DocumentSymbolResponse::Nested(symbols)));
-        }
-        
-        Ok(None)
+        let Some(document) = documents.get(&uri) else {
+            return Ok(None);
+        };
+
+        // The item tree, not a line scan. It records where each top-level item is
+        // and where its body is, without parsing inside it — so an outline costs
+        // one pass over the tokens, and only an `impl` pays for its methods.
+        let tree = ItemTree::parse(&document.content);
+        let symbols: Vec<DocumentSymbol> = tree
+            .items()
+            .iter()
+            .filter_map(|item| symbol_for(&tree, item))
+            .collect();
+
+        Ok(Some(DocumentSymbolResponse::Nested(symbols)))
     }
 
     async fn symbol(

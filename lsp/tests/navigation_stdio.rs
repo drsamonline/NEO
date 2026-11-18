@@ -281,3 +281,104 @@ fn references_can_omit_the_declaration() {
          binding does not: {response}"
     );
 }
+
+/// A second document, for the outline: a struct, an `impl` with two methods, and a
+/// function. The `impl` is the interesting one — its methods are inside a deferred
+/// body, so the outline only sees them by expanding it.
+const OUTLINE_SOURCE: &str = "\
+struct Pair {
+    left: int,
+    right: int,
+}
+
+impl Pair {
+    fn new(left: int, right: int) -> Pair {
+        return Pair { left, right };
+    }
+
+    fn sum(&self) -> int {
+        return self.left + self.right;
+    }
+}
+
+fn main() -> int {
+    return 0;
+}
+";
+
+fn open_with(server: &mut Server, uri: &str, text: &str) {
+    server.send(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}"#);
+    let initialized = server.response(1);
+    assert!(
+        initialized["result"]["capabilities"]["documentSymbolProvider"].as_bool() == Some(true),
+        "the outline must be advertised: {initialized}"
+    );
+    server.send(r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#);
+    server.send(&format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"nova","version":1,"text":{}}}}}}}"#,
+        serde_json::to_string(text).unwrap()
+    ));
+    loop {
+        let message = server
+            .rx
+            .recv_timeout(Duration::from_secs(20))
+            .expect("publishDiagnostics after didOpen");
+        let json: serde_json::Value = serde_json::from_str(&message).expect("valid JSON-RPC");
+        if json["method"] == "textDocument/publishDiagnostics" {
+            break;
+        }
+    }
+}
+
+#[test]
+fn the_outline_comes_from_the_item_tree() {
+    let uri = "file:///tmp/nova_lsp_outline.nova";
+    let mut server = Server::start();
+    open_with(&mut server, uri, OUTLINE_SOURCE);
+
+    server.send(&format!(
+        r#"{{"jsonrpc":"2.0","id":6,"method":"textDocument/documentSymbol","params":{{"textDocument":{{"uri":"{uri}"}}}}}}"#
+    ));
+    let response = server.response(6);
+    let symbols = response["result"]
+        .as_array()
+        .unwrap_or_else(|| panic!("an outline should be an array: {response}"));
+
+    let names: Vec<&str> = symbols
+        .iter()
+        .map(|symbol| symbol["name"].as_str().unwrap_or("?"))
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Pair", "impl", "main"],
+        "top level only, in source order: {response}"
+    );
+
+    // `selectionRange` is the identifier, not the line. `struct Pair` puts `Pair`
+    // at 0-based character 7..11.
+    assert_eq!(
+        (
+            symbols[0]["selectionRange"]["start"]["line"].as_u64(),
+            symbols[0]["selectionRange"]["start"]["character"].as_u64(),
+            symbols[0]["selectionRange"]["end"]["character"].as_u64(),
+        ),
+        (Some(0), Some(7), Some(11)),
+        "selection must be the name, not the line: {response}"
+    );
+
+    // The methods are inside the `impl`'s deferred body, so they can only appear
+    // as children — never at the top level.
+    let children = symbols[1]["children"]
+        .as_array()
+        .unwrap_or_else(|| panic!("an impl should expand into its methods: {response}"));
+    let methods: Vec<&str> = children
+        .iter()
+        .map(|child| child["name"].as_str().unwrap_or("?"))
+        .collect();
+    assert_eq!(methods, vec!["new", "sum"], "{response}");
+    assert_eq!(
+        children[0]["selectionRange"]["start"]["line"].as_u64(),
+        Some(6),
+        "`new` is on line 6: {response}"
+    );
+}
