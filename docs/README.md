@@ -22,6 +22,7 @@ Everything written down, and where to start.
 |---|---|
 | [`errors.md`](errors.md) | Every error code the compiler emits, the `--error-format=json` shape, and `explain` |
 | [`tooling.md`](tooling.md) | The eleven workflows, the six Python checks and the scripts, and what each would catch |
+| [`HANDOVER.md`](HANDOVER.md) | Where the work stands, what is next, and the gotchas that cost a CI cycle |
 | [`compiler.md`](compiler.md) | The compiler's stages, one paragraph each |
 | [`architecture.md`](architecture.md) | The design at a systems level |
 | [`language.md`](language.md) | The language's shape, and a pointer to the chapters |
