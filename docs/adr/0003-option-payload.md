@@ -69,6 +69,25 @@ a reason to spend it on `Option` while the stdlib's own `array_pop<T>` and
 cannot be compiled; a program writing `Option<File>` gets a line, a column and a
 sentence in its own language. `tests/diagnostics/E0400_option_of_struct.nova` pins it.
 
-⬜ **Monomorphisation** is a separate ADR, to be written when something other than the
-stdlib needs it. It would give `Option_File` its own struct and unblock `stdlib/io` and
-`stdlib/text`, which are listed in `stdlib/not-compiling.txt` for this reason.
+⬜ **Monomorphisation** — and the cost is not where it looks.
+
+The struct half is small. `Option<T>`'s payload mechanism is two functions in
+`compiler/src/lowerer/mod.rs` — `payload_struct_fields()` and `payload_field(typ)` —
+and the C backend has **no** references to the payload field names at all. Emitting
+`Option_File { int tag; File payload; }` instead of one three-slot struct was prototyped
+in C and behaves: a struct payload held by value, returned by value, matched, and copied
+correctly on assignment.
+
+**The real cost is that `None` has no type.** It lowers to
+
+    SirExpr::Typed { typ: "Option<int>", ... }
+
+unconditionally — the type is hard-coded. So `let f: Option<File> = None;` is already
+wrong today, and no amount of struct monomorphisation fixes it: `None` needs to be typed
+by its context, which means threading an expected type through expression lowering.
+That is a bidirectional-inference change, not a payload change, and it is the reason this
+is an ADR-sized job rather than an afternoon's edit.
+
+Sequence when it is done: `None` becomes contextually typed, then the payload struct is
+monomorphised, then `E0400` is removed. Doing them in the other order leaves `None`
+lying about its type.
