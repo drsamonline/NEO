@@ -35,6 +35,7 @@ about a decision are about a reading of it that nobody chose.
 | ADR | Decision | Status |
 |---|---|---|
 | [0001](0001-lossless-syntax-tree.md) | A lossless tree at item boundaries with deferred bodies, rather than a full CST migration or nothing | accepted |
+| [0002](0002-traits.md) | Traits are not in the language; the dead `Item::Trait` is removed rather than kept as an aspiration | accepted |
 
 ## Writing one
 

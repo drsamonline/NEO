@@ -118,7 +118,7 @@ fn item_name(item: &Item) -> Option<String> {
         Item::Struct(struct_def) => Some(format!("struct {}", struct_def.name)),
         Item::Enum(enum_def) => Some(format!("enum {}", enum_def.name)),
         Item::Const(const_def) => Some(format!("const {}", const_def.name)),
-        Item::Impl(_) | Item::Use(_) | Item::Mod(_) | Item::TypeAlias(_) | Item::Trait(_) => None,
+        Item::Impl(_) | Item::Use(_) | Item::Mod(_) | Item::TypeAlias(_) => None,
     }
 }
 

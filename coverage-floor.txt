@@ -1,4 +1,4 @@
-64.86
+65.04
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -11,4 +11,5 @@
 # 64.33% (7,671 of 11,924) when navigation landed — its tests drive a child process
 # that llvm-cov cannot see.
 # 64.53% (7,849 of 12,164) when the item tree landed.
-# 64.86% (8,023 of 12,370) when the formatter landed, written with its tests.
+# 64.86% (8,023 of 12,370) when the formatter landed.
+# 65.04% (8,060 of 12,393) when the trait surface was removed and the guard added.

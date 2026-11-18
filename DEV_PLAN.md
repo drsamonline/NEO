@@ -228,11 +228,22 @@ deferral cannot be expanded correctly later.
   stream is identical, no comment is lost, the item structure is unchanged and
   formatting twice changes nothing. **What it does not do:** re-indent or reflow a
   body. That needs a lossless tree over every expression, which is the next line.
-- ⬜ A guard that the item tree and the parser agree about what an item is, the way
-  `grammar-check.py` guards the grammar against the parser.
-- ⬜ Settle `trait`: `token.rs` has no `Trait` keyword, so `trait` lexes as an
-  identifier and no token-level tool can find a trait declaration, though the AST
-  has `Item::Trait`.
+- ✅ A guard that the item tree and the parser agree about what an item is —
+  `compiler/tests/item_tree.rs` compares the two on every shipped program, the way
+  `grammar-check.py` guards the grammar against the parser. One asymmetry is
+  allowed and named: the parser turns a bare top-level expression into a synthetic
+  `__main` function, and the tree reports no item there.
+
+  **It found two real bugs on its first run.** `fn(A) -> B` — a function *type* inside
+  a parameter list — was read as a declaration, because parentheses do not change the
+  brace depth, so `stdlib/core/core.nova` reported eight functions that do not exist.
+  And `static` was invisible to the tree while the parser recorded it as a `ConstDef`.
+  Both fixed; three unit tests pin them.
+- ✅ Settle `trait`: it is not a keyword, the grammar has no production for it and
+  the parser cannot produce one, so `Item::Trait` and `TraitDef` were dead code
+  claiming a feature. Removed — [`docs/adr/0002-traits.md`](docs/adr/0002-traits.md).
+  When traits are added, the keyword, the grammar production, the parser and a
+  parity program land together.
 
 **What it does not buy:** type-checking is not faster — `sema` needs bodies. The
 laziness is real only for features that can decline to look inside.

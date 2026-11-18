@@ -31,7 +31,10 @@ pub enum Item {
     Use(UseDecl),
     Mod(ModuleDecl),
     Impl(ImplBlock),
-    Trait(TraitDef),
+    // There is no `Trait` variant. `trait` is not a keyword in `token.rs`, the
+    // grammar has no production for it, and the parser never produces one — so a
+    // variant here would be an AST node the compiler cannot construct, describing a
+    // language feature that does not exist. See `docs/adr/0002-traits.md`.
 }
 
 impl AstNode for Item {
@@ -45,7 +48,6 @@ impl AstNode for Item {
             Item::Use(u) => u.span,
             Item::Mod(m) => m.span,
             Item::Impl(i) => i.span,
-            Item::Trait(t) => t.span,
         }
     }
 }
@@ -347,12 +349,3 @@ pub struct ImplBlock {
     pub span: Span,
 }
 
-/// Trait definition
-#[derive(Debug, Clone)]
-pub struct TraitDef {
-    pub name: String,
-    pub generics: Vec<String>,
-    pub methods: Vec<Function>,
-    pub is_pub: bool,
-    pub span: Span,
-}

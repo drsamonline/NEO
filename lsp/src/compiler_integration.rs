@@ -37,7 +37,6 @@ pub enum NovaSymbolKind {
     Parameter,
     Struct,
     Enum,
-    Trait,
     Module,
     Constant,
 }
@@ -51,7 +50,6 @@ impl NovaSymbolKind {
             NovaSymbolKind::Parameter => tower_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
             NovaSymbolKind::Struct => tower_lsp::lsp_types::SymbolKind::STRUCT,
             NovaSymbolKind::Enum => tower_lsp::lsp_types::SymbolKind::ENUM,
-            NovaSymbolKind::Trait => tower_lsp::lsp_types::SymbolKind::INTERFACE,
             NovaSymbolKind::Module => tower_lsp::lsp_types::SymbolKind::MODULE,
             NovaSymbolKind::Constant => tower_lsp::lsp_types::SymbolKind::CONSTANT,
         }
@@ -319,16 +317,6 @@ impl IncrementalCompiler {
                         kind: NovaSymbolKind::Enum,
                         line: enum_def.span.start.line.saturating_sub(1) as u32,
                         character: enum_def.span.start.column.saturating_sub(1) as u32,
-                        type_name: None,
-                        scope: "global".to_string(),
-                    });
-                }
-                Item::Trait(trait_def) => {
-                    symbols.add(SymbolEntry {
-                        name: trait_def.name.clone(),
-                        kind: NovaSymbolKind::Trait,
-                        line: trait_def.span.start.line.saturating_sub(1) as u32,
-                        character: trait_def.span.start.column.saturating_sub(1) as u32,
                         type_name: None,
                         scope: "global".to_string(),
                     });

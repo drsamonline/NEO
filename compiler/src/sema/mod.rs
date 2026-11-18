@@ -170,9 +170,6 @@ impl SemanticAnalyzer {
             Item::TypeAlias(_type_alias) => {
                 // Handle type aliases
             }
-            Item::Trait(_trait_def) => {
-                // Handle traits
-            }
         }
     }
 

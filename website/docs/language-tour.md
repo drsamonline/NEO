@@ -236,7 +236,9 @@ Some resolve but trap through `nova_unsupported` on the C target: `args`,
 ## What is not here
 
 - No `async`/`await` in the language, though the runtime crate has futures.
-- No traits, though the parser accepts `trait` blocks.
+- No traits. `trait` is not a keyword, so it is an ordinary identifier and
+  `trait Show { }` produces "undefined name `trait`" — see
+  [`docs/adr/0002-traits.md`](../../docs/adr/0002-traits.md).
 - No lifetimes, no borrow checker: references are lowered only for array
   parameters.
 - No `impl Trait`, no operator overloading, no macros.
