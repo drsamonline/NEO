@@ -1,17 +1,11 @@
 # Standard-library modules whose emitted C does not compile yet.
 #
-# One module per line: the name, then why. `ci.yml` fails if a module outside this
-# list does not compile, and also if a module inside it starts compiling — so the
-# list can only shrink. Every reason below came from a compiler's own output, not
-# from reading the source.
+# One module per line, the name first, then why. `ci.yml` fails if a module outside
+# this list does not compile, and also if a module inside it starts compiling — so
+# the list can only shrink. `core` is not listed, so it must keep compiling.
 #
-# `core` is not listed, so it must keep compiling.
+# Every reason below is quoted from a compiler's output, not inferred from the source.
 #
-# io    io.c:169: initializer element is not constant (a global initialised with a
-#       call); io.c:478: incompatible types when initializing type 'int' using type
-#       'File'; io.c:486: request for member 'handle' in something not a structure.
-#       The module's File struct is used where an int is declared.
-# math  math.c:149-151: redefinition of 'PI', 'E' and 'PHI'. `math.nova` declares the
-#       same three constants `core.nova` does, and `use core;` merges both.
-# text  text.c:231: initializer element is not constant; text.c:540-559: the same
-#       'File' confusion as io, reached through `use io;`.
+io   io.c:169: initializer element is not constant — a global initialised with a call. io.c:478: incompatible types when initializing type 'int' using type 'File'; io.c:486: request for member 'handle' in something not a structure. The module's File struct is used where an int is declared.
+math math.c:149-151: redefinition of 'PI', 'E' and 'PHI' — math.nova declares the same three constants core.nova does, and `use core;` merges both.
+text text.c:231: initializer element is not constant. text.c:540-559: the same File confusion as io, reached through `use io;`.
