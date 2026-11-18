@@ -218,15 +218,17 @@ fn the_math_calls_that_work_and_the_ones_that_crash() {
         return;
     }
 
-    // (call, expected stdout, works today)
+    // Every one of these works now. They were four-of-seven before the collision was
+    // fixed: `floor`, `ceil`, `round` and `powf` were emitted as definitions of libm
+    // symbols, so the runtime's call to `floor` resolved back to the program's own.
     let cases: &[(&str, &str, bool)] = &[
         ("print(sqrt(16.0));", "4\n", true),
         ("print(cbrt(27.0));", "3\n", true),
         ("print(PI > 3.14);", "true\n", true),
-        ("print(floor(3.7));", "3\n", false),
-        ("print(ceil(3.2));", "4\n", false),
-        ("print(round(2.5));", "3\n", false),
-        ("print(powf(2.0, 10.0));", "1024\n", false),
+        ("print(floor(3.7));", "3\n", true),
+        ("print(ceil(3.2));", "4\n", true),
+        ("print(round(2.5));", "3\n", true),
+        ("print(powf(2.0, 10.0));", "1024\n", true),
     ];
 
     let mut surprises = Vec::new();

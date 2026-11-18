@@ -105,7 +105,7 @@ impl CBackend {
             return;
         }
         let return_type = self.c_type(func.return_type.as_deref().unwrap_or("void"));
-        let _ = write!(self.output, "{} {}(", return_type, func.name);
+        let _ = write!(self.output, "{} {}(", return_type, Self::emitted_name(&func.name));
 
         // A lifted closure receives its environment before its own parameters.
         let mut written = 0;
@@ -142,7 +142,7 @@ impl CBackend {
             let _ = writeln!(self.output, "int main(void) {{");
         } else {
             let return_type = self.c_type(func.return_type.as_deref().unwrap_or("void"));
-            let _ = write!(self.output, "{} {}(", return_type, func.name);
+            let _ = write!(self.output, "{} {}(", return_type, Self::emitted_name(&func.name));
 
             let mut written = 0;
             if func.env_type.is_some() {
@@ -180,6 +180,42 @@ impl CBackend {
     /// the synthetic `__main` the parser builds from top-level statements.
     fn is_entry(name: &str) -> bool {
         name == "main" || name == "__main"
+    }
+
+    /// The C name for a NOVA function.
+    ///
+    /// A NOVA function is emitted under its own name, so a function called `floor`
+    /// becomes a **definition of the C library's `floor`**. The runtime shim calls
+    /// `floor`, the linker resolves that to the program's own definition, and the two
+    /// call each other until the stack runs out — which is how four `math` calls came
+    /// to segfault.
+    ///
+    /// The names below are the C library's, and a NOVA function of that name gets a
+    /// prefix instead. **This is a stopgap, not the fix.** Prefixing every emitted
+    /// function would be the fix, and it touches definitions, declarations, call sites
+    /// and function values at once — a change that wants a compiler on the machine
+    /// making it. This list covers the collisions that exist; the next one needs
+    /// adding to it.
+    fn emitted_name(name: &str) -> String {
+        const C_LIBRARY: &[&str] = &[
+            // libm — the stdlib wraps all of these
+            "sqrt", "cbrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh",
+            "cosh", "tanh", "exp", "log", "log2", "log10", "floor", "ceil", "round", "powf",
+            "fmod", "remainder", "hypot", "trunc", "fabs", "pow",
+            // libc — the stdlib wraps some of these too
+            "printf", "fprintf", "sprintf", "snprintf", "puts", "putchar", "getchar",
+            "malloc", "calloc", "realloc", "free", "exit", "abort", "atexit",
+            "read", "write", "open", "close", "lseek", "remove", "rename", "stat",
+            "time", "sleep", "getenv", "system", "getcwd", "chdir", "mkdir", "rmdir",
+            "strlen", "strcmp", "strcat", "strcpy", "strncpy", "strchr", "strstr",
+            "memcpy", "memset", "memcmp", "qsort", "bsearch", "div", "abs", "labs",
+            "fopen", "fclose", "fread", "fwrite", "fseek", "ftell", "fflush", "feof",
+        ];
+        if C_LIBRARY.contains(&name) {
+            format!("nova_fn_{name}")
+        } else {
+            name.to_string()
+        }
     }
 
     /// The C spelling of a NOVA type: a struct's own name when it is one of the
@@ -648,7 +684,7 @@ impl CBackend {
             }
             SirExpr::Call { callee, args } => {
                 let args_str: Vec<String> = args.iter().map(|a| self.expr_to_c(a)).collect();
-                format!("{}({})", callee, args_str.join(", "))
+                format!("{}({})", Self::emitted_name(callee), args_str.join(", "))
             }
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_c(value))
