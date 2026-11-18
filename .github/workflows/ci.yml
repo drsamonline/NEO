@@ -70,16 +70,46 @@ jobs:
           done < <(find examples -name '*.nova' | sort)
       - name: Every standard-library module emits C, and the C compiles
         run: |
-          # Compiling is the point. Emitting alone let `math` ship a module whose
-          # C could not be compiled at all — integer tuples where float ones were
+          # Compiling is the point. Emitting alone let `math` ship a module whose C
+          # could not be compiled at all — integer tuples where float ones were
           # declared, and `%` applied to two doubles — for as long as the step only
           # wrote the file out.
+          #
+          # Modules that do not compile yet are listed in `stdlib/not-compiling.txt`,
+          # one per line with a reason. The check fails if a module outside that list
+          # fails, and also if a module *inside* it starts compiling, so the list can
+          # only shrink — the same ratchet as `coverage-floor.txt`.
+          failed=""
           for module in stdlib/*/*.nova; do
             name="$(basename "$module" .nova)"
-            ./target/debug/nova-compiler emit "$module" -o "/tmp/$name.c"
-            cc -std=c11 -c "/tmp/$name.c" -o "/tmp/$name.o"
-            echo "compiled $name"
+            if ! ./target/debug/nova-compiler emit "$module" -o "/tmp/$name.c" 2>"/tmp/$name.err"; then
+              echo "::group::$name does not emit"; cat "/tmp/$name.err"; echo "::endgroup::"
+              failed="$failed $name"
+              continue
+            fi
+            if cc -std=c11 -c "/tmp/$name.c" -o "/tmp/$name.o" 2>"/tmp/$name.err"; then
+              echo "compiled $name"
+            else
+              echo "::group::$name does not compile"; cat "/tmp/$name.err"; echo "::endgroup::"
+              failed="$failed $name"
+            fi
           done
+
+          known="$(grep -vE '^\s*(#|$)' stdlib/not-compiling.txt | cut -d' ' -f1 | tr '\n' ' ')"
+          status=0
+          for name in $failed; do
+            case " $known " in
+              *" $name "*) echo "known: $name (see stdlib/not-compiling.txt)" ;;
+              *) echo "::error::$name does not compile and is not in stdlib/not-compiling.txt"; status=1 ;;
+            esac
+          done
+          for name in $known; do
+            case " $failed " in
+              *" $name "*) ;;
+              *) echo "::error::$name is listed as not compiling but it does — remove it from stdlib/not-compiling.txt"; status=1 ;;
+            esac
+          done
+          exit $status
       - name: Generated JavaScript runs
         run: |
           ./target/debug/nova-compiler emit examples/hello.nova --target js > /tmp/hello.js

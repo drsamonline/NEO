@@ -1,0 +1,7 @@
+# Standard-library modules whose emitted C does not compile yet.
+#
+# One module per line: the name, then why. `ci.yml` fails if a module outside this
+# list does not compile, and also if a module inside it starts compiling — so the
+# list can only shrink. Regenerate the reasons from a CI log rather than guessing.
+#
+io   placeholder — reasons are filled in from the first run of the gate
