@@ -341,7 +341,7 @@ impl Lowerer {
                                     return_type: method
                                         .return_type
                                         .as_ref()
-                                        .map(|typ| typ.name.clone()),
+                                        .map(type_display),
                                 },
                             );
                         self.method_declarations.insert(
@@ -619,7 +619,9 @@ impl Lowerer {
                 name: p.name.clone(),
                 typ: type_display(&p.typ),
             }).collect(),
-            return_type: func.return_type.as_ref().map(|t| t.name.clone()),
+            // `type_display`, not `.name`: dropping the generic arguments turned
+            // `Option<int>` into `Option`, which no struct is named after.
+            return_type: func.return_type.as_ref().map(type_display),
             body: body_stmts,
             span: func.span.clone(),
             env_type: None,
@@ -668,7 +670,7 @@ impl Lowerer {
         SirFunction {
             name: format!("{}_{}", type_name, method.name),
             params,
-            return_type: method.return_type.as_ref().map(|typ| typ.name.clone()),
+            return_type: method.return_type.as_ref().map(type_display),
             body,
             span: method.span.clone(),
             env_type: None,
