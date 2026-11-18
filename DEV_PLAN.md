@@ -401,6 +401,22 @@ That is enough to prototype a codegen design, to reproduce a C-level failure wit
 waiting for a runner, and to check the runtime shim. It is not enough to compile the
 compiler.
 
+**The compiler itself is built on GitHub and handed back.** `.github/workflows/dev-build.yml`
+is a `workflow_dispatch` job that builds the workspace and uploads the four binaries as an
+artifact. `gh run download` retrieves it, so a machine with no `rustc` can run the
+compiler it just changed:
+
+```bash
+gh workflow run dev-build.yml --ref <branch>
+gh run watch <run-id>
+gh run download <run-id> -n nova-dev-<sha> -D /tmp/dev
+/tmp/dev/nova-compiler --version
+```
+
+It is not a release — debug build, no packaging, seven-day retention. It exists because a
+runner's filesystem is otherwise unreachable, so a change can only be judged by pass/fail
+when it could be judged by running it.
+
 ## Known limitations (deliberate, documented)
 
 - `int` → `float` is the only implicit conversion.

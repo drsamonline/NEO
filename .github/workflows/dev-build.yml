@@ -1,0 +1,59 @@
+name: Dev build
+
+# Build the compiler somewhere with a Rust toolchain and hand the binaries back.
+#
+# Why this exists: CI already builds every push, but a runner's filesystem is not
+# reachable afterwards, so a change can only be judged by pass/fail. This uploads the
+# binaries as an artifact, which `gh run download` retrieves — so a machine without
+# `rustc` can still run the compiler it just changed, compile real programs with it,
+# and see the output.
+#
+# It is not a release: debug build, no packaging, seven-day retention, and the binaries
+# are whatever the branch contained.
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Why this build exists (shows in the run list)"
+        required: false
+        default: "manual dev build"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and upload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Smoke-test what is about to be uploaded
+        run: |
+          set -eu
+          ./target/debug/nova-compiler --version
+          ./target/debug/nova-compiler run examples/hello.nova
+
+      - name: Collect
+        run: |
+          set -eu
+          mkdir -p dev-build
+          for bin in nova-compiler nova-pkg nova-lsp nova-dbg; do
+            cp "target/debug/$bin" dev-build/
+          done
+          # The compiler writes `nova_runtime.h` and `.c` beside the generated C, so the
+          # binaries need nothing else — but `stdlib/` is where `use math;` resolves.
+          cp -r stdlib dev-build/
+          printf '%s\n' "${{ github.sha }}" > dev-build/COMMIT
+          cat dev-build/COMMIT
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # was @v4
+        with:
+          name: nova-dev-${{ github.sha }}
+          path: dev-build/
+          retention-days: 7
+          if-no-files-found: error
