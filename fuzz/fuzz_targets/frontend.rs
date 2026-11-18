@@ -27,4 +27,13 @@ fuzz_target!(|data: &[u8]| {
 
     let mut lowerer = Lowerer::new();
     let _sir = lowerer.lower_program(&program);
+
+    // The item tree is a second, independent walk over the same tokens. It has to
+    // survive input the parser rejects — it is what an editor uses while a file is
+    // half-typed — so it runs on everything that reaches here, and the expansion of
+    // every deferred body is exercised too.
+    let tree = nova_compiler::syntax::ItemTree::parse(source);
+    for item in tree.items() {
+        let _ = tree.children_of(item);
+    }
 });
