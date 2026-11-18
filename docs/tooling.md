@@ -42,6 +42,7 @@ Each is runnable locally with no toolchain, which is why they are Python.
 | `fuzz.yml` | **G5** `cargo-fuzz` on lexer, parser and front end, seeded | **advisory** — until a weekly 10-minute run is clean |
 | `mutants.yml` | **G7** `cargo-mutants` on the lowerer and C backend, weekly | **advisory** — until the survivors are triaged |
 | `bench.yml` | Wall-clock bench and compiler-speed bench, weekly and on demand | no — a trend, not a gate |
+| `dev-build.yml` | `workflow_dispatch` → build the workspace, smoke-test, upload the four binaries as a seven-day artifact so a machine without `rustc` can run them | on demand |
 | `release.yml` | Tag → verify → draft release → three-platform build with a packaged-compiler smoke test → publish. `workflow_dispatch` runs the same pipeline as a **dry run** and stops before creating anything | on tag, or on demand |
 | `lint` job in `ci.yml` | `cargo fmt --check`, `clippy -D warnings` | **advisory** — the tree has never been formatted |
 
