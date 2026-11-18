@@ -202,17 +202,19 @@ impl SemanticAnalyzer {
         let Some(return_type) = &func.return_type else {
             return;
         };
-        let declared = return_type.name.trim();
-        let Some(payload) = declared
-            .strip_prefix("Option<")
-            .and_then(|rest| rest.strip_suffix('>'))
-        else {
-            return;
-        };
-        let payload = payload.trim();
-        if is_primitive_type_name(payload) {
+        // `Option<File>` parses as name `Option` with one generic argument, not as a
+        // single string — the first version of this check looked for `"Option<"` in
+        // the name and therefore never fired.
+        if return_type.name.trim() != "Option" {
             return;
         }
+        let Some(payload) = return_type.generics.first() else {
+            return;
+        };
+        if is_primitive_type_name(&payload.name) {
+            return;
+        }
+        let payload = payload.name.trim();
         let diagnostic = Diagnostic::error(format!(
             "`Option<{payload}>` cannot be represented: an `Option` payload is `int`, \
              `float`, `bool`, `char` or `string`"
