@@ -80,6 +80,20 @@ done
 
 A feature without a test at the layer it lives in is not finished.
 
+## Building without a Rust toolchain
+
+`.github/workflows/dev-build.yml` builds the workspace on a runner and uploads the
+binaries as an artifact, and `scripts/dev-loop.sh <branch>` dispatches it, waits,
+downloads the result and sets `CC` for you. The compiler runs locally against the
+`stdlib/` in the artifact.
+
+```bash
+./scripts/dev-loop.sh my-branch
+```
+
+Useful on a low-spec machine, and the only way to test a change in an environment where
+`rustc` cannot be installed.
+
 `nova-compiler fmt` is available and safe to run on any file, including one that is
 half-typed — it never parses, so it cannot fail. It normalises the space between
 items only; do not expect it to fix indentation inside a body. It changes no token,
