@@ -37,7 +37,7 @@ the code and a CI run, and the run is named where it matters.
 | CLI | ✅ `emit` / `build` / `run` / `doctor` / `test --parity` | end-to-end tests |
 | JS / Rust / WASM backends | ⚠️ exercised subset; C is the reference | `tests/parity/` in CI |
 | Runtime crate | ✅ compiles and tests; **not linked to generated C** | 33 runtime tests |
-| Standard library | ⚠️ 4 modules, **167 of 250 functions usable** — the other 83 call a builtin the compiler does not implement | `stdlib/README.md`, `tools/stdlib-check.py` |
+| Standard library | ⚠️ 4 modules, **196 of 250 functions usable** — the other 54 call a builtin the compiler does not implement | `stdlib/README.md`, `tools/stdlib-check.py` |
 | Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry mocked; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ REPL/breakpoints real; stack frames and DWARF mocked | `dbg` tests |

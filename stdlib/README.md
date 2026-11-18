@@ -1,6 +1,6 @@
 # The NOVA standard library
 
-Four modules, 250 functions. **167 of them can run; 83 cannot**, and this page is the
+Four modules, 250 functions. **196 of them can run; 54 cannot**, and this page is the
 only place that says which.
 
 | Module | What it is |
@@ -16,13 +16,13 @@ only place that says which.
 | Module | Functions | Usable | Blocked |
 |---|---|---|---|
 | `core` | 55 | 49 | 6 |
-| `io` | 60 | 16 | 44 |
-| `math` | 76 | 48 | 28 |
+| `io` | 60 | 18 | 42 |
+| `math` | 76 | 75 | 1 |
 | `text` | 59 | 54 | 5 |
-| **total** | **250** | **167** | **83** |
+| **total** | **250** | **196** | **54** |
 <!-- stdlib-check:end -->
 
-The compiler knows **fourteen** `__builtin_*` functions. A stdlib function whose body
+The compiler knows **forty-three** `__builtin_*` functions. A stdlib function whose body
 calls any other name is a function the compiler cannot lower — it is scaffolding,
 written against builtins that were planned and not implemented.
 
@@ -31,10 +31,11 @@ function calls no builtin the compiler does not implement. It does **not** mean 
 function is correct: the stdlib has no tests, which is a separate and larger gap. A
 function that is usable has been read, not run.
 
-`io` is the worst case: 44 of its 60 functions call builtins that do not exist
-(`__builtin_fopen`, `__builtin_fread_line`, `__builtin_stat`, `__builtin_mkdir` and
-the rest), so most of the module cannot be called at all. `text` and `core` are
-largely pure NOVA, which is why they fare better.
+`math` went from 48 usable to **75** when the floating-point builtins landed, and
+`io` gained three parsing functions. `io` is still the worst case: 42 of its 60
+functions call builtins that do not exist (`__builtin_fopen`, `__builtin_fread_line`,
+`__builtin_stat`, `__builtin_mkdir` and the rest), so most of that module cannot be
+called at all.
 
 ## Keeping this true
 

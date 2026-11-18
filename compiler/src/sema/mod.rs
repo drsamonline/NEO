@@ -921,6 +921,18 @@ fn builtin_return_type(name: &str) -> Option<Type> {
         "__builtin_typeof" | "__builtin_tostring" | "__builtin_strcat" | "__builtin_substr" => {
             Type::String
         }
+        // Floating-point maths: the C library functions, under names the compiler
+        // can emit. Argument types are not checked for a builtin, so an `int`
+        // argument reaches `double` through the one implicit conversion NOVA has.
+        "__builtin_sqrt" | "__builtin_cbrt" | "__builtin_sin" | "__builtin_cos"
+        | "__builtin_tan" | "__builtin_asin" | "__builtin_acos" | "__builtin_atan"
+        | "__builtin_sinh" | "__builtin_cosh" | "__builtin_tanh" | "__builtin_exp"
+        | "__builtin_log" | "__builtin_log2" | "__builtin_log10" | "__builtin_floor"
+        | "__builtin_ceil" | "__builtin_round" | "__builtin_powf" | "__builtin_atan2"
+        | "__builtin_fmod" | "__builtin_remainder" | "__builtin_nan"
+        | "__builtin_infinity" | "__builtin_parse_float" => Type::Float,
+        "__builtin_is_nan" | "__builtin_is_infinite" | "__builtin_is_finite" => Type::Bool,
+        "__builtin_parse_int" => Type::Int,
         _ => return None,
     })
 }

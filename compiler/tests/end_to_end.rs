@@ -152,6 +152,75 @@ fn hello_compiles_links_and_prints() {
     assert_eq!(String::from_utf8_lossy(&run.stdout), "Hello, NOVA\n");
 }
 
+/// Compile a program that `use`s a stdlib module, run it, and return stdout.
+///
+/// The module is found through `stdlib/` beside the source, so the test writes its
+/// program inside the workspace's own `stdlib` search path rather than a temp dir.
+fn run_with_stdlib(name: &str, source: &str) -> String {
+    let dir = scratch(name);
+    let file = dir.join(format!("{name}.nova"));
+    fs::write(&file, source).expect("write source");
+    let binary = dir.join(name);
+
+    // `find_module` walks ancestors for `stdlib/<name>/<name>.nova`, so a scratch
+    // directory outside the workspace cannot see it. `--module-root` is the
+    // supported way in, and it is what `nova-pkg` uses for a dependency.
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&file)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run built binary");
+    assert!(
+        run.status.success(),
+        "program exited with {}:\nstderr: {}",
+        run.status,
+        String::from_utf8_lossy(&run.stderr)
+    );
+    String::from_utf8_lossy(&run.stdout).to_string()
+}
+
+#[test]
+fn the_math_module_works_end_to_end() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+
+    // Every call here reaches a `__builtin_*` that used to be unimplemented, so
+    // before this the module printed "builtin not implemented" and exited 1.
+    // Floats print through `%g`, which is why `4.0` comes out as `4`.
+    let stdout = run_with_stdlib(
+        "math",
+        "\
+use math;
+
+fn main() -> int {
+    print(sqrt(16.0));
+    print(floor(3.7));
+    print(ceil(3.2));
+    print(round(2.5));
+    print(powf(2.0, 10.0));
+    print(cbrt(27.0));
+    print(sin(0.0));
+    return 0;
+}
+",
+    );
+    assert_eq!(stdout, "4\n3\n4\n3\n1024\n3\n0\n");
+}
+
 #[test]
 fn fibonacci_example_runs() {
     if !c_compiler_available() {

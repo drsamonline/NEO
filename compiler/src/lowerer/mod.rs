@@ -863,6 +863,29 @@ impl Lowerer {
                 };
                 Some(typed("nova_array_pop", vec![array], "int"))
             }
+            // Floating-point maths. Every one is a C library call under a name the
+            // compiler can emit; `nova-compiler build` links `-lm` for this reason.
+            // Listed explicitly rather than pattern-matched on the prefix, because a
+            // new `__builtin_*` should have to be added here on purpose.
+            "__builtin_sqrt" | "__builtin_cbrt" | "__builtin_sin" | "__builtin_cos"
+            | "__builtin_tan" | "__builtin_asin" | "__builtin_acos" | "__builtin_atan"
+            | "__builtin_sinh" | "__builtin_cosh" | "__builtin_tanh" | "__builtin_exp"
+            | "__builtin_log" | "__builtin_log2" | "__builtin_log10" | "__builtin_floor"
+            | "__builtin_ceil" | "__builtin_round" | "__builtin_powf"
+            | "__builtin_atan2" | "__builtin_fmod" | "__builtin_remainder" => {
+                let callee = format!("nova_math_{}", &name["__builtin_".len()..]);
+                Some(typed(&callee, lowered(self), "float"))
+            }
+            "__builtin_is_nan" | "__builtin_is_infinite" | "__builtin_is_finite" => {
+                let callee = format!("nova_math_{}", &name["__builtin_".len()..]);
+                Some(typed(&callee, lowered(self), "bool"))
+            }
+            "__builtin_nan" | "__builtin_infinity" => {
+                let callee = format!("nova_math_{}", &name["__builtin_".len()..]);
+                Some(typed(&callee, Vec::new(), "float"))
+            }
+            "__builtin_parse_int" => Some(typed("nova_parse_int", lowered(self), "int")),
+            "__builtin_parse_float" => Some(typed("nova_parse_float", lowered(self), "float")),
             "__builtin_panic" => Some(typed("nova_panic", lowered(self), "void")),
             "__builtin_exit" => Some(typed("nova_exit", lowered(self), "void")),
             _ => Some(typed(
