@@ -191,28 +191,72 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).to_string()
 }
 
+/// One program per candidate, so a crash names itself instead of hiding behind
+/// whichever call the linker happened to reach first.
+///
+/// This is the reduction step written down: the module imports and `sqrt` works, and
+/// something among the other calls killed the process with SIGSEGV. Running each in
+/// its own program turns "the module segfaults" into a list of which ones do.
 #[test]
-fn the_math_module_works_end_to_end() {
+fn every_math_call_that_used_to_crash_is_isolated() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");
         return;
     }
 
-    // The narrowest program that proves the module can be imported at all. An
-    // earlier version called seven functions and segfaulted; this one is the
-    // smallest thing that either works or does not.
-    let stdout = run_with_stdlib(
-        "math",
-        "\
-use math;
+    let cases: &[(&str, &str, &str)] = &[
+        ("sqrt", "print(sqrt(16.0));", "4\n"),
+        ("floor", "print(floor(3.7));", "3\n"),
+        ("ceil", "print(ceil(3.2));", "4\n"),
+        ("round", "print(round(2.5));", "3\n"),
+        ("powf", "print(powf(2.0, 10.0));", "1024\n"),
+        ("cbrt", "print(cbrt(27.0));", "3\n"),
+        ("const", "print(PI > 3.14);", "true\n"),
+    ];
 
-fn main() -> int {
-    print(sqrt(16.0));
-    return 0;
-}
-",
+    let mut failures = Vec::new();
+    for (name, call, expected) in cases {
+        let source = format!("use math;\n\nfn main() -> int {{\n    {call}\n    return 0;\n}}\n");
+        let dir = scratch(&format!("math-{name}"));
+        let file = dir.join("program.nova");
+        let binary = dir.join("program");
+        fs::write(&file, &source).expect("write source");
+
+        let build = Command::new(compiler())
+            .arg("build")
+            .arg(&file)
+            .arg("-o")
+            .arg(&binary)
+            .arg("--module-root")
+            .arg(workspace_root().join("stdlib"))
+            .output()
+            .expect("run nova-compiler build");
+        if !build.status.success() {
+            failures.push(format!(
+                "{name}: did not build: {}",
+                String::from_utf8_lossy(&build.stderr).trim()
+            ));
+            continue;
+        }
+
+        let run = Command::new(&binary).output().expect("run built binary");
+        if !run.status.success() {
+            failures.push(format!("{name}: exited with {}", run.status));
+            continue;
+        }
+        let stdout = String::from_utf8_lossy(&run.stdout);
+        if stdout != *expected {
+            failures.push(format!("{name}: printed {stdout:?}, expected {expected:?}"));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} of {} calls failed:\n  {}",
+        failures.len(),
+        cases.len(),
+        failures.join("\n  ")
     );
-    assert_eq!(stdout, "4\n");
 }
 
 #[test]
