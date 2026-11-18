@@ -289,15 +289,26 @@ represented.
   `PACKAGE_ARCHITECTURE.md` rather than implied — two machines can currently resolve
   the same `nova.toml` to different revisions.
 
-### Stage 6 — Release and distribution (2 days)
+### Stage 6 — Release and distribution (in progress)
 
-Delete the hand-written release workflow and adopt `dist` (formerly cargo-dist). It
-generates the release pipeline, the archives, the checksums, the installers and a
-PR-time check of the release process itself — which is the part this repository
-most needs, because the current workflow has never run.
+The hand-written workflow is real but has **never executed** — it is tag-triggered, and
+no tag has been pushed. "It works" is currently an assumption.
 
-**Done when:** a `v0.6.1` tag produces a published release with three platform
-archives, and the packaged compiler compiles hello world on each.
+- ✅ `workflow_dispatch` runs it as a **dry run**: verify, build all three platforms,
+  package, smoke-test the packaged compiler, print the checksums, stop. No draft, no
+  upload, no publication. `docs/tooling.md` → "Cutting a release" has the procedure.
+- ✅ The verify step's logic is checked locally: `v0.6.1` passes against
+  `Cargo.toml`/`VERSION`, `v0.7.0` fails. That is the gate that stops the four-version
+  defect from shipping.
+- ⬜ **The first real run.** It needs a tag, and a tag publishes a public release, so
+  it is the owner's call. Cutting one means promoting `[Unreleased]` to a version
+  first — the accumulated work is not in 0.6.1.
+- ⬜ Adopt `dist` (formerly cargo-dist) once the pipeline is proven, if it earns its
+  keep: it generates the archives, the checksums and a PR-time check of the release
+  process, at the cost of a dependency on its own conventions.
+
+**Done when:** a tag produces a published release with three platform archives, and
+the packaged compiler compiles hello world on each.
 
 ### Stage 7 — The long tail (ongoing, lowest priority)
 
