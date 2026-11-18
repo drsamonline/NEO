@@ -2,13 +2,9 @@
 #
 # One module per line, the name first, then why. `ci.yml` fails if a module outside
 # this list does not compile, and also if a module inside it starts compiling — so
-# the list can only shrink. `core` and `math` are not listed, so they must keep
-# compiling.
+# the list can only shrink.
 #
-# not inferred from the NOVA source.
+# Every reason below is quoted from C that `nova-compiler emit` actually produced.
 #
-io   Does not reach C: sema rejects `Option<File>` at io.nova:22 and `Option<FileMetadata>`
-     at io.nova:224 with E0400, because an `Option` payload is a primitive (ADR 0003).
-     That is the compiler refusing to emit C it knows cannot compile, which is the
-     improvement — the remaining work is monomorphisation, not a fix in this module.
-text The same E0400 at text.nova:22, reached through `use io;`.
+# Empty. All four modules compile. Keep it that way: adding a line here is a
+# regression, not a plan.

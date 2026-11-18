@@ -46,6 +46,9 @@ pub struct Lowerer {
     method_declarations: HashMap<String, Function>,
     /// True once `Some`/`None` are lowered, so the `Option` struct is emitted.
     uses_option: bool,
+    /// Every payload type `Option` was instantiated with, so one struct can be
+    /// emitted per type instead of one struct with three primitive slots.
+    option_payloads: std::collections::BTreeSet<String>,
     /// Generic functions, keyed by name; lowered once per instantiation.
     generic_decls: HashMap<String, Function>,
     /// Instantiations that still need to be lowered.
@@ -125,6 +128,7 @@ impl Lowerer {
             method_generics: HashMap::new(),
             method_declarations: HashMap::new(),
             uses_option: false,
+            option_payloads: std::collections::BTreeSet::new(),
             generic_decls: HashMap::new(),
             pending: Vec::new(),
             instantiated: HashSet::new(),
@@ -435,10 +439,25 @@ impl Lowerer {
         functions.extend(self.lifted_closures.drain(..));
         structs.extend(self.pending_structs.drain(..));
 
-        if self.uses_option && !structs.iter().any(|struct_def| struct_def.name == "Option") {
+        // One `Option_<payload>` per payload type. `payload_struct_fields` stays for
+        // enums, whose variants share a single tagged struct.
+        for payload in std::mem::take(&mut self.option_payloads) {
+            let name = option_struct_name(&payload);
+            if structs.iter().any(|struct_def| struct_def.name == name) {
+                continue;
+            }
             structs.push(SirStruct {
-                name: "Option".to_string(),
-                fields: payload_struct_fields(),
+                name,
+                fields: vec![
+                    SirStructField {
+                        name: "tag".to_string(),
+                        typ: "int".to_string(),
+                    },
+                    SirStructField {
+                        name: "payload".to_string(),
+                        typ: payload,
+                    },
+                ],
             });
         }
 
@@ -577,6 +596,12 @@ impl Lowerer {
         }
 
         let return_type = func.return_type.as_ref().map(|typ| typ.name.clone());
+        let previous_expected = self.expected_type.replace(
+            func.return_type
+                .as_ref()
+                .map(|typ| self.substitute(&type_display(typ)))
+                .unwrap_or_default(),
+        );
         let previous = self.discard_result;
         self.discard_result = !Self::returns_value(&return_type);
         let body_stmts = match &func.body {
@@ -585,6 +610,7 @@ impl Lowerer {
         };
         let body_stmts = Self::finish_body(body_stmts, &return_type);
         self.discard_result = previous;
+        self.expected_type = previous_expected;
         self.pop_scope();
 
         SirFunction {
@@ -1056,6 +1082,10 @@ impl Lowerer {
                         }
                     }
                     if typ.starts_with("fn(") {
+                        self.expected_type = Some(typ.clone());
+                    }
+                    // `let f: Option<File> = None;` — the binding knows the payload.
+                    if typ.starts_with("Option<") {
                         self.expected_type = Some(typ.clone());
                     }
                 }
@@ -1623,15 +1653,26 @@ impl Lowerer {
             // `None` is the built-in empty `Option`.
             Expr::Identifier(name) if name == "None" => {
                 self.uses_option = true;
+                // `None` carries no type of its own, so it takes the payload from the
+                // context — the declared type of the binding, or the return type of the
+                // function whose body this is. Without that it was hard-coded to
+                // `Option<int>` and `let f: Option<File> = None;` was wrong.
+                let payload = self
+                    .expected_type
+                    .as_deref()
+                    .and_then(option_payload_of)
+                    .unwrap_or("int")
+                    .to_string();
+                self.option_payloads.insert(payload.clone());
                 SirExpr::Typed {
                     expr: Box::new(SirExpr::StructLiteral {
-                        name: "Option".to_string(),
+                        name: option_struct_name(&payload),
                         fields: vec![(
                             "tag".to_string(),
                             SirExpr::Literal(SirLiteral::Int(1)),
                         )],
                     }),
-                    typ: "Option<int>".to_string(),
+                    typ: format!("Option<{payload}>"),
                 }
             }
             Expr::Identifier(name) => self.lower_variable(name),
@@ -2194,22 +2235,29 @@ impl Lowerer {
         arg: &Expr,
         payload_type: &str,
     ) -> SirExpr {
-        if enum_name == "Option" {
+        let (struct_name, field, typ) = if enum_name == "Option" {
             self.uses_option = true;
-        }
-        let (field, _) = payload_field(payload_type);
+            self.option_payloads.insert(payload_type.to_string());
+            (
+                option_struct_name(payload_type),
+                "payload".to_string(),
+                format!("Option<{payload_type}>"),
+            )
+        } else {
+            let (field, _) = payload_field(payload_type);
+            (
+                enum_name.to_string(),
+                field.to_string(),
+                enum_name.to_string(),
+            )
+        };
         let fields = vec![
             ("tag".to_string(), SirExpr::Literal(SirLiteral::Int(tag))),
-            (field.to_string(), self.lower_expr(arg)),
+            (field, self.lower_expr(arg)),
         ];
-        let typ = if enum_name == "Option" {
-            format!("Option<{}>", payload_type)
-        } else {
-            enum_name.to_string()
-        };
         SirExpr::Typed {
             expr: Box::new(SirExpr::StructLiteral {
-                name: enum_name.to_string(),
+                name: struct_name,
                 fields,
             }),
             typ,
@@ -2326,7 +2374,10 @@ impl Lowerer {
             self.push_scope();
             let mut body = Vec::new();
             if let Some((name, typ)) = binding {
-                let (field, _) = payload_field(&typ);
+                let field = match scrutinee_type.as_deref().and_then(option_payload_of) {
+                    Some(_) => "payload",
+                    None => payload_field(&typ).0,
+                };
                 body.push(SirStatement::Let {
                     name: name.clone(),
                     typ: Some(typ.clone()),
@@ -2762,6 +2813,27 @@ fn payload_struct_fields() -> Vec<SirStructField> {
 }
 
 /// Which payload slot a value of `typ` uses, and the type it is read back as.
+/// The C struct name for an `Option` holding `payload`, e.g. `Option_File`.
+///
+/// One struct per payload type. The alternative — one struct with `int`, `double` and
+/// `char*` slots — cannot hold a struct at all, which is what ADR 0003 is about.
+fn option_struct_name(payload: &str) -> String {
+    let mangled: String = payload
+        .trim()
+        .chars()
+        .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
+        .collect();
+    format!("Option_{}", mangled.trim_matches('_'))
+}
+
+/// The payload type named by an `Option<...>` type string.
+fn option_payload_of(typ: &str) -> Option<&str> {
+    typ.trim()
+        .strip_prefix("Option<")
+        .and_then(|rest| rest.strip_suffix('>'))
+        .map(str::trim)
+}
+
 fn payload_field(typ: &str) -> (&'static str, &'static str) {
     match typ.to_lowercase().as_str() {
         "float" | "f32" | "f64" => ("payload_f", "float"),
