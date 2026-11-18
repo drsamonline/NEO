@@ -65,6 +65,10 @@ a reason to spend it on `Option` while the stdlib's own `array_pop<T>` and
 
 ## Follow-up
 
-Sema rejection is the next step. Monomorphisation is a separate ADR, and it should be
-written when something other than the stdlib needs it — `Option<File>` is currently the
-only thing that does.
+✅ **Sema rejects `Option<Struct>` as `E0400`.** The compiler no longer emits C it knows
+cannot be compiled; a program writing `Option<File>` gets a line, a column and a
+sentence in its own language. `tests/diagnostics/E0400_option_of_struct.nova` pins it.
+
+⬜ **Monomorphisation** is a separate ADR, to be written when something other than the
+stdlib needs it. It would give `Option_File` its own struct and unblock `stdlib/io` and
+`stdlib/text`, which are listed in `stdlib/not-compiling.txt` for this reason.

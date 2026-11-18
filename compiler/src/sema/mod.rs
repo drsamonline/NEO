@@ -191,7 +191,43 @@ impl SemanticAnalyzer {
     }
 
     /// Check function body
+    /// Reject an `Option` whose payload is not a primitive.
+    ///
+    /// The runtime representation is one C struct with an `int`, a `double` and a
+    /// `char*` payload slot — three primitives and nothing else (`docs/adr/0003`).
+    /// A struct payload therefore cannot be stored, and emitting it produces C that
+    /// no C compiler accepts. Saying so here means the diagnostic carries a NOVA line
+    /// and column instead of a column in generated code.
+    fn check_option_payload(&mut self, func: &Function) {
+        let Some(return_type) = &func.return_type else {
+            return;
+        };
+        let declared = return_type.name.trim();
+        let Some(payload) = declared
+            .strip_prefix("Option<")
+            .and_then(|rest| rest.strip_suffix('>'))
+        else {
+            return;
+        };
+        let payload = payload.trim();
+        if is_primitive_type_name(payload) {
+            return;
+        }
+        let diagnostic = Diagnostic::error(format!(
+            "`Option<{payload}>` cannot be represented: an `Option` payload is `int`, \
+             `float`, `bool`, `char` or `string`"
+        ))
+        .with_code("E0400")
+        .with_span(return_type.span)
+        .with_help(
+            "return the value directly, or use a primitive payload; see docs/adr/0003"
+                .to_string(),
+        );
+        self.diagnostics.push(diagnostic);
+    }
+
     fn check_function(&mut self, func: &Function) {
+        self.check_option_payload(func);
         self.symbol_table.enter_scope(); // Function scope
         
         // Add parameters to symbol table
@@ -935,6 +971,33 @@ fn builtin_return_type(name: &str) -> Option<Type> {
         "__builtin_parse_int" => Type::Int,
         _ => return None,
     })
+}
+
+/// Whether a written type name is one of the primitives, which are the only payloads
+/// an `Option` can hold.
+fn is_primitive_type_name(name: &str) -> bool {
+    matches!(
+        name.trim(),
+        "int"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "float"
+            | "f32"
+            | "f64"
+            | "bool"
+            | "string"
+            | "str"
+            | "char"
+            | "unit"
+            | "void"
+            | "()"
+    )
 }
 
 fn type_from_name(name: &str) -> Type {

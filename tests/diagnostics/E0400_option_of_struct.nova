@@ -1,0 +1,15 @@
+// An `Option` payload is a primitive — the runtime representation has an int, a
+// double and a char* slot and nothing for a struct. See docs/adr/0003.
+//
+//~ ERROR E0400
+struct File {
+    handle: int,
+}
+
+fn open_it() -> Option<File> {
+    None
+}
+
+fn main() -> int {
+    return 0;
+}
