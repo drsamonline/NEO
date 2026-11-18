@@ -2,7 +2,7 @@
 // Bump this whenever a cached file changes. The service worker serves the old
 // copy until the name moves, so a content edit without a bump is invisible to
 // anyone who has already visited.
-const CACHE = "nova-site-v4";
+const CACHE = "nova-site-v5";
 const SHELL = [
   "./",
   "./index.html",

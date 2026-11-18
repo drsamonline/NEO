@@ -17,7 +17,7 @@ exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 # The repository is MIT (`LICENSE`). Declaring it per package matters: a crate
 # with no `license` field is legally ambiguous for anyone who vendors it, and a

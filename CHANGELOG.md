@@ -4,7 +4,14 @@ All notable changes to the NOVA project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 `[Unreleased]` always sits above the newest release.
 
-## [Unreleased] - Phase 2: Runtime System (Active Development)
+## [Unreleased]
+
+Nothing yet.
+
+## [0.7.0] - 2026-11-18
+
+The first release with downloadable artifacts. Everything below accumulated since
+0.6.1, which shipped no binaries at all — see the note at the end.
 
 ### Added
 #### Block expressions in C, block-bodied closures, parity corpus ⭐ NEW
@@ -627,8 +634,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 
 - Release cut so the tag describes the code it ships: this is the first release since 0.6.0.
 
-_No date, because no tag exists yet. The release workflow refuses a tag that does not
-match `Cargo.toml` and `VERSION`, and the tag's own date becomes the release date._
+_Published as a tag with no artifacts: the release workflow did not exist yet. See
+[0.7.0](#070---2026-11-18), the first release with binaries._
 
 ## [1.0.0-alpha] - Phase 1: Compiler Core Complete - 2024
 
