@@ -14,14 +14,23 @@
 //!
 //! What it does:
 //!
+//! - **re-indents every line of code to its bracket depth**, four spaces per level;
 //! - exactly one blank line between top-level items;
 //! - no trailing whitespace on a line — except a line that ends inside a string
 //!   literal, where the spaces are part of the string;
 //! - runs of blank lines in a comment block collapsed to one;
 //! - exactly one newline at end of file.
 //!
-//! What it does not do: re-indent or reflow anything inside a body. That needs a
-//! lossless tree over every expression, which is the next stage.
+//! What it does not do: break a long line, align arguments, or reflow an expression.
+//! Those need to know what the expression *means*, which needs the lossless tree
+//! over every expression — `rowan`, per the ADR. Re-indenting needs only the bracket
+//! depth, which the token stream already carries.
+//!
+//! Two things it deliberately leaves alone:
+//!
+//! - **A line inside a string literal**, where the leading spaces are content.
+//! - **A comment-only line**, so an indented example inside a doc comment survives.
+//!   The cost is that a misplaced comment keeps its own indentation.
 //!
 //! It never parses, so it is total: it cannot fail, which means it works on a file
 //! that is half-typed — the moment you most want to run a formatter.
@@ -29,7 +38,7 @@
 use crate::lexer::Lexer;
 use crate::syntax::ItemTree;
 use nova_common::TokenKind;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Format `source`.
 ///
@@ -39,6 +48,7 @@ pub fn format(source: &str) -> String {
     // Trailing whitespace first, on the source's own line numbering, because the
     // string-literal guard is expressed in source lines.
     let source = strip_trailing_whitespace(source);
+    let source = reindent(&source);
     let chars: Vec<char> = source.chars().collect();
     let tree = ItemTree::parse(&source);
 
@@ -83,6 +93,76 @@ pub fn format(source: &str) -> String {
     } else {
         format!("{trimmed}\n")
     }
+}
+
+/// Indent width, one level. Matches `.editorconfig`.
+const INDENT: &str = "    ";
+
+/// Rewrite the leading whitespace of every line of code to its bracket depth.
+///
+/// Depth comes from the token stream, so this needs no parse — which is why it can
+/// run on a file that does not compile, and why it cannot disagree with the parser
+/// about anything.
+///
+/// A line whose first token is a closing bracket is indented one level less than the
+/// depth it closes into, so `}` lines up with the statement that opened the block.
+///
+/// A line with no token at all is left exactly as it is: blank lines have nothing to
+/// indent, and a comment line keeps its own indentation so that an indented example
+/// inside a doc comment is not destroyed.
+fn reindent(source: &str) -> String {
+    let protected = lines_inside_strings(source);
+    let indent_of = line_depths(source);
+
+    let mut out = String::with_capacity(source.len());
+    for (index, line) in source.split('\n').enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        let number = index + 1;
+        match indent_of.get(&number) {
+            // A code line: rewrite its leading whitespace.
+            Some(&level) if !protected.contains(&number) => {
+                out.push_str(&INDENT.repeat(level));
+                out.push_str(line.trim_start());
+            }
+            // A blank line, a comment-only line, or a line inside a string.
+            _ => out.push_str(line),
+        }
+    }
+    out
+}
+
+/// The indentation level of each line that begins with a token.
+///
+/// Keyed by 1-based line number. A line with no key has no token of its own.
+fn line_depths(source: &str) -> HashMap<usize, usize> {
+    let mut lexer = Lexer::new(source);
+    let (tokens, _diagnostics) = lexer.tokenize();
+
+    let mut depths = HashMap::new();
+    let mut depth = 0usize;
+    for token in &tokens {
+        let line = token.span.start.line;
+        if !depths.contains_key(&line) {
+            let closes = matches!(
+                token.kind,
+                TokenKind::RBrace | TokenKind::RParen | TokenKind::RBracket
+            );
+            // `depth` here is the depth *before* this token is applied, so a closer
+            // already sees the level it is closing into plus one.
+            let level = if closes { depth.saturating_sub(1) } else { depth };
+            depths.insert(line, level);
+        }
+        match token.kind {
+            TokenKind::LBrace | TokenKind::LParen | TokenKind::LBracket => depth += 1,
+            TokenKind::RBrace | TokenKind::RParen | TokenKind::RBracket => {
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+    }
+    depths
 }
 
 /// Line numbers (1-based) whose end lies inside a string literal.
@@ -200,12 +280,38 @@ mod tests {
     }
 
     #[test]
-    fn never_reindents_inside_an_item() {
-        // Deliberately ugly indentation and spacing: the formatter has no opinion.
-        let body = "fn a() {\n        let   x:int=1;\n  if x>0{print(x);}\n}";
-        let out = format(&format!("{body}\n"));
-        assert!(out.contains(body), "indentation must be preserved: {out}");
-        assert_tokens_preserved(body);
+    fn reindents_a_body_to_its_bracket_depth() {
+        let source = "fn a() {\n  let x = 1;\n     if x > 0 {\n print(x);\n        }\n}\n";
+        assert_eq!(
+            format(source),
+            "fn a() {\n    let x = 1;\n    if x > 0 {\n        print(x);\n    }\n}\n"
+        );
+        assert_tokens_preserved(source);
+    }
+
+    #[test]
+    fn a_closing_bracket_lines_up_with_its_opener() {
+        let source = "fn a() {\n    if true {\n        print(1);\n        }\n    }\n";
+        assert_eq!(
+            format(source),
+            "fn a() {\n    if true {\n        print(1);\n    }\n}\n"
+        );
+    }
+
+    #[test]
+    fn a_comment_keeps_its_own_indentation() {
+        // An indented example inside a doc comment must survive; the cost is that a
+        // misplaced comment keeps its indentation, which is the trade recorded above.
+        let source = "fn a() {\n    // Example:\n    //     let x = 1;\n    let x = 1;\n}\n";
+        assert_eq!(format(source), source);
+    }
+
+    #[test]
+    fn a_line_inside_a_string_is_not_reindented() {
+        let source = "fn a() -> string {\n    return \"line one\n    line two\";\n}\n";
+        let out = format(source);
+        assert!(out.contains("    line two"), "string content moved: {out}");
+        assert_tokens_preserved(source);
     }
 
     #[test]
@@ -289,6 +395,10 @@ fn main() -> int {
         idempotent(source);
         assert_tokens_preserved(source);
         let out = format(source);
-        assert!(out.contains("        print(LIMIT);   // deliberately odd indentation"));
+        // The eight-space indent becomes four; the trailing comment stays on the line.
+        assert!(
+            out.contains("    print(LIMIT);   // deliberately odd indentation"),
+            "expected re-indented output: {out}"
+        );
     }
 }

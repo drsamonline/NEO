@@ -127,8 +127,13 @@ be replaced later without touching its consumers.
 
    The invariant moved while building it: "not one byte changes" cannot hold, because
    removing trailing whitespace changes bytes. "Not one token changes" holds, is
-   testable, and is the promise that matters. The remaining half is the *inside* of a
-   body, which is where `rowan` would come in.
+   testable, and is the promise that matters.
+
+   Re-indentation then landed too, and it did **not** need `rowan`: bracket depth from
+   the token stream is enough, and it cannot disagree with the parser because it never
+   parses. What still needs a real tree is *reflowing* an expression — breaking a long
+   line, aligning arguments — which the formatter does not promise and which no
+   consumer depends on.
 2. **Guard the item tree against the parser**, the way `grammar-check.py` guards the
    grammar: for every `examples/**/*.nova`, the item kinds the tree reports must
    match the top-level `Item`s the parser produces. Without that, two

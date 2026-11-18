@@ -226,8 +226,11 @@ deferral cannot be expanded correctly later.
   never parses, so it is total: it works on half-typed code.
   `compiler/tests/format.rs` checks against every shipped program that the token
   stream is identical, no comment is lost, the item structure is unchanged and
-  formatting twice changes nothing. **What it does not do:** re-indent or reflow a
-  body. That needs a lossless tree over every expression, which is the next line.
+  formatting twice changes nothing. It **re-indents** every line of code to its
+  bracket depth from the token stream — no parse, so it cannot disagree with the
+  parser — and leaves string literals and comment-only lines alone.
+  **What it does not do:** break a long line or reflow an expression. That needs a
+  lossless tree over every expression, which is the next line.
 - ✅ A guard that the item tree and the parser agree about what an item is —
   `compiler/tests/item_tree.rs` compares the two on every shipped program, the way
   `grammar-check.py` guards the grammar against the parser. One asymmetry is
@@ -249,8 +252,16 @@ deferral cannot be expanded correctly later.
 laziness is real only for features that can decline to look inside.
 
 **Done when:** the item tree and the parser agree on every example in CI, and a
-formatter can rewrite the *inside* of a body without changing meaning — which is
-the remaining half of this stage.
+formatter can rewrite the *inside* of a body without changing meaning. ✅ **Both are
+true:** `compiler/tests/item_tree.rs` compares the two on every shipped program, and
+`nova fmt` re-indents from the token stream, so it changes no token and cannot
+disagree with the parser about anything.
+
+What is left is not a stage: **reflowing** an expression — breaking a long line,
+aligning arguments — needs a lossless tree over every expression, which is where
+`rowan` would come in. Nothing above it depends on that answer, because nothing
+outside `compiler/src/syntax` and `compiler/src/fmt` depends on how a body is
+represented.
 
 ### Stage 5 — Close the tooling milestones that are now cheap (1 week)
 
