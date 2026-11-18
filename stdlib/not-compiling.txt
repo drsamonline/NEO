@@ -5,10 +5,8 @@
 # the list can only shrink. `core` and `math` are not listed, so they must keep
 # compiling.
 #
-# not inferred from the NOVA source.
+# Every reason below was read from C that `nova-compiler emit` actually produced and
+# `zig cc` actually rejected, not inferred from the NOVA source.
 #
-io   Does not reach C: sema rejects `Option<File>` at io.nova:22 and `Option<FileMetadata>`
-     at io.nova:224 with E0400, because an `Option` payload is a primitive (ADR 0003).
-     That is the compiler refusing to emit C it knows cannot compile, which is the
-     improvement — the remaining work is monomorphisation, not a fix in this module.
-text The same E0400 at text.nova:22, reached through `use io;`.
+io   Two defects, neither of them `Option` any more. (1) io.c:191: `NovaArray SPINNER_FRAMES = nova_array_from((int[]){...}, 4);` — a global initialised with a call is not a compile-time constant. (2) io.c:513: `fread_all(&((!file)))` — the `mut` in a `Some(mut file)` pattern leaks into the expression, so the binding is not the payload.
+text The same two, reached through `use io;` (text.c:259 and text.c:581).

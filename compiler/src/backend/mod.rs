@@ -240,6 +240,15 @@ impl CBackend {
         }
         // A generic struct is monomorphised: `Box<int>` -> `Box_int`. A generic
         // enum uses one tagged struct: `Result<int, String>` -> `Result`.
+        // `Option<T>` is monomorphised: one struct per payload type, holding the
+        // payload by value. See `docs/adr/0003-option-payload.md`.
+        if let Some(payload) = typ
+            .trim()
+            .strip_prefix("Option<")
+            .and_then(|rest| rest.strip_suffix('>'))
+        {
+            return format!("Option_{}", Self::mangle_type(payload.trim()));
+        }
         if let Some((base, arguments)) = typ.split_once('<') {
             if self.struct_names.iter().any(|name| name == base) {
                 if self.tagged.iter().any(|name| name == base) {
