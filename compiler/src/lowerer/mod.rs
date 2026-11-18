@@ -595,7 +595,14 @@ impl Lowerer {
             self.declare(&param.name, Some(type_display(&param.typ)));
         }
 
-        let return_type = func.return_type.as_ref().map(|typ| typ.name.clone());
+        let return_type = func.return_type.as_ref().map(type_display);
+        for typ in return_type.iter().chain(
+            func.params
+                .iter()
+                .map(|param| &type_display(&param.typ)),
+        ) {
+            note_option_payload(&mut self.option_payloads, typ);
+        }
         let previous_expected = self.expected_type.replace(
             func.return_type
                 .as_ref()
@@ -631,6 +638,12 @@ impl Lowerer {
     /// An `impl` method becomes `Type_method`, with `self` passed as a pointer.
     fn lower_method(&mut self, method: &Function, type_name: &str) -> SirFunction {
         self.push_scope();
+        if let Some(return_type) = method.return_type.as_ref().map(type_display) {
+            note_option_payload(&mut self.option_payloads, &return_type);
+        }
+        for param in &method.params {
+            note_option_payload(&mut self.option_payloads, &type_display(&param.typ));
+        }
         let mut params = Vec::new();
         for (index, param) in method.params.iter().enumerate() {
             let is_self = index == 0 && param.name == "self";
@@ -2829,6 +2842,17 @@ fn option_struct_name(payload: &str) -> String {
 }
 
 /// The payload type named by an `Option<...>` type string.
+/// Record the payload type of an `Option<...>` declaration.
+///
+/// A payload that only ever appears in a signature — `fn getenv() -> Option<String>`
+/// with no `Some` in its body — still needs its struct emitted, or the declaration
+/// names a type nothing defines.
+fn note_option_payload(payloads: &mut std::collections::BTreeSet<String>, typ: &str) {
+    if let Some(payload) = option_payload_of(typ) {
+        payloads.insert(payload.to_string());
+    }
+}
+
 fn option_payload_of(typ: &str) -> Option<&str> {
     typ.trim()
         .strip_prefix("Option<")
