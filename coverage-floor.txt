@@ -1,4 +1,4 @@
-68.02
+67.98
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -54,3 +54,9 @@
 # series, and the least deserved: `NovaArray_array` and `lower_loop_body` are covered by
 # five tests, but the reason the number moved is that `stdlib/text` now compiles and its
 # 249 lines of NOVA run through the end-to-end suite instead of being skipped.
+# 67.98% (9,242 of 13,595) when the stdlib tests landed. It FELL by 0.04, which is inside
+# the 0.05 tolerance and would have passed silently. The fall is honest: `lower_if_statement`
+# lost the two hand-written statement loops it duplicated, and about eighteen covered lines
+# went with them — the file is 18 lines smaller too. A refactor that deletes tested code
+# lowers the ratio without lowering the quality, so the floor comes down with it rather
+# than the number being quietly absorbed by the tolerance.
