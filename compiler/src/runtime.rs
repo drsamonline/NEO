@@ -57,8 +57,15 @@ char *nova_strdup(const char *value);
 char *nova_strcat(const char *left, const char *right);
 long long nova_strcmp(const char *left, const char *right);
 char *nova_substr(const char *value, long long start, long long length);
+/* The byte at `index`. A `char` is one byte, so `s[i]` cannot be a codepoint —
+ * docs/adr/0007. Bounds-checked against strlen, like the array accessors. */
+char nova_string_byte_at(const char *value, long long index);
 char *nova_tostring_int(long long value);
 char *nova_tostring_bool(bool value);
+/* A `char` is one byte, so its string is one byte. Without this it fell through to
+ * the `int` case and `tostring('H')` gave "72" — which made `to_upper` concatenate
+ * codes instead of letters. */
+char *nova_tostring_char(char value);
 void nova_string_free(char *value);
 
 /* Arrays. Reads and writes are bounds-checked and abort on a bad index. An
@@ -274,6 +281,17 @@ long long nova_strcmp(const char *left, const char *right) {
     return (long long)strcmp(left != NULL ? left : "", right != NULL ? right : "");
 }
 
+char nova_string_byte_at(const char *value, long long index) {
+    if (value == NULL) {
+        nova_fail("index into a missing string");
+    }
+    long long size = (long long)strlen(value);
+    if (index < 0 || index >= size) {
+        nova_fail("string index out of bounds");
+    }
+    return value[index];
+}
+
 char *nova_substr(const char *value, long long start, long long length) {
     const char *source = value != NULL ? value : "";
     long long size = (long long)strlen(source);
@@ -303,6 +321,16 @@ char *nova_tostring_int(long long value) {
 
 char *nova_tostring_bool(bool value) {
     return nova_strdup(value ? "true" : "false");
+}
+
+char *nova_tostring_char(char value) {
+    char *text = (char *)malloc(2);
+    if (text == NULL) {
+        nova_fail("out of memory");
+    }
+    text[0] = value;
+    text[1] = '\0';
+    return text;
 }
 
 void nova_string_free(char *value) {

@@ -47,7 +47,8 @@ Everything written down, and where to start.
 | [`adr/0003-option-payload.md`](adr/0003-option-payload.md) | `Option<T>` holds a primitive; a struct payload needs monomorphisation, and a `void*` slot would be a use-after-free |
 | [`adr/0004-deferred-global-initialisers.md`](adr/0004-deferred-global-initialisers.md) | A global whose initialiser runs code is assigned at the top of `main`, because `realloc` on a static backing array is undefined behaviour |
 | [`adr/0005-references.md`](adr/0005-references.md) | A borrow is a pointer, borrowing a reference is identity, and the `AddrOf → Not` placeholder is why `&x` used to mean `!x` |
-| [`adr/0006-array-element-types.md`](adr/0006-array-element-types.md) | Arrays hold `int`; `stdlib/math` compiles and returns wrong numbers because of it. Reject now, monomorphise next |
+| [`adr/0006-array-element-types.md`](adr/0006-array-element-types.md) | Arrays hold `int`; `stdlib/math` compiled and returned wrong numbers because of it. Now monomorphised per element type |
+| [`adr/0007-string-indexing.md`](adr/0007-string-indexing.md) | `s[i]` is a byte, because `char` is a byte and cannot hold a codepoint — so `text` is correct for ASCII and silent on the rest |
 
 ## Contracts
 

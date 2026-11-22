@@ -300,7 +300,8 @@ impl Lowerer {
                 .and_then(|expr| self.expr_type(expr)),
             // An index yields the array's element type. Hardcoding `int` here is what
             // made `print(names[0])` instantiate `print_int` and then hand a `char *`
-            // to it — the same lost-type shape as the generic binding itself.
+            // to it — the same lost-type shape as the generic binding itself. Indexing a
+            // `String` yields a `char`, the byte at that offset (ADR 0007).
             Expr::Index(array, _) => Some(
                 self.expr_type(array)
                     .map(|typ| {
@@ -308,6 +309,9 @@ impl Lowerer {
                             .trim_start_matches('&')
                             .trim_start_matches("mut ")
                             .trim();
+                        if matches!(bare.to_lowercase().as_str(), "string" | "str") {
+                            return "char".to_string();
+                        }
                         array_element_type(bare).unwrap_or_else(|| "int".to_string())
                     })
                     .unwrap_or_else(|| "int".to_string()),
@@ -977,6 +981,20 @@ impl Lowerer {
         }
     }
 
+    /// True when an expression is a `String`, so `s[i]` means a byte of it rather than
+    /// an element of an array — [ADR 0007](../../docs/adr/0007-string-indexing.md).
+    fn is_string_value(&self, expr: &Expr) -> bool {
+        self.expr_type(expr)
+            .map(|typ| {
+                let bare = typ
+                    .trim_start_matches('&')
+                    .trim_start_matches("mut ")
+                    .trim();
+                matches!(bare.to_lowercase().as_str(), "string" | "str")
+            })
+            .unwrap_or(false)
+    }
+
     fn lower_array_handle(&mut self, expr: &Expr) -> (SirExpr, bool) {
         let is_reference = self
             .expr_type(expr)
@@ -1024,6 +1042,10 @@ impl Lowerer {
                 let callee = match typ.as_str() {
                     "string" | "str" => "nova_strdup",
                     "bool" => "nova_tostring_bool",
+                    // A `char` is not an `int` for this purpose: falling through gave
+                    // `tostring('H')` == "72", and `stdlib/text`'s `to_upper` then
+                    // concatenated codes instead of letters.
+                    "char" => "nova_tostring_char",
                     _ => "nova_tostring_int",
                 };
                 Some(typed(callee, lowered(self), "string"))
@@ -2046,6 +2068,15 @@ impl Lowerer {
                     value: Box::new(self.lower_expr(value)),
                     struct_type: self.expr_type(object).unwrap_or_default(),
                 },
+                // A `String` cannot be written through an index: the pointer may point at
+                // read-only memory, and a character is not one byte — ADR 0007. Rejected
+                // rather than emitted as C that compiles and misbehaves.
+                Expr::Index(array, index) if self.is_string_value(array) => SirExpr::Call {
+                    callee: "nova_unsupported".to_string(),
+                    args: vec![SirExpr::Literal(SirLiteral::String(
+                        "assign to a String index".to_string(),
+                    ))],
+                },
                 Expr::Index(array, index) => {
                     // Writing an element of a `[String]` or `[float]` array needs that
                     // array's own setter, for the same reason reading one does:
@@ -2280,6 +2311,17 @@ impl Lowerer {
                             typ: "string".to_string(),
                         };
                     }
+                }
+                // `s[i]` on a `String` is the byte at `i`, typed `char` — ADR 0007.
+                // It is checked against `strlen`, so it cannot read past the terminator.
+                if self.is_string_value(obj) {
+                    return SirExpr::Typed {
+                        expr: Box::new(SirExpr::Call {
+                            callee: "nova_string_byte_at".to_string(),
+                            args: vec![self.lower_expr(obj), self.lower_expr(index)],
+                        }),
+                        typ: "char".to_string(),
+                    };
                 }
                 // An array of `double` or of `String` reads through its own runtime
                 // function and reports its own element type; everything else stays an
@@ -4072,6 +4114,54 @@ mod tests {
             declared,
             vec!["[string]", "[float]", "[int]", "[String]"],
             "a literal should report the element type of its items"
+        );
+    }
+
+    /// `s[i]` on a `String` reads a byte, and writing one is rejected.
+    ///
+    /// The write matters as much as the read: a `char *` may point at read-only memory,
+    /// so emitting C that stores through it is the failure the constitution's rule 3
+    /// names — a placeholder that compiles and misbehaves. It becomes `nova_unsupported`,
+    /// which reports the construct and exits.
+    #[test]
+    fn a_string_index_reads_a_byte_and_rejects_a_write() {
+        let program = lower(
+            "fn first(s: String) -> char {\n\
+                 let c = s[0];\n\
+                 c\n\
+             }\n\
+             fn scribble(s: String) {\n\
+                 s[0] = 'x';\n\
+             }\n",
+        );
+        let first = program
+            .functions
+            .iter()
+            .find(|f| f.name == "first")
+            .expect("first should be lowered");
+        let body = format!("{:?}", first.body);
+        assert!(
+            body.contains("nova_string_byte_at"),
+            "`s[i]` must read a byte through the string runtime: {body}"
+        );
+        assert!(
+            body.contains("\"char\""),
+            "the byte must be typed `char`, not `int`: {body}"
+        );
+
+        let scribble = program
+            .functions
+            .iter()
+            .find(|f| f.name == "scribble")
+            .expect("scribble should be lowered");
+        let body = format!("{:?}", scribble.body);
+        assert!(
+            body.contains("nova_unsupported"),
+            "writing through a `String` index must be rejected: {body}"
+        );
+        assert!(
+            !body.contains("nova_array_set"),
+            "a `String` is not an array, so it must not reach the array setter: {body}"
         );
     }
 }

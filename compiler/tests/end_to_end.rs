@@ -277,6 +277,44 @@ fn main() -> int {
 /// The backend now emits a NOVA function whose name belongs to the C library as
 /// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
 /// of the defect and is now the guard against it returning.
+/// `s[i]` is the byte at `i`, typed `char`.
+///
+/// It used to lower to `nova_array_get(s, i)` with `s` a `char *`, which is 35 of the
+/// errors that kept `stdlib/text` uncompilable. [ADR 0007](../../docs/adr/0007-string-indexing.md)
+/// decided it is a byte rather than a codepoint, because a `char` is one byte.
+///
+/// `tostring` on the result is asserted too: a `char` used to fall through to the `int`
+/// case, so `tostring(s[0])` gave `"72"` and `text`'s `to_upper` concatenated codes
+/// instead of letters.
+#[test]
+fn a_string_index_is_a_byte() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "string_index",
+        "\
+use core;
+
+fn main() -> int {
+    let s = \"Hello\";
+    print(strlen(s));
+    print(s[0]);
+    print(s[4]);
+    print(s[0] == 'H');
+    print(tostring(s[0]));
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "5\nH\no\ntrue\nH",
+        "`s[i]` must be the character at that byte, not an array element and not a code"
+    );
+}
+
 /// A `[String]` array holds `char *`, not `int`.
 ///
 /// `NovaArray` holds `int` elements, so before `NovaArray_string` existed a `[String]`
