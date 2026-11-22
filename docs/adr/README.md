@@ -39,7 +39,8 @@ about a decision are about a reading of it that nobody chose.
 | [0003](0003-option-payload.md) | `Option<T>` holds a primitive, not a struct; a `void*` slot would turn a compile error into a use-after-free | accepted |
 | [0004](0004-deferred-global-initialisers.md) | A non-constant global initialiser runs at the top of `main`; a static backing array would make the first `push` undefined behaviour | accepted |
 | [0005](0005-references.md) | A borrow is a pointer; borrowing a reference is identity; `&x` used to lower to `!x` | accepted |
-| [0006](0006-array-element-types.md) | Arrays hold `int`, so `[float]` and `[String]` are silently truncated or rejected by C. Reject in the analyser now, monomorphise next | **proposed** |
+| [0006](0006-array-element-types.md) | Arrays hold `int`, so `[float]` and `[String]` were truncated or rejected by C. Monomorphised: one header and six functions per element type | accepted |
+| [0007](0007-string-indexing.md) | `s[i]` is a byte, not a codepoint, because `char` is one byte — whatever the spec says. Deciding otherwise means deciding what `char` is first | accepted |
 
 ## Writing one
 

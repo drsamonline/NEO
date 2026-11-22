@@ -7,7 +7,7 @@ is unverified it says so.
 
 | | |
 |---|---|
-| `master` | `fe99c74` |
+| `master` | `c4edb0b` |
 | Tests | **259** passing, 0 failing, 0 ignored |
 | Coverage | 66.32%, ratchet in `coverage-floor.txt` |
 | Release | **v0.7.0** — three platform archives with SHA-256, verified by downloading and running one |
@@ -75,29 +75,35 @@ arguments between two places that both need it; that is now six defects of this 
 
 ## What is next, in order
 
-**1. Indexing a `String`.** `s[i]` lowers to `nova_array_get(s, i)` and `s` is a
-`char *`, so this is 35 of `stdlib/text`'s 50 remaining errors and most of the rest
-follow from it — a `char` read that way types as `int`, which is why three functions
-return `Option_int` where they declare `Option_char`.
+**1. `as` is a no-op.** `Expr::Cast(inner, _) => self.lower_expr(inner)` in the lowerer:
+the cast is dropped and no `Cast` arm exists in `expr_type`, so a cast reports no type at
+all. `tostring((c as int - 32) as char)` in `stdlib/text`'s `to_upper` therefore produces
+the code `"69"` instead of `"E"`, and `from_hex`'s nested casts produce two
+`expected expression` errors. Making casts real changes codegen for every `as` in the
+language, which is why it is an ADR before it is a patch.
 
-**Decide the representation before writing the lowering.** A byte, a codepoint or a
-grapheme are three different features, and the language says strings are byte sequences,
-so `s[i]` returning a byte is the consistent answer — but it is an answer someone should
-write down in an ADR rather than discover in the code. `[String]` arrays already exist, so
-`split` and `join` hold their strings; this is the last thing between `text` and the
+**2. Arrays of arrays.** `levenshtein` declares `[[int]]` and writes `matrix[i][j]`.
+`NovaArray` holds `int`, so a nested array has no representation — the gap ADR 0006 closed
+for `float` and `String`, one level deeper, and the last thing between `text` and the
 stdlib gate.
 
-**2. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
+**3. An `if` used as a value does not report its type.** `format_number`'s
+`let digits = if is_negative { substr(...) } else { s };` types as `int`.
+
+Two of the three are the lost-type defect the rest of this page keeps meeting. All three
+were found by ADR 0007 getting `text` far enough to reach them.
+
+**4. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
 `fopen`/`fclose`/`fread`/`fwrite` — a `FILE *` does not fit in the `int` that
 `File.handle` declares, so these want a handle table or a changed `File`. The eleven that
 were done on 2026-11-18 show the pattern: one shim function, one lowerer arm, one sema
 type, and `tools/stdlib-check.py` proves the count moved.
 
-**3. 17 specification chapters.** They describe surface that does not exist — ownership,
+**5. 17 specification chapters.** They describe surface that does not exist — ownership,
 memory, concurrency, attributes, interfaces. Writing them would be inventing a
 specification, which `docs/specs/constitution.md` forbids first.
 
-**4. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works.
+**6. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works.
 
 ## Working without a Rust toolchain
 
