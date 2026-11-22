@@ -1414,33 +1414,14 @@ impl Lowerer {
 
     fn lower_if_statement(&mut self, cond: &Expr, then_block: &nova_common::Block, else_block: &Option<nova_common::Block>) -> SirStatement {
         let condition = self.lower_expr(cond);
-        
-        let then_stmts: Vec<SirStatement> = then_block.statements.iter()
-            .flat_map(|s| self.lower_statement(s))
-            .collect();
-        let then_final = then_block.final_expr.as_ref()
-            .map(|e| self.lower_expr(e));
-        
-        // Add final expression as a statement if present
-        let mut all_then_stmts = then_stmts;
-        if let Some(final_expr) = then_final {
-            all_then_stmts.push(SirStatement::Expr(final_expr));
-        }
-        
-        let else_stmts = else_block.as_ref().map(|else_blk| {
-            let mut stmts: Vec<SirStatement> = else_blk.statements.iter()
-                .flat_map(|s| self.lower_statement(s))
-                .collect();
-            if let Some(final_expr) = &else_blk.final_expr {
-                stmts.push(SirStatement::Expr(self.lower_expr(final_expr)));
-            }
-            stmts
-        });
-        
+        // `lower_branch`, not `lower_expr`, for the trailing expression: a block whose
+        // only item is an expression puts it in `final_expr`, and an `if` with no value
+        // in either branch lowers to a `Unit` *expression* — which is `;` in C. So
+        // `if a { if b { x = 1; } }` emitted `if (a) { ; }` and the assignment vanished.
         SirStatement::If {
             condition,
-            then_block: all_then_stmts,
-            else_block: else_stmts,
+            then_block: self.lower_branch(then_block),
+            else_block: else_block.as_ref().map(|block| self.lower_branch(block)),
         }
     }
 
@@ -1448,11 +1429,12 @@ impl Lowerer {
         let condition = self.lower_expr(cond);
         SirStatement::While {
             condition,
-            body: self.lower_loop_body(body),
+            body: self.lower_branch(body),
         }
     }
 
-    /// A loop body: its statements, plus a trailing expression lowered as a statement.
+    /// A branch or loop body: its statements, plus a trailing expression lowered as a
+    /// statement.
     ///
     /// A block whose only item is an expression parses that expression as `final_expr`,
     /// not as a statement. Reading only `statements` therefore dropped the whole body:
@@ -1469,7 +1451,7 @@ impl Lowerer {
     /// The trailing expression goes through `lower_statement`, not `lower_block`, so a
     /// trailing `if` inside a loop stays a statement instead of being taken for the
     /// enclosing function's result.
-    fn lower_loop_body(&mut self, body: &nova_common::Block) -> Vec<SirStatement> {
+    fn lower_branch(&mut self, body: &nova_common::Block) -> Vec<SirStatement> {
         self.push_scope();
         let mut stmts: Vec<SirStatement> = body
             .statements
@@ -1489,7 +1471,7 @@ impl Lowerer {
             _ => "_".to_string(),
         };
         let iterable_expr = self.lower_expr(iterable);
-        let body_stmts: Vec<SirStatement> = self.lower_loop_body(body);
+        let body_stmts: Vec<SirStatement> = self.lower_branch(body);
         
         SirStatement::For {
             pattern: pattern_name,
