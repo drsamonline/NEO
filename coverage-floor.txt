@@ -1,4 +1,4 @@
-66.76
+66.83
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -42,3 +42,7 @@
 # tests that run in-process, and the runtime function by an end-to-end program. It is a
 # smaller rise than the array work because the change is smaller: one runtime function and
 # three match arms rather than a second copy of the array runtime.
+# 66.83% (9,022 of 13,500) when `as` started converting. The new arms are covered by two
+# tests that run in-process — one asserts the SIR carries the cast and its target, one runs
+# the conversion end to end. A small rise for a small change: one match arm, one typing arm,
+# and one line of `print_kind`.
