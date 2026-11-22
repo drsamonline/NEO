@@ -7,7 +7,7 @@ is unverified it says so.
 
 | | |
 |---|---|
-| `master` | `7e61369` |
+| `master` | `fe99c74` |
 | Tests | **259** passing, 0 failing, 0 ignored |
 | Coverage | 66.32%, ratchet in `coverage-floor.txt` |
 | Release | **v0.7.0** — three platform archives with SHA-256, verified by downloading and running one |
@@ -44,8 +44,14 @@ it survived: the emitted C was valid C.
 
 `[float]` arrays now exist as arrays of `double` — `NovaArray_float` with its own six
 runtime functions — and the four functions return 4, 2, 2, 0.25 and 0.5 for
-`[1.5, 2.5]`. [ADR 0006](adr/0006-array-element-types.md) is `accepted` and records what
-it cost.
+`[1.5, 2.5]`. `[String]` arrays followed the same way as `NovaArray_string`, so `char *`
+no longer goes into an `int` slot. [ADR 0006](adr/0006-array-element-types.md) is
+`accepted` and records what each cost.
+
+**Three element types is what turned two copies of the runtime into a pattern.** The
+lowerer asks one question — `array_kind` — and `array_len`, `array_push`, `array_pop`,
+`arr[i]` and `arr[i] = value` all dispatch on the answer. Adding a fourth element type is
+now a header, six functions, and one match arm.
 
 **The runtime was the easy half.** The blocker was one layer earlier: `stdlib/core`
 declares `fn array_len<T>(arr: [T]) -> int`, and `[T]` is stored in the type's *name*
@@ -69,10 +75,17 @@ arguments between two places that both need it; that is now six defects of this 
 
 ## What is next, in order
 
-**1. `[String]` arrays** — the same treatment as `[float]`, and it is what stops
-`stdlib/text`. A `char *` is eight bytes, so this needs `NovaArray_string` rather than a
-cast: nine declared `[String]` in `text`, four in `io`. The generic-binding half is
-already done, so this is the runtime and the `c_type` mapping.
+**1. Indexing a `String`.** `s[i]` lowers to `nova_array_get(s, i)` and `s` is a
+`char *`, so this is 35 of `stdlib/text`'s 50 remaining errors and most of the rest
+follow from it — a `char` read that way types as `int`, which is why three functions
+return `Option_int` where they declare `Option_char`.
+
+**Decide the representation before writing the lowering.** A byte, a codepoint or a
+grapheme are three different features, and the language says strings are byte sequences,
+so `s[i]` returning a byte is the consistent answer — but it is an answer someone should
+write down in an ADR rather than discover in the code. `[String]` arrays already exist, so
+`split` and `join` hold their strings; this is the last thing between `text` and the
+stdlib gate.
 
 **2. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
 `fopen`/`fclose`/`fread`/`fwrite` — a `FILE *` does not fit in the `int` that

@@ -277,6 +277,81 @@ fn main() -> int {
 /// The backend now emits a NOVA function whose name belongs to the C library as
 /// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
 /// of the defect and is now the guard against it returning.
+/// A `[String]` array holds `char *`, not `int`.
+///
+/// `NovaArray` holds `int` elements, so before `NovaArray_string` existed a `[String]`
+/// array put eight-byte pointers into four-byte slots. The same monomorphisation that
+/// fixed `[float]` fixes this: the element type is known at every construction and use
+/// site, so the header and the runtime functions follow from it.
+///
+/// Every operation is asserted, not just the read: `array_len`, `arr[i]`, `push`, and
+/// `arr[i] = value`. The last one is the one that had no `_string` arm at all — the
+/// backend emitted `nova_array_set`, which takes and stores an `int`.
+#[test]
+fn a_string_array_keeps_its_elements() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "string_array",
+        "\
+use core;
+
+fn main() -> int {
+    let names: [String] = [\"ada\", \"grace\", \"alan\"];
+    print(array_len(names));
+    print(names[0]);
+    print(names[2]);
+    let mut more: [String] = [\"x\"];
+    array_push(more, \"y\");
+    print(array_len(more));
+    print(more[1]);
+    more[0] = \"z\";
+    print(more[0]);
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "3\nada\nalan\n2\ny\nz",
+        "a `[String]` array must hold the strings themselves; an `int` element gives \
+         truncated pointers here, or does not compile"
+    );
+}
+
+/// An empty array literal takes its element type from the declaration.
+///
+/// `[]` says nothing about what it holds, so `let r: [String] = []` is the only place
+/// the element type exists. Emitting `nova_array_from(0, 0)` there produced a
+/// `NovaArray` assigned to a `NovaArray_string`, which is what stopped `stdlib/text`
+/// at its first line.
+#[test]
+fn an_empty_array_literal_takes_the_declared_element_type() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "empty_array",
+        "\
+use core;
+
+fn main() -> int {
+    let mut names: [String] = [];
+    print(array_len(names));
+    array_push(names, \"only\");
+    print(names[0]);
+    let empty_floats: [float] = [];
+    print(array_len(empty_floats));
+    return 0;
+}
+",
+    );
+    assert_eq!(stdout.trim(), "0\nonly\n0");
+}
+
 #[test]
 fn every_math_call_works() {
     if !c_compiler_available() {
