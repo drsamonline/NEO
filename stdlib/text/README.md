@@ -8,12 +8,11 @@ Strings are byte sequences, and `split` returns a real `[String]` — arrays of 
 exist now, so the collection-returning functions hold their strings rather than truncating
 pointers into `int` slots.
 
-**This module does not compile yet**, and string indexing is no longer why. `s[i]` on a
-`String` is the byte at `i`, typed `char` ([ADR 0007](../../docs/adr/0007-string-indexing.md)),
-which is 38 of the module's original 50 errors. The twelve that remain are three other
-gaps: `as` casts are a no-op, arrays of arrays (`[[int]]` in `levenshtein`) have no
-representation, and an `if` used as a value does not report its type. See
-[`../not-compiling.txt`](../not-compiling.txt).
+**This module does not compile yet.** String indexing and `as` casts are both done
+([ADR 0007](../../docs/adr/0007-string-indexing.md), [ADR 0008](../../docs/adr/0008-casts.md)),
+which took it from 50 errors to 12. The twelve are two other gaps: an `if` used as a value
+does not report its type and loses the `else` of a chain, and arrays of arrays (`[[int]]` in
+`levenshtein`) have no representation. See [`../not-compiling.txt`](../not-compiling.txt).
 
 **54 of its 59 functions can run** — the best of the four modules, because most of it
 is pure NOVA with no builtin underneath. Numbers in
