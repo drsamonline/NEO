@@ -3229,15 +3229,20 @@ fn bind_type_pattern(
     let concrete = strip_reference(concrete);
 
     // `[T]` — the element type lives in the name, so unwrap both sides.
+    //
+    // The argument has to name an element type. An unannotated literal, `let
+    // values = [1, 2]`, types as a bare `Array`, and binding `T` to that spelling
+    // produced `array_push_Array(NovaArray* arr, NovaArray value)` called with an
+    // `int`. Leaving `T` unbound is correct: the `int` default in
+    // `resolve_generic_call` is what an element type nobody determined already
+    // means, and it keeps the `int` runtime.
     if let Some(inner) = pattern
         .strip_prefix('[')
         .and_then(|rest| rest.strip_suffix(']'))
     {
-        let element = concrete
-            .strip_prefix('[')
-            .and_then(|rest| rest.strip_suffix(']'))
-            .unwrap_or(concrete);
-        bind_type_pattern(inner, element, generics, bindings);
+        if let Some(element) = array_element_type(concrete) {
+            bind_type_pattern(inner, &element, generics, bindings);
+        }
         return;
     }
 
@@ -3255,6 +3260,20 @@ fn bind_type_pattern(
             }
         }
     }
+}
+
+/// The element type of an array spelling: `[T]` and `Array<T>` both give `T`.
+///
+/// `None` for a bare `Array`, which names an array and not what is in it — the
+/// distinction that a `[T]` pattern has to respect rather than paper over.
+fn array_element_type(typ: &str) -> Option<String> {
+    if let Some(inner) = typ
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    {
+        return Some(inner.trim().to_string());
+    }
+    generic_arguments(typ).and_then(|arguments| arguments.into_iter().next())
 }
 
 /// Drop a leading `&` or `&mut ` so the pattern and the argument agree on where
@@ -3880,6 +3899,17 @@ mod tests {
         assert!(
             bind("[int]", "[float]").is_empty(),
             "a pattern naming no generic binds nothing"
+        );
+        assert!(
+            bind("[T]", "Array").is_empty(),
+            "a bare `Array` names no element type, so there is nothing to bind — \
+             binding it produced `array_push_Array(NovaArray* arr, NovaArray value)` \
+             called with an `int`"
+        );
+        assert_eq!(
+            bind("[T]", "Array<float>").get("T"),
+            Some(&"float".to_string()),
+            "the two spellings of the same array type bind alike"
         );
         assert!(
             bind("T", "float").get("int").is_none(),
