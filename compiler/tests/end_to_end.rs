@@ -277,6 +277,50 @@ fn main() -> int {
 /// The backend now emits a NOVA function whose name belongs to the C library as
 /// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
 /// of the defect and is now the guard against it returning.
+/// An `if` used as a value keeps its `else if` chain, and takes its branches' type.
+///
+/// Two defects, both only in value position — as a statement the same chain lowered
+/// correctly, which is why this survived. `else if` has no AST slot: the parser puts the
+/// nested `if` in an else block as its single statement with no `final_expr`, so reading
+/// only `final_expr` saw no else at all and emitted a `Unit` literal, which the C backend
+/// renders as nothing:
+///
+///     int v = ((x == 1) ? 10 : );          /* the chain's tail was dropped */
+///     int s = ((x > 0) ? "pos" : "neg");   /* and a String was typed `int` */
+///
+/// Both branches are exercised, because a ternary that works one way and not the other is
+/// exactly what a single-case test misses.
+#[test]
+fn an_if_used_as_a_value_keeps_its_else_chain() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "if_value",
+        "\
+use core;
+
+fn main() -> int {
+    let x = 3;
+    let v = if x == 1 { 10 } else if x == 2 { 20 } else { 30 };
+    print(v);
+    let s = if x > 0 { \"pos\" } else { \"neg\" };
+    print(s);
+    let y = 0 - 2;
+    let t = if y > 0 { \"pos\" } else { \"neg\" };
+    print(t);
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "30\npos\nneg",
+        "the chain's final else must survive, and a String branch must stay a String"
+    );
+}
+
 /// `as` converts, and the converted value has the target's type.
 ///
 /// The cast used to be dropped by the lowerer, which made `as` a comment: C converted

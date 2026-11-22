@@ -7,7 +7,7 @@ is unverified it says so.
 
 | | |
 |---|---|
-| `master` | `01d612a` |
+| `master` | `f496112` |
 | Tests | **259** passing, 0 failing, 0 ignored |
 | Coverage | 66.32%, ratchet in `coverage-floor.txt` |
 | Release | **v0.7.0** — three platform archives with SHA-256, verified by downloading and running one |
@@ -75,30 +75,26 @@ arguments between two places that both need it; that is now six defects of this 
 
 ## What is next, in order
 
-**1. An `if` used as a value.** Two defects in one place: `expr_type` has no `If` arm, so
-`let digits = if is_negative { substr(...) } else { s };` types as `int`; and lowering an
-`if`/`else if` chain used as a value drops the final `else`, emitting `? (...) : )`. That is
-4 of `stdlib/text`'s remaining 12 errors.
-
-**2. Arrays of arrays.** `levenshtein` declares `[[int]]` and writes `matrix[i][j]`.
+**1. Arrays of arrays.** `levenshtein` declares `[[int]]` and writes `matrix[i][j]`.
 `NovaArray` holds `int`, so a nested array has no representation — the gap ADR 0006 closed
-for `float` and `String`, one level deeper. It is the larger half of what is left between
-`text` and the stdlib gate: 8 of the 12 errors.
+for `float` and `String`, one level deeper. It is now the **only** thing between `text` and
+the stdlib gate: all 7 of its remaining errors.
 
-Both are the lost-type defect the rest of this page keeps meeting, and both were found by
-ADR 0007 getting `text` far enough to reach them. ADR 0008 then removed the third.
+The lost-type defect the rest of this page keeps meeting, one level down from where it
+started. ADR 0007 and ADR 0008 removed the other three things `text` was missing; this is
+the last.
 
-**3. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
+**2. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
 `fopen`/`fclose`/`fread`/`fwrite` — a `FILE *` does not fit in the `int` that
 `File.handle` declares, so these want a handle table or a changed `File`. The eleven that
 were done on 2026-11-18 show the pattern: one shim function, one lowerer arm, one sema
 type, and `tools/stdlib-check.py` proves the count moved.
 
-**4. 17 specification chapters.** They describe surface that does not exist — ownership,
+**3. 17 specification chapters.** They describe surface that does not exist — ownership,
 memory, concurrency, attributes, interfaces. Writing them would be inventing a
 specification, which `docs/specs/constitution.md` forbids first.
 
-**5. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works.
+**4. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works.
 
 ## Working without a Rust toolchain
 

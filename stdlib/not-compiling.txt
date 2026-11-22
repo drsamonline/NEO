@@ -10,4 +10,4 @@
 # Every reason below was read from C that `nova-compiler emit` actually produced and
 # `cc` actually rejected, not inferred from the NOVA source.
 #
-text needs two things it does not have: an `if` used as a value, and arrays of arrays. The first is 4 of its 12 remaining errors — `let digits = if is_negative { substr(...) } else { s };` types as `int` and emits `int digits = ...` for a `String`, and `from_hex`'s `if`/`else if` chain loses its final `else` entirely, emitting `? (...) : )`. The second is the other 8 — `levenshtein` declares `[[int]]` and writes `matrix[i][j]`, and a nested array has no representation. String indexing and `as` casts are both done (ADR 0007, ADR 0008); 12 errors remain, from 50 before them.
+text needs one thing it does not have: arrays of arrays. `levenshtein` declares `let mut matrix: [[int]] = []` and writes `matrix[i][j]`, and a nested array has no representation — `NovaArray` holds `int`, so `[[int]]` would need an array whose elements are themselves `NovaArray`. That is all 7 of its remaining errors. String indexing, `as` casts and `if` used as a value are all done (ADR 0007, ADR 0008); 7 errors remain, from 50 before them.
