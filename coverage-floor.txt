@@ -1,4 +1,4 @@
-66.83
+67.04
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -46,3 +46,7 @@
 # tests that run in-process — one asserts the SIR carries the cast and its target, one runs
 # the conversion end to end. A small rise for a small change: one match arm, one typing arm,
 # and one line of `print_kind`.
+# 67.04% (9,084 of 13,550) when `if` as a value was fixed. A bigger rise than the last two
+# changes because the fix is in the hot path: every conditional expression in the language
+# now goes through the two arms this added, and the end-to-end test that covers them runs
+# the compiler as a subprocess — so the unit test is what actually moved this number.
