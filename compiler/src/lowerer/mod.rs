@@ -305,6 +305,20 @@ impl Lowerer {
             // A cast's type is its target — ADR 0008. Without this arm a cast reported no
             // type, so `tostring(x as char)` fell back to the `int` case.
             Expr::Cast(_, type_expr) => Some(type_display(type_expr)),
+            // An `if` used as a value has the type of its branches. The first that reports
+            // one decides; a mismatch between them is the analyser's problem, as it already
+            // is for `match`. Without this arm `let s = if x > 0 { "pos" } else { "neg" };`
+            // typed as `int` and emitted `print_int` on a `char *`.
+            Expr::If(_, then_block, else_block) => then_block
+                .final_expr
+                .as_ref()
+                .and_then(|expr| self.expr_type(expr))
+                .or_else(|| {
+                    else_block
+                        .as_ref()
+                        .and_then(|block| block.final_expr.as_ref())
+                        .and_then(|expr| self.expr_type(expr))
+                }),
             Expr::Index(array, _) => Some(
                 self.expr_type(array)
                     .map(|typ| {
@@ -2116,22 +2130,47 @@ impl Lowerer {
             Expr::If(cond, then_block, else_block) => {
                 // If used in expression context, keep as If expression
                 let condition = Box::new(self.lower_expr(cond));
-                
+
                 let _then_stmts: Vec<SirStatement> = then_block.statements.iter()
                     .flat_map(|s| self.lower_statement(s))
                     .collect();
                 let then_final = then_block.final_expr.as_ref()
                     .map(|e| Box::new(self.lower_expr(e)));
-                
-                let else_final = else_block.as_ref().and_then(|else_blk| 
-                    else_blk.final_expr.as_ref().map(|e| Box::new(self.lower_expr(e)))
-                );
-                let _else_stmts: Vec<SirStatement> = else_block.as_ref().map(|else_blk| {
-                    else_blk.statements.iter()
-                        .flat_map(|s| self.lower_statement(s))
-                        .collect()
-                }).unwrap_or_default();
-                
+
+                // `else if` has no AST slot: the parser puts the nested `if` in an else
+                // block as its *single statement*, with no `final_expr`. Reading only
+                // `final_expr` therefore saw no else at all and substituted a `Unit`
+                // literal, which the C backend renders as nothing — `? 10 : )`.
+                let else_if = else_block.as_ref().and_then(|block| {
+                    match block.statements.as_slice() {
+                        [Statement::Expr(inner)] if matches!(inner.unspanned(), Expr::If(..)) => {
+                            Some(inner)
+                        }
+                        _ => None,
+                    }
+                });
+
+                let else_final = match (else_if, else_block.as_ref()) {
+                    (Some(inner), _) => Some(Box::new(self.lower_expr(inner))),
+                    (None, Some(else_blk)) => else_blk
+                        .final_expr
+                        .as_ref()
+                        .map(|e| Box::new(self.lower_expr(e))),
+                    (None, None) => None,
+                };
+
+                // A block whose only content is the nested `if` has already been lowered
+                // as that expression; lowering it again as a statement would emit it twice.
+                let _else_stmts: Vec<SirStatement> = if else_if.is_some() {
+                    Vec::new()
+                } else {
+                    else_block.as_ref().map(|else_blk| {
+                        else_blk.statements.iter()
+                            .flat_map(|s| self.lower_statement(s))
+                            .collect()
+                    }).unwrap_or_default()
+                };
+
                 // If there's a final expression, use If expression, otherwise use If statement
                 if then_final.is_some() || else_final.is_some() {
                     SirExpr::If {
@@ -4250,6 +4289,46 @@ mod tests {
         assert!(
             body.contains("nova_unsupported"),
             "a cast to a struct must be rejected, not emitted as an `int` cast: {body}"
+        );
+    }
+
+    /// An `if` used as a value reports its branches' type, and an `else if` chain reaches
+    /// the SIR as a nested ternary rather than a `Unit`.
+    ///
+    /// The `Unit` is the tell: it renders as nothing in C, so the defect showed up as
+    /// `? 10 : )` in the emitted file rather than as anything the type checker could see.
+    #[test]
+    fn an_if_used_as_a_value_is_typed_and_keeps_its_chain() {
+        let program = lower(
+            "fn main() {\n\
+                 let x = 3;\n\
+                 let s = if x > 0 { \"pos\" } else { \"neg\" };\n\
+                 let v = if x == 1 { 10 } else if x == 2 { 20 } else { 30 };\n\
+             }\n",
+        );
+        let main = program
+            .functions
+            .iter()
+            .find(|f| f.name == "main")
+            .expect("main should be lowered");
+        let declared: Vec<Option<String>> = main
+            .body
+            .iter()
+            .filter_map(|statement| match statement {
+                SirStatement::Let { typ, .. } => Some(typ.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            declared[1],
+            Some("string".to_string()),
+            "a String-valued `if` must type as a String, not as `int`: {declared:?}"
+        );
+
+        let body = format!("{:?}", main.body);
+        assert!(
+            !body.contains("Unit"),
+            "an `else if` chain must not end in a `Unit` placeholder, which emits as nothing: {body}"
         );
     }
 }
