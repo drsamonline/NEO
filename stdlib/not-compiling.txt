@@ -1,6 +1,8 @@
 # Standard-library modules whose emitted C does not compile yet.
 #
-# One module per line, the name first, then why. `ci.yml` fails if a module outside
+# One module per line, the name first, then why. One line, not one paragraph: the check
+# reads the first word of every non-comment line as a module name, so a wrapped reason
+# becomes nine modules that do not exist and the ratchet fails in both directions. `ci.yml` fails if a module outside
 # this list does not compile, and also if a module inside it starts compiling — so
 # the list can only shrink. `core`, `io` and `math` are not listed, so they must keep
 # compiling.
@@ -8,13 +10,4 @@
 # Every reason below was read from C that `nova-compiler emit` actually produced and
 # `cc` actually rejected, not inferred from the NOVA source.
 #
-text `s[i]` on a `String` lowers to `nova_array_get(s, i)` and `s` is a `char *`, not
-an array. That is 35 of its 50 errors directly and most of the rest follow from it: a
-`char` read this way types as `int`, so three functions return `Option_int` where they
-declare `Option_char`, and two more are downstream of the same misread.
-
-The array half is done — `[String]` arrays are real as of ADR 0006, and `split`,
-`split_whitespace` and `join` now hold their strings. What is left is indexing a string,
-which is a representation decision before it is a lowering one: a byte, a codepoint, or a
-grapheme, each with different costs on a language whose strings are byte sequences. That
-wants its own ADR, so it is not guessed at here.
+text `s[i]` on a `String` lowers to `nova_array_get(s, i)` and `s` is a `char *`, not an array. That is 35 of its 50 errors directly, and most of the rest follow from it: a `char` read this way types as `int`, so three functions return `Option_int` where they declare `Option_char`. The array half is done — `[String]` arrays are real as of ADR 0006, and `split`, `split_whitespace` and `join` hold their strings. What is left is indexing a string, which is a representation decision before it is a lowering one: a byte, a codepoint, or a grapheme, each with different costs on a language whose strings are byte sequences. That wants its own ADR, so it is not guessed at here.
