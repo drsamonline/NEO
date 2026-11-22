@@ -42,6 +42,7 @@ about a decision are about a reading of it that nobody chose.
 | [0006](0006-array-element-types.md) | Arrays hold `int`, so `[float]` and `[String]` were truncated or rejected by C. Monomorphised: one header and six functions per element type | accepted |
 | [0007](0007-string-indexing.md) | `s[i]` is a byte, not a codepoint, because `char` is one byte — whatever the spec says. Deciding otherwise means deciding what `char` is first | accepted |
 | [0008](0008-casts.md) | `as` converts. It was being dropped, which made a cast a comment and left three type-driven features reading the wrong type | accepted |
+| [0009](0009-nested-arrays.md) | `[[int]]` is an array of `NovaArray` structs, copied by value so a write through a row reaches the matrix. Only `[int]` inner arrays are represented | accepted |
 
 ## Writing one
 

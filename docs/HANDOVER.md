@@ -33,7 +33,7 @@ is unverified it says so.
 | `core` | ✅ | 55 | 54 |
 | `io` | ✅ | 59 | 28 |
 | `math` | ✅ | 76 | 75 |
-| `text` | ❌ | 59 | 54 |
+| `text` | ✅ | 59 | 54 |
 
 ## The wrong answer is gone
 
@@ -71,24 +71,43 @@ functions: `array_len`, `array_push`, `array_pop`, `array_get`, `array_set`, `fi
 C compiled, and it did. The Accuracy gates — which compile and run every parity program
 under ASan and UBSan — caught a regression introduced *while* fixing it, within minutes.
 When something types as `int` unexpectedly, look for a type string that lost its
-arguments between two places that both need it; that is now six defects of this shape.
+arguments between two places that both need it; that is now eight defects of this shape.
+
+### And then the same defect, five more times
+
+Each fix below was the next thing standing between `stdlib/text` and the compile gate, and
+each was the same shape: a type, or a construct, losing its meaning between two places that
+both needed it.
+
+| Defect | What it did | Record |
+|---|---|---|
+| `[String]` arrays | `char *` in a four-byte `int` slot | ADR 0006 |
+| `s[i]` on a `String` | reached the array getter with a `char *` | ADR 0007 |
+| `as` casts | dropped entirely; `x as char` was a comment | ADR 0008 |
+| `if` as a value | lost its `else if` chain, and reported no type | — |
+| arrays of arrays | `[[int]]` had no representation | ADR 0009 |
+| `mangle_type` | `[int]` and `int` produced the same instantiation name | — |
+| a loop body of one expression | dropped entirely — `while (c) { }` | — |
+| `==` on two `String`s | compared pointers, so it was always false | — |
+
+**Three of those compiled cleanly and were wrong.** The loop body and the string
+comparison were found by running `split`, not by any gate. That is the standing lesson of
+this file, and it is why item 2 below is what it is.
 
 ## What is next, in order
 
-**1. Arrays of arrays.** `levenshtein` declares `[[int]]` and writes `matrix[i][j]`.
-`NovaArray` holds `int`, so a nested array has no representation — the gap ADR 0006 closed
-for `float` and `String`, one level deeper. It is now the **only** thing between `text` and
-the stdlib gate: all 7 of its remaining errors.
-
-The lost-type defect the rest of this page keeps meeting, one level down from where it
-started. ADR 0007 and ADR 0008 removed the other three things `text` was missing; this is
-the last.
-
-**2. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
+**1. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
 `fopen`/`fclose`/`fread`/`fwrite` — a `FILE *` does not fit in the `int` that
 `File.handle` declares, so these want a handle table or a changed `File`. The eleven that
 were done on 2026-11-18 show the pattern: one shim function, one lowerer arm, one sema
-type, and `tools/stdlib-check.py` proves the count moved.
+type, and `tools/stdlib-check.py` proves the count moved. This is now the largest gap
+between the library and the language.
+
+**2. The standard library has no tests.** `stdlib/not-compiling.txt` is empty, which means
+all four modules compile — and that gate only asks whether `cc` accepts the emitted C.
+`text` compiled while `split` was an infinite loop and while `==` on two `String`s compared
+pointers. Five functions are asserted end to end; 244 are not. A per-module test file is
+worth more than any of the items below.
 
 **3. 17 specification chapters.** They describe surface that does not exist — ownership,
 memory, concurrency, attributes, interfaces. Writing them would be inventing a
