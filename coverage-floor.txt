@@ -1,4 +1,4 @@
-66.32
+66.58
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -34,3 +34,7 @@
 # every shape it accepts. The end-to-end tests for the same work still contribute
 # nothing to this number — they drive the compiler as a subprocess, the blind spot that
 # lowered the floor for navigation and for the Option work.
+# 66.58% (8,917 of 13,392) when `[String]` arrays landed. It rose for the same reason the
+# `[float]` work did: the new dispatch and the literal typing are covered by unit tests
+# that run in-process. Three element types share one `array_kind`, so the extra element
+# cost 70 lines of runtime and one match arm rather than another copy of the dispatch.
