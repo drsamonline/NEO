@@ -302,6 +302,9 @@ impl Lowerer {
             // made `print(names[0])` instantiate `print_int` and then hand a `char *`
             // to it — the same lost-type shape as the generic binding itself. Indexing a
             // `String` yields a `char`, the byte at that offset (ADR 0007).
+            // A cast's type is its target — ADR 0008. Without this arm a cast reported no
+            // type, so `tostring(x as char)` fell back to the `int` case.
+            Expr::Cast(_, type_expr) => Some(type_display(type_expr)),
             Expr::Index(array, _) => Some(
                 self.expr_type(array)
                     .map(|typ| {
@@ -2242,9 +2245,31 @@ impl Lowerer {
                     Some(Box::new(SirExpr::Literal(SirLiteral::Unit))),
                 )
             }
-            Expr::Cast(inner, _type_expr) => {
-                // For now, just pass through the inner expression
-                self.lower_expr(inner)
+            // A cast converts — ADR 0008. It used to be dropped, which made `as` a comment:
+            // the C compiler converted implicitly at every assignment and call, so nothing
+            // noticed, but the NOVA type was never the one the source asked for. That is
+            // why `tostring((c as int - 32) as char)` produced "69" and not "E".
+            Expr::Cast(inner, type_expr) => {
+                let target = type_display(type_expr);
+                if is_scalar_cast_target(&target) {
+                    SirExpr::Typed {
+                        expr: Box::new(SirExpr::Cast {
+                            value: Box::new(self.lower_expr(inner)),
+                            typ: target.clone(),
+                        }),
+                        typ: target,
+                    }
+                } else {
+                    // `((NovaArray)(x))` is not valid C, and `c_type` falls back to `int`
+                    // for a name it does not know — so an unrecognised target would
+                    // silently become an `int` cast. Rejected instead.
+                    SirExpr::Call {
+                        callee: "nova_unsupported".to_string(),
+                        args: vec![SirExpr::Literal(SirLiteral::String(format!(
+                            "cast to {target}"
+                        )))],
+                    }
+                }
             }
             Expr::Path(path_parts) => {
                 // For simple paths, return the last part as variable
@@ -3311,6 +3336,29 @@ fn option_payload_type(typ: &str) -> Option<String> {
     Some(inner.trim().to_string())
 }
 
+/// The cast targets a C cast can express, and therefore the ones this compiler will
+/// emit — ADR 0008. A struct or an array is not a scalar and has no cast that means
+/// anything, so those are rejected rather than guessed at.
+fn is_scalar_cast_target(typ: &str) -> bool {
+    matches!(
+        typ.trim().to_lowercase().as_str(),
+        "int"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "float"
+            | "f32"
+            | "f64"
+            | "char"
+            | "bool"
+    )
+}
+
 /// Match a parameter's type *pattern* against a concrete argument type, binding
 /// every generic parameter the pattern mentions.
 ///
@@ -4162,6 +4210,46 @@ mod tests {
         assert!(
             !body.contains("nova_array_set"),
             "a `String` is not an array, so it must not reach the array setter: {body}"
+        );
+    }
+
+    /// A cast lowers to a cast, carries its target type, and a target C cannot express is
+    /// rejected rather than silently becoming an `int`.
+    ///
+    /// `c_type` falls back to `int` for a name it does not know, so lowering `x as Point`
+    /// as a cast would emit `((int)(x))` — valid C, wrong meaning. That is the failure the
+    /// constitution's rule 3 names, so the whitelist is the guard rather than the comment.
+    #[test]
+    fn a_cast_carries_its_target_and_rejects_a_non_scalar() {
+        let program = lower(
+            "fn narrow(x: float) -> char {\n\
+                 let c = x as int as char;\n\
+                 c\n\
+             }\n\
+             fn bad(p: int) -> int {\n\
+                 p as Point\n\
+             }\n",
+        );
+        let narrow = program
+            .functions
+            .iter()
+            .find(|f| f.name == "narrow")
+            .expect("narrow should be lowered");
+        let body = format!("{:?}", narrow.body);
+        assert!(
+            body.contains("Cast") && body.contains("\"int\"") && body.contains("\"char\""),
+            "both casts must survive into the SIR with their targets: {body}"
+        );
+
+        let bad = program
+            .functions
+            .iter()
+            .find(|f| f.name == "bad")
+            .expect("bad should be lowered");
+        let body = format!("{:?}", bad.body);
+        assert!(
+            body.contains("nova_unsupported"),
+            "a cast to a struct must be rejected, not emitted as an `int` cast: {body}"
         );
     }
 }

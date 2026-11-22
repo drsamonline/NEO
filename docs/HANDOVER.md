@@ -7,7 +7,7 @@ is unverified it says so.
 
 | | |
 |---|---|
-| `master` | `c4edb0b` |
+| `master` | `01d612a` |
 | Tests | **259** passing, 0 failing, 0 ignored |
 | Coverage | 66.32%, ratchet in `coverage-floor.txt` |
 | Release | **v0.7.0** — three platform archives with SHA-256, verified by downloading and running one |
@@ -75,35 +75,30 @@ arguments between two places that both need it; that is now six defects of this 
 
 ## What is next, in order
 
-**1. `as` is a no-op.** `Expr::Cast(inner, _) => self.lower_expr(inner)` in the lowerer:
-the cast is dropped and no `Cast` arm exists in `expr_type`, so a cast reports no type at
-all. `tostring((c as int - 32) as char)` in `stdlib/text`'s `to_upper` therefore produces
-the code `"69"` instead of `"E"`, and `from_hex`'s nested casts produce two
-`expected expression` errors. Making casts real changes codegen for every `as` in the
-language, which is why it is an ADR before it is a patch.
+**1. An `if` used as a value.** Two defects in one place: `expr_type` has no `If` arm, so
+`let digits = if is_negative { substr(...) } else { s };` types as `int`; and lowering an
+`if`/`else if` chain used as a value drops the final `else`, emitting `? (...) : )`. That is
+4 of `stdlib/text`'s remaining 12 errors.
 
 **2. Arrays of arrays.** `levenshtein` declares `[[int]]` and writes `matrix[i][j]`.
 `NovaArray` holds `int`, so a nested array has no representation — the gap ADR 0006 closed
-for `float` and `String`, one level deeper, and the last thing between `text` and the
-stdlib gate.
+for `float` and `String`, one level deeper. It is the larger half of what is left between
+`text` and the stdlib gate: 8 of the 12 errors.
 
-**3. An `if` used as a value does not report its type.** `format_number`'s
-`let digits = if is_negative { substr(...) } else { s };` types as `int`.
+Both are the lost-type defect the rest of this page keeps meeting, and both were found by
+ADR 0007 getting `text` far enough to reach them. ADR 0008 then removed the third.
 
-Two of the three are the lost-type defect the rest of this page keeps meeting. All three
-were found by ADR 0007 getting `text` far enough to reach them.
-
-**4. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
+**3. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
 `fopen`/`fclose`/`fread`/`fwrite` — a `FILE *` does not fit in the `int` that
 `File.handle` declares, so these want a handle table or a changed `File`. The eleven that
 were done on 2026-11-18 show the pattern: one shim function, one lowerer arm, one sema
 type, and `tools/stdlib-check.py` proves the count moved.
 
-**5. 17 specification chapters.** They describe surface that does not exist — ownership,
+**4. 17 specification chapters.** They describe surface that does not exist — ownership,
 memory, concurrency, attributes, interfaces. Writing them would be inventing a
 specification, which `docs/specs/constitution.md` forbids first.
 
-**6. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works.
+**5. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works.
 
 ## Working without a Rust toolchain
 

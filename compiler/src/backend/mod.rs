@@ -1089,8 +1089,9 @@ impl CBackend {
             SirExpr::CallValue { return_type, .. } => {
                 Self::print_kind_for_type(return_type).unwrap_or("int")
             }
-            SirExpr::Closure { .. } | SirExpr::EnvAccess { .. }
-            | SirExpr::Cast { .. } | SirExpr::SizeOf(_) => "int",
+            // A cast prints as its target, not as an `int` — ADR 0008.
+            SirExpr::Cast { typ, .. } => Self::print_kind_for_type(typ).unwrap_or("int"),
+            SirExpr::Closure { .. } | SirExpr::EnvAccess { .. } | SirExpr::SizeOf(_) => "int",
             SirExpr::StringSlice { .. } => "str",
             SirExpr::IndexAssign { value, .. } => self.print_kind(value),
             SirExpr::If { then_expr, .. } => self.print_kind(then_expr),

@@ -277,6 +277,46 @@ fn main() -> int {
 /// The backend now emits a NOVA function whose name belongs to the C library as
 /// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
 /// of the defect and is now the guard against it returning.
+/// `as` converts, and the converted value has the target's type.
+///
+/// The cast used to be dropped by the lowerer, which made `as` a comment: C converted
+/// implicitly at every assignment and call, so nothing noticed — but the NOVA type was
+/// never the one the source asked for. That is why `tostring((c as int - 32) as char)`
+/// produced `"69"` rather than `"E"`.
+///
+/// `2.9 as int + 1` is here for the precedence: `as` binds tighter than `+`, so it must
+/// be `(int)2.9 + 1` = 3 and not `(int)(2.9 + 1)` = 3 — the same answer by luck, so the
+/// `tostring` line above is the one that actually pins it down.
+#[test]
+fn a_cast_converts() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "casts",
+        "\
+use core;
+
+fn main() -> int {
+    let c = 'e';
+    print(tostring((c as int - 32) as char));
+    print(3.7 as int);
+    print('A' as int);
+    print(7 as float);
+    print(65 as char);
+    print(2.9 as int + 1);
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "E\n3\n65\n7\nA\n3",
+        "each cast must produce the target's type and value"
+    );
+}
+
 /// `s[i]` is the byte at `i`, typed `char`.
 ///
 /// It used to lower to `nova_array_get(s, i)` with `s` a `char *`, which is 35 of the
