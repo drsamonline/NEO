@@ -277,6 +277,154 @@ fn main() -> int {
 /// The backend now emits a NOVA function whose name belongs to the C library as
 /// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
 /// of the defect and is now the guard against it returning.
+/// A loop whose body is only an expression keeps that body.
+///
+/// A block whose sole content is an expression parses it as `final_expr`, and the loop
+/// lowering read only `statements`. So this emitted `while (i < 3) { }` — an infinite
+/// loop, inside a module that compiled and passed every gate. It is asserted with a bound
+/// so a regression hangs the suite rather than passing quietly.
+#[test]
+fn a_loop_body_that_is_only_an_if_is_not_dropped() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "loop_body",
+        "\
+use core;
+
+fn main() -> int {
+    let mut i = 0;
+    let mut n = 0;
+    while i < 3 {
+        if i == 1 {
+            n = n + 10;
+        } else {
+            n = n + 1;
+        }
+        i = i + 1;
+    }
+    print(n);
+    return 0;
+}
+",
+    );
+    assert_eq!(stdout.trim(), "12", "the loop body must not vanish");
+}
+
+/// `==` on two `String`s compares their contents, not their addresses.
+///
+/// Two equal strings need not share an address, so pointer comparison made every string
+/// equality false. `stdlib/text`'s `split` compared `substr(...) == delimiter` and never
+/// found one, which is how a compiling module returned the wrong answer.
+#[test]
+fn comparing_two_strings_compares_their_contents() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "string_eq",
+        "\
+use core;
+
+fn main() -> int {
+    let a = \"abc\";
+    let b = \"ab\";
+    print(a == \"abc\");
+    print(a == \"abd\");
+    print(a != b);
+    print(b + \"c\" == a);
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "true\nfalse\ntrue\ntrue",
+        "string comparison must be by content, including a concatenation on one side"
+    );
+}
+
+/// A `[[int]]` holds `[int]` elements, and a write through a row reaches the matrix.
+///
+/// The row is copied by value into the matrix, and the copy shares its `int *data` buffer
+/// with the original — that sharing is what makes `matrix[0][1] = 9` visible in
+/// `matrix[0][1]` afterwards. [ADR 0009](../../docs/adr/0009-nested-arrays.md).
+#[test]
+fn a_nested_array_can_be_written_through() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "nested_array",
+        "\
+use core;
+
+fn main() -> int {
+    let mut matrix: [[int]] = [];
+    let mut row: [int] = [];
+    array_push(row, 1);
+    array_push(row, 2);
+    array_push(matrix, row);
+    let mut row2: [int] = [];
+    array_push(row2, 3);
+    array_push(row2, 4);
+    array_push(matrix, row2);
+    matrix[0][1] = 9;
+    print(array_len(matrix));
+    print(matrix[0][0]);
+    print(matrix[0][1]);
+    print(matrix[1][1]);
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "2\n1\n9\n4",
+        "a write through a row must land in the matrix, not in a copy that is thrown away"
+    );
+}
+
+/// `stdlib/text` works, not merely compiles.
+///
+/// The compile gate asks whether `cc` accepts the emitted C. It accepted `text` while
+/// `split` was an infinite loop and while string equality compared pointers, so this
+/// asserts the functions themselves — the two that were wrong, plus `levenshtein`, which
+/// is what needed nested arrays.
+#[test]
+fn the_text_module_works_end_to_end() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "text_module",
+        "\
+use core;
+use text;
+
+fn main() -> int {
+    print(to_upper(\"hello\"));
+    print(trim(\"  padded  \"));
+    let parts = split(\"a,b,c\", \",\");
+    print(array_len(parts));
+    print(join(parts, \"-\"));
+    print(levenshtein(\"kitten\", \"sitting\"));
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "HELLO\npadded\n3\na-b-c\n3",
+        "`text` must compute, not just compile"
+    );
+}
+
 /// An `if` used as a value keeps its `else if` chain, and takes its branches' type.
 ///
 /// Two defects, both only in value position — as a statement the same chain lowered

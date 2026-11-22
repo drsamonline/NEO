@@ -130,6 +130,24 @@ void nova_array_string_set(NovaArray_string array, long long index, char *value)
 void nova_array_string_push(NovaArray_string *array, char *value);
 char *nova_array_string_pop(NovaArray_string *array);
 
+/* Arrays of `[int]` arrays — `[[int]]`. The element is a whole `NovaArray` struct, so
+ * this is a fourth header rather than a cast. Elements are copied by value, and a copy
+ * shares its `data` buffer with the original; that sharing is what makes
+ * `matrix[i][j] = v` work, because the setter writes through the copy's pointer into the
+ * same buffer. Only `[int]` inner arrays are represented — see docs/adr/0009. */
+typedef struct {
+    NovaArray *data;
+    long long len;
+    long long cap;
+} NovaArray_array;
+
+NovaArray_array nova_array_array_from(const NovaArray *items, long long len);
+long long nova_array_array_len(NovaArray_array array);
+NovaArray nova_array_array_get(NovaArray_array array, long long index);
+void nova_array_array_set(NovaArray_array array, long long index, NovaArray value);
+void nova_array_array_push(NovaArray_array *array, NovaArray value);
+NovaArray nova_array_array_pop(NovaArray_array *array);
+
 char *nova_getenv(const char *name);
 char *nova_cwd(void);
 int nova_chdir(const char *path);
@@ -636,6 +654,59 @@ void nova_array_float_push(NovaArray_float *array, double value) {
 }
 
 double nova_array_float_pop(NovaArray_float *array) {
+    if (array == NULL || array->len <= 0) {
+        nova_fail("pop on an empty array");
+    }
+    array->len = array->len - 1;
+    return array->data[array->len];
+}
+
+NovaArray_array nova_array_array_from(const NovaArray *items, long long len) {
+    NovaArray_array array;
+    array.len = len;
+    array.cap = len < 4 ? 4 : len;
+    array.data = (NovaArray *)malloc(sizeof(NovaArray) * (size_t)array.cap);
+    if (array.data == NULL) nova_fail("out of memory");
+    for (long long i = 0; i < len; i++) array.data[i] = items[i];
+    return array;
+}
+
+long long nova_array_array_len(NovaArray_array array) {
+    return array.len;
+}
+
+NovaArray nova_array_array_get(NovaArray_array array, long long index) {
+    if (index < 0 || index >= array.len) {
+        nova_fail("array index out of bounds");
+    }
+    return array.data[index];
+}
+
+void nova_array_array_set(NovaArray_array array, long long index, NovaArray value) {
+    if (index < 0 || index >= array.len) {
+        nova_fail("array index out of bounds");
+    }
+    array.data[index] = value;
+}
+
+void nova_array_array_push(NovaArray_array *array, NovaArray value) {
+    if (array == NULL) {
+        nova_fail("push on a missing array");
+    }
+    if (array->len >= array->cap) {
+        long long cap = array->cap > 0 ? array->cap * 2 : 4;
+        NovaArray *grown = (NovaArray *)realloc(array->data, (size_t)cap * sizeof(NovaArray));
+        if (grown == NULL) {
+            nova_fail("out of memory");
+        }
+        array->data = grown;
+        array->cap = cap;
+    }
+    array->data[array->len] = value;
+    array->len = array->len + 1;
+}
+
+NovaArray nova_array_array_pop(NovaArray_array *array) {
     if (array == NULL || array->len <= 0) {
         nova_fail("pop on an empty array");
     }

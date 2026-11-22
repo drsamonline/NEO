@@ -50,6 +50,7 @@ Everything written down, and where to start.
 | [`adr/0006-array-element-types.md`](adr/0006-array-element-types.md) | Arrays hold `int`; `stdlib/math` compiled and returned wrong numbers because of it. Now monomorphised per element type |
 | [`adr/0007-string-indexing.md`](adr/0007-string-indexing.md) | `s[i]` is a byte, because `char` is a byte and cannot hold a codepoint — so `text` is correct for ASCII and silent on the rest |
 | [`adr/0008-casts.md`](adr/0008-casts.md) | `as` converts; it used to be dropped, so `x as char` was a comment and `tostring` read the wrong type |
+| [`adr/0009-nested-arrays.md`](adr/0009-nested-arrays.md) | `[[int]]` is an array of `NovaArray` structs; a row is copied by value and shares its buffer, which is what makes `matrix[i][j] = v` work |
 
 ## Contracts
 

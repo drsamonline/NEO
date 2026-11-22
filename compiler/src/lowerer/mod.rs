@@ -118,6 +118,10 @@ enum ArrayKind {
     Int,
     Float,
     String,
+    /// An array of `[int]` arrays — `[[int]]`. Its element is a whole `NovaArray`, so it
+    /// needs its own header like the others; only `[int]` inner arrays exist. See
+    /// [ADR 0009](../../docs/adr/0009-nested-arrays.md).
+    Array,
 }
 
 impl Lowerer {
@@ -994,6 +998,7 @@ impl Lowerer {
         {
             "float" | "f32" | "f64" => ArrayKind::Float,
             "string" | "str" => ArrayKind::String,
+            "[int]" | "array<int>" => ArrayKind::Array,
             _ => ArrayKind::Int,
         }
     }
@@ -1096,6 +1101,7 @@ impl Lowerer {
                     ArrayKind::Int => "nova_array_len",
                     ArrayKind::Float => "nova_array_float_len",
                     ArrayKind::String => "nova_array_string_len",
+                    ArrayKind::Array => "nova_array_array_len",
                 };
                 Some(typed(callee, vec![self.lower_array_value(args.first()?)], "int"))
             }
@@ -1113,6 +1119,7 @@ impl Lowerer {
                     ArrayKind::Int => "nova_array_push",
                     ArrayKind::Float => "nova_array_float_push",
                     ArrayKind::String => "nova_array_string_push",
+                    ArrayKind::Array => "nova_array_array_push",
                 };
                 Some(typed(callee, vec![array, value], "void"))
             }
@@ -1127,6 +1134,7 @@ impl Lowerer {
                     ArrayKind::Int => ("nova_array_pop", "int"),
                     ArrayKind::Float => ("nova_array_float_pop", "float"),
                     ArrayKind::String => ("nova_array_string_pop", "String"),
+                    ArrayKind::Array => ("nova_array_array_pop", "[int]"),
                 };
                 Some(typed(callee, vec![array], typ))
             }
@@ -1438,14 +1446,41 @@ impl Lowerer {
 
     fn lower_while_statement(&mut self, cond: &Expr, body: &nova_common::Block) -> SirStatement {
         let condition = self.lower_expr(cond);
-        let body_stmts: Vec<SirStatement> = body.statements.iter()
-            .flat_map(|s| self.lower_statement(s))
-            .collect();
-        
         SirStatement::While {
             condition,
-            body: body_stmts,
+            body: self.lower_loop_body(body),
         }
+    }
+
+    /// A loop body: its statements, plus a trailing expression lowered as a statement.
+    ///
+    /// A block whose only item is an expression parses that expression as `final_expr`,
+    /// not as a statement. Reading only `statements` therefore dropped the whole body:
+    ///
+    /// ```nova
+    /// while i <= strlen(s) {
+    ///     if i == strlen(s) || substr(s, i, dl) == delim { ... } else { ... }
+    /// }
+    /// ```
+    ///
+    /// emitted `while (...) { }` — an infinite loop, in a module that compiled. This is
+    /// why `stdlib/text`'s `split` never returned.
+    ///
+    /// The trailing expression goes through `lower_statement`, not `lower_block`, so a
+    /// trailing `if` inside a loop stays a statement instead of being taken for the
+    /// enclosing function's result.
+    fn lower_loop_body(&mut self, body: &nova_common::Block) -> Vec<SirStatement> {
+        self.push_scope();
+        let mut stmts: Vec<SirStatement> = body
+            .statements
+            .iter()
+            .flat_map(|s| self.lower_statement(s))
+            .collect();
+        if let Some(final_expr) = &body.final_expr {
+            stmts.extend(self.lower_statement(&Statement::Expr((**final_expr).clone())));
+        }
+        self.pop_scope();
+        stmts
     }
 
     fn lower_for_statement(&mut self, pattern: &Pattern, iterable: &Expr, body: &nova_common::Block) -> SirStatement {
@@ -1454,9 +1489,7 @@ impl Lowerer {
             _ => "_".to_string(),
         };
         let iterable_expr = self.lower_expr(iterable);
-        let body_stmts: Vec<SirStatement> = body.statements.iter()
-            .flat_map(|s| self.lower_statement(s))
-            .collect();
+        let body_stmts: Vec<SirStatement> = self.lower_loop_body(body);
         
         SirStatement::For {
             pattern: pattern_name,
@@ -1905,6 +1938,34 @@ impl Lowerer {
                         typ: "string".to_string(),
                     };
                 }
+                // Comparing two `String`s compared their pointers, which is never what the
+                // source meant: two equal strings need not share an address, so
+                // `substr(s, i, 1) == ","` was always false and `stdlib/text`'s `split`
+                // never matched a delimiter. Ordering had the same problem. `strcmp`
+                // against 0 is the comparison the source asked for.
+                if matches!(
+                    op,
+                    AstBinOp::Eq
+                        | AstBinOp::Ne
+                        | AstBinOp::Lt
+                        | AstBinOp::Le
+                        | AstBinOp::Gt
+                        | AstBinOp::Ge
+                ) && self.expr_type(left).is_some_and(|typ| is_string_type(&typ))
+                    && self.expr_type(right).is_some_and(|typ| is_string_type(&typ))
+                {
+                    return SirExpr::Typed {
+                        expr: Box::new(SirExpr::BinOp {
+                            left: Box::new(SirExpr::Call {
+                                callee: "nova_strcmp".to_string(),
+                                args: vec![self.lower_expr(left), self.lower_expr(right)],
+                            }),
+                            op: self.lower_bin_op(op),
+                            right: Box::new(SirExpr::Literal(SirLiteral::Int(0))),
+                        }),
+                        typ: "bool".to_string(),
+                    };
+                }
                 let expr = SirExpr::BinOp {
                     left: Box::new(self.lower_expr(left)),
                     op: self.lower_bin_op(op),
@@ -2102,6 +2163,7 @@ impl Lowerer {
                         ArrayKind::Int => None,
                         ArrayKind::Float => Some("nova_array_float_set"),
                         ArrayKind::String => Some("nova_array_string_set"),
+                        ArrayKind::Array => Some("nova_array_array_set"),
                     };
                     match setter {
                         Some(setter) => SirExpr::Call {
@@ -2394,6 +2456,7 @@ impl Lowerer {
                     ArrayKind::Int => (None, "int"),
                     ArrayKind::Float => (Some("nova_array_float_get"), "float"),
                     ArrayKind::String => (Some("nova_array_string_get"), "String"),
+                    ArrayKind::Array => (Some("nova_array_array_get"), "[int]"),
                 };
                 if let Some(callee) = callee {
                     return SirExpr::Typed {
@@ -3530,6 +3593,15 @@ fn push_word(out: &mut String, word: &mut String, from: &str, to: &str) {
 
 /// `int` -> `int`, `&mut [int]` -> `mut_int`: a C-identifier-safe suffix.
 fn mangle_type(typ: &str) -> String {
+    // An array type carries a word, not a separator: `[int]` used to mangle to `int`, the
+    // same name `int` produces, so `array_push<int>` and `array_push<[int]>` collided and
+    // whichever was instantiated first shadowed the other. One of them then called the
+    // wrong function — `array_push_int(NovaArray*, int)` given a `NovaArray_array*` and a
+    // `NovaArray`.
+    let typ = typ.trim();
+    if let Some(inner) = typ.strip_prefix('[').and_then(|rest| rest.strip_suffix(']')) {
+        return format!("array_{}", mangle_type(inner));
+    }
     let mut out = String::new();
     for ch in typ.chars() {
         if ch.is_alphanumeric() {
@@ -4330,5 +4402,23 @@ mod tests {
             !body.contains("Unit"),
             "an `else if` chain must not end in a `Unit` placeholder, which emits as nothing: {body}"
         );
+    }
+
+    /// `[int]` and `int` must not mangle to the same suffix.
+    ///
+    /// They did: `[int]` lost its brackets and became `int`, so `array_push<int>` and
+    /// `array_push<[int]>` produced one name, `array_push_int`. The second instantiation
+    /// was then skipped as already seen, and whichever came first shadowed the other —
+    /// `array_push_int(NovaArray*, int)` called with a `NovaArray_array*` and a
+    /// `NovaArray`. A generic instantiated at two different types must be two functions.
+    #[test]
+    fn an_array_type_does_not_mangle_like_its_element() {
+        assert_eq!(mangle_type("int"), "int");
+        assert_eq!(mangle_type("[int]"), "array_int");
+        assert_eq!(mangle_type("[[int]]"), "array_array_int");
+        assert_ne!(mangle_type("int"), mangle_type("[int]"));
+        // The scalars the rest of the library depends on are unchanged.
+        assert_eq!(mangle_type("float"), "float");
+        assert_eq!(mangle_type("String"), "String");
     }
 }

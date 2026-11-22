@@ -303,6 +303,7 @@ impl CBackend {
             let header = match Self::array_element_kind(base) {
                 Some("float") => "NovaArray_float",
                 Some("string") => "NovaArray_string",
+                Some("array") => "NovaArray_array",
                 _ => "NovaArray",
             };
             return if by_reference {
@@ -415,6 +416,15 @@ impl CBackend {
         }
     }
 
+    /// An array literal, in either shape it reaches the backend in.
+    fn is_array_literal(expr: &SirExpr) -> bool {
+        match expr {
+            SirExpr::Array(_) => true,
+            SirExpr::Typed { expr, .. } => Self::is_array_literal(expr),
+            _ => false,
+        }
+    }
+
     /// An array literal with nothing in it.
     fn is_empty_array_literal(expr: &SirExpr) -> bool {
         match expr {
@@ -429,6 +439,7 @@ impl CBackend {
         match Self::array_element_kind(declared) {
             Some("float") => "nova_array_float_from(0, 0)".to_string(),
             Some("string") => "nova_array_string_from(0, 0)".to_string(),
+            Some("array") => "nova_array_array_from(0, 0)".to_string(),
             _ => "nova_array_from(0, 0)".to_string(),
         }
     }
@@ -463,6 +474,8 @@ impl CBackend {
         match element.to_lowercase().as_str() {
             "float" | "f32" | "f64" => Some("float"),
             "string" | "str" => Some("string"),
+            // `[[int]]` — the element is a `[int]`, which is a whole `NovaArray`.
+            "[int]" | "array<int>" => Some("array"),
             _ => None,
         }
     }
@@ -848,10 +861,20 @@ impl CBackend {
                 // something else is not a string array, and silently picking one would
                 // be the same class of defect as the truncation this replaced.
                 let strings = !items.is_empty() && items.iter().all(Self::is_string_literal);
+                // `[[1, 2], [3, 4]]` — every item is itself an array literal, so the
+                // elements are whole `NovaArray` structs rather than scalars.
+                let arrays = !items.is_empty() && items.iter().all(Self::is_array_literal);
                 let float = items
                     .iter()
                     .any(|item| matches!(item, SirExpr::Literal(SirLiteral::Float(_))));
                 // Heap-allocated, so a later push can grow it safely.
+                if arrays {
+                    return format!(
+                        "nova_array_array_from((NovaArray[]){{ {} }}, {})",
+                        values.join(", "),
+                        items.len()
+                    );
+                }
                 if strings {
                     return format!(
                         "nova_array_string_from((char*[]){{ {} }}, {})",
