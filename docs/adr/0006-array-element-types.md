@@ -1,7 +1,8 @@
 # ADR 0006 — arrays hold `int`, and three of the four stdlib modules want otherwise
 
-- **Status:** proposed, not implemented
+- **Status:** accepted for `[float]`; `[String]` is the follow-up
 - **Date:** 2026-11-18
+- **Decided:** 2026-11-22
 - **Related:** [0003](0003-option-payload.md), [0004](0004-deferred-global-initialisers.md)
 
 ## Context
@@ -122,6 +123,56 @@ Whether `[T]` should be growable for non-`int` `T`, whether strings in arrays ar
 or borrowed (the runtime leaks every `nova_strdup`, so "owned" is the status quo), and
 whether the four backends monomorphise or share one representation. Those are (b)'s
 problem and want their own record.
+
+## Outcome
+
+**Option (b) was taken, for `[float]` only, and (d) was not needed.** Making the
+representation correct removed the wrong answer that (d) existed to prevent, so a
+diagnostic would have been a stop-gap for a bug that no longer exists.
+
+What the implementation cost, measured rather than estimated:
+
+| Part | Where | Size |
+|---|---|---|
+| `NovaArray_float` and its six runtime functions | `compiler/src/runtime.rs` | 82 lines |
+| `c_type` maps `[float]`/`[f32]`/`[f64]`/`Array<float>` to it | `compiler/src/backend/mod.rs` | 27 lines |
+| `array_len`, `array_push`, `array_pop`, `arr[i]` pick the float runtime | `compiler/src/lowerer/mod.rs` | 58 lines |
+| Generic binding of a parameter's type *pattern* | `compiler/src/lowerer/mod.rs` | 1 function |
+
+**The runtime was the easy half and it was not the blocker.** The branch that added
+`NovaArray_float` compiled and emitted `NovaArray_float` for every `[float]` parameter
+correctly, then failed with:
+
+```
+error: incompatible type for argument 1 of 'array_len_int'
+```
+
+`stdlib/core` declares `fn array_len<T>(arr: [T]) -> int`. The parameter's type is `[T]`,
+and `[T]` is stored in the type's *name* with an empty `generics` list, so the binding
+step — which compared `param.typ.name` against the generic list — never saw `T`. Every
+instantiation fell through to the `int` default and `math` emitted `array_len_int` called
+with a `NovaArray_float`.
+
+This is the recurring defect this repository keeps meeting, in its sixth form: **a type
+string that loses its arguments between two places that both need it.** The fix is that
+binding now matches the parameter's type as a *pattern* — `[T]` against `[float]` binds
+`T` to `float`, `&mut [T]` against `&mut [float]` does the same — instead of comparing
+names. It is one function, `bind_type_pattern`, and it fixes the same loss for
+`array_push`, `array_pop`, `array_get`, `array_set`, `find`, `filter` and `reverse`,
+which had been silently instantiating as `_int` too.
+
+**What it cost in gates.** Three tests, because the existing gate could not see this:
+`array_len_int` was valid C that compiled. Two unit tests assert the instantiation *name*
+(`array_len_float`, `reverse_float`) and one end-to-end test asserts all five numbers —
+`sum_float` 4, `mean` 2, `median` 2, `variance` 0.25, `stddev` 0.5. The lesson is the
+repository's own: a compile gate answers whether the C compiles, and this defect was C
+that compiled.
+
+**What is still not done.** `[String]` arrays, which need `NovaArray_string` rather than
+a cast because a `char *` is eight bytes. `stdlib/text` does not compile for that reason
+and stays in `stdlib/not-compiling.txt`. The `int` default in `resolve_generic_call`
+remains for a generic parameter no argument determines — `deserialize<T>(s: String)`,
+which has no way to name `T` at a call site.
 
 ## Where this is measured
 

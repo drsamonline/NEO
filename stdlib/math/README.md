@@ -12,19 +12,21 @@ a closure signature, so a `math` program is C-only in practice.
 now the most complete module in the library. Numbers in
 [`../README.md`](../README.md).
 
-`nova-compiler build` links `-lm` for these; `emit` does not need to.## ⚠️ The float-array functions are wrong
+`nova-compiler build` links `-lm` for these; `emit` does not need to.## The float-array functions are correct
 
-`sum_float`, `mean`, `variance`, `stddev` and `median` take `[float]`, and `NovaArray`
-holds `int` elements. A `[float]` literal is truncated before anything reads it:
+`sum_float`, `mean`, `variance`, `stddev` and `median` take `[float]`, and a `[float]`
+array is now a real array of `double` rather than an `int` array with the fractional part
+thrown away:
 
 ```nova
-print(sum_float([1.5, 2.5]));   // prints 3, not 4
+print(sum_float([1.5, 2.5]));   // prints 4
 ```
 
-The module compiles and the compile gate passes, which is why this is written here rather
-than discovered by a user. See [ADR 0006](../../docs/adr/0006-array-element-types.md);
-`a_float_array_sum_is_not_truncated` in `compiler/tests/end_to_end.rs` is the runnable
-proof.
+This was wrong — it printed `3` — and the compile gate could not see it, because the
+emitted C compiled. Two end-to-end tests now assert the numbers instead of the C:
+`a_float_array_sum_is_not_truncated` and `float_array_statistics_are_not_truncated` in
+`compiler/tests/end_to_end.rs`. See
+[ADR 0006](../../docs/adr/0006-array-element-types.md).
 
 The scalar functions — `sqrt`, `floor`, `round`, `powf` and the rest — are correct and
 tested end to end.
