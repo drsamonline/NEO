@@ -298,17 +298,17 @@ impl CBackend {
             .trim_start_matches("mut ")
             .trim_start();
         if base.contains('[') || base.eq_ignore_ascii_case("array") {
-            // A float array has its own header: `NovaArray` holds `int` and a `double`
-            // does not fit in an `int` slot (ADR 0006).
-            let float = matches!(
-                base.trim(),
-                "[float]" | "[f32]" | "[f64]" | "Array<float>" | "Array<f32>" | "Array<f64>"
-            );
-            return match (float, by_reference) {
-                (true, true) => "NovaArray_float*".to_string(),
-                (true, false) => "NovaArray_float".to_string(),
-                (false, true) => "NovaArray*".to_string(),
-                (false, false) => "NovaArray".to_string(),
+            // An array's header is chosen by its element type: `NovaArray` holds `int`,
+            // and neither a `double` nor a `char *` fits in an `int` slot (ADR 0006).
+            let header = match Self::array_element_kind(base) {
+                Some("float") => "NovaArray_float",
+                Some("string") => "NovaArray_string",
+                _ => "NovaArray",
+            };
+            return if by_reference {
+                format!("{header}*")
+            } else {
+                header.to_string()
             };
         }
         // A method's `self` is a pointer to the struct.
@@ -415,6 +415,58 @@ impl CBackend {
         }
     }
 
+    /// An array literal with nothing in it.
+    fn is_empty_array_literal(expr: &SirExpr) -> bool {
+        match expr {
+            SirExpr::Array(items) => items.is_empty(),
+            SirExpr::Typed { expr, .. } => Self::is_empty_array_literal(expr),
+            _ => false,
+        }
+    }
+
+    /// The empty array for a declared element type.
+    fn empty_array_c(declared: &str) -> String {
+        match Self::array_element_kind(declared) {
+            Some("float") => "nova_array_float_from(0, 0)".to_string(),
+            Some("string") => "nova_array_string_from(0, 0)".to_string(),
+            _ => "nova_array_from(0, 0)".to_string(),
+        }
+    }
+
+    /// A string literal, in either shape it reaches the backend in: a bare
+    /// `SirLiteral::String`, or the `nova_strdup("...")` a non-constant context wraps
+    /// it in.
+    fn is_string_literal(expr: &SirExpr) -> bool {
+        match expr {
+            SirExpr::Literal(SirLiteral::String(_)) => true,
+            SirExpr::Call { callee, args } if callee == "nova_strdup" => {
+                matches!(args.first(), Some(SirExpr::Literal(SirLiteral::String(_))))
+            }
+            SirExpr::Typed { expr, .. } => Self::is_string_literal(expr),
+            _ => false,
+        }
+    }
+
+    /// The element type of an array spelling, when it is one the runtime has a header
+    /// for. `None` means `int`, including a bare `Array`, which names no element type.
+    fn array_element_kind(typ: &str) -> Option<&'static str> {
+        let typ = typ.trim();
+        let element = if let Some(inner) = typ
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            inner.trim()
+        } else {
+            let inner = typ.split_once('<')?.1.strip_suffix('>')?;
+            inner.split(',').next()?.trim()
+        };
+        match element.to_lowercase().as_str() {
+            "float" | "f32" | "f64" => Some("float"),
+            "string" | "str" => Some("string"),
+            _ => None,
+        }
+    }
+
     /// A global's initialiser, as C that is allowed at file scope.
     ///
     /// The one rewrite that matters: a string constant arrives as
@@ -510,8 +562,16 @@ impl CBackend {
                 {
                     self.string_vars.insert(name.clone());
                 }
+                // `[]` cannot say what it holds, so the declaration is the only place
+                // the element type exists. Without this, `let r: [String] = []` emitted
+                // `nova_array_from(0, 0)` and then failed to assign a `NovaArray` to a
+                // `NovaArray_string`.
+                let initialiser = match (Self::is_empty_array_literal(value), typ.as_deref()) {
+                    (true, Some(declared)) => Self::empty_array_c(declared),
+                    _ => self.expr_to_c(value),
+                };
                 let _ = write!(self.output, "{}{} {} = ", indent_str, typ_str, name);
-                let _ = writeln!(self.output, "{};", self.expr_to_c(value));
+                let _ = writeln!(self.output, "{};", initialiser);
             }
             SirStatement::Expr(expr) => {
                 // `print` and `println` are the language's only I/O; both write a line
@@ -781,11 +841,24 @@ impl CBackend {
                 }
                 let values: Vec<String> = items.iter().map(|item| self.expr_to_c(item)).collect();
                 // The element type is visible in the literal itself: a `[float]` array
-                // is written with float literals, and `NovaArray` cannot hold one.
+                // is written with float literals and a `[String]` one with string
+                // literals, and `NovaArray` can hold neither.
+                //
+                // `all`, not `any`, for strings: a literal mixing a string with
+                // something else is not a string array, and silently picking one would
+                // be the same class of defect as the truncation this replaced.
+                let strings = !items.is_empty() && items.iter().all(Self::is_string_literal);
                 let float = items
                     .iter()
                     .any(|item| matches!(item, SirExpr::Literal(SirLiteral::Float(_))));
                 // Heap-allocated, so a later push can grow it safely.
+                if strings {
+                    return format!(
+                        "nova_array_string_from((char*[]){{ {} }}, {})",
+                        values.join(", "),
+                        items.len()
+                    );
+                }
                 if float {
                     return format!(
                         "nova_array_float_from((double[]){{ {} }}, {})",

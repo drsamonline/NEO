@@ -1,6 +1,6 @@
 # ADR 0006 — arrays hold `int`, and three of the four stdlib modules want otherwise
 
-- **Status:** accepted for `[float]`; `[String]` is the follow-up
+- **Status:** accepted — `[float]` and `[String]` both implemented
 - **Date:** 2026-11-18
 - **Decided:** 2026-11-22
 - **Related:** [0003](0003-option-payload.md), [0004](0004-deferred-global-initialisers.md)
@@ -168,11 +168,34 @@ which had been silently instantiating as `_int` too.
 repository's own: a compile gate answers whether the C compiles, and this defect was C
 that compiled.
 
-**What is still not done.** `[String]` arrays, which need `NovaArray_string` rather than
-a cast because a `char *` is eight bytes. `stdlib/text` does not compile for that reason
-and stays in `stdlib/not-compiling.txt`. The `int` default in `resolve_generic_call`
-remains for a generic parameter no argument determines — `deserialize<T>(s: String)`,
-which has no way to name `T` at a call site.
+**`[String]` landed the same way, and cost less.** `NovaArray_string` holds `char **`,
+and `array_len`, `array_push`, `array_pop`, `arr[i]` and `arr[i] = value` all pick it from
+the element type. The third element type is what turned the two copies of the runtime into
+a pattern: the lowerer now asks one question, `array_kind`, and every array operation
+dispatches on the answer.
+
+Two things had to change that were not in the runtime at all, and both were the same
+defect as the one that blocked `[float]`:
+
+- **`arr[i] = value` had no element-type arm.** The backend renders `IndexAssign` as
+  `nova_array_set`, which takes and stores an `int`, so a write to a `[String]` array
+  stored a pointer in an `int` slot. Reads were dispatched by element type; writes were
+  not. Both are now.
+- **The type of an index was hardcoded `int`.** `expr_type` answered `int` for every
+  `arr[i]`, so `print(names[0])` instantiated `print_int` and then handed it a `char *`.
+  An index now reports the array's element type, and an array literal reports the element
+  type of its items rather than a bare `Array`.
+
+**An empty literal is the one place the element type is not in the literal.** `[]` says
+nothing, so `let r: [String] = []` takes it from the declaration; the backend now reads it
+there. That is the only element-type decision made outside the expression.
+
+**What is still not done.** `stdlib/text` still does not compile, but the array was not
+its last blocker: it indexes a `String` (`s[i]`), which lowers to `nova_array_get` and
+wants an array. Whether `s[i]` is a byte, a codepoint or a grapheme is a representation
+decision, and it belongs in its own ADR rather than in this one. The `int` default in
+`resolve_generic_call` also remains, for a generic parameter no argument determines —
+`deserialize<T>(s: String)`, which has no way to name `T` at a call site.
 
 ## Where this is measured
 

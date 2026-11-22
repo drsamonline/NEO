@@ -109,6 +109,17 @@ struct PendingMethod {
     substitution: HashMap<String, String>,
 }
 
+/// What an array holds, as the runtime cares about it.
+///
+/// `NovaArray` holds `int`, and neither a `double` nor a `char *` fits in an `int` slot,
+/// so each has its own header and its own functions — [ADR 0006](../../docs/adr/0006-array-element-types.md).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ArrayKind {
+    Int,
+    Float,
+    String,
+}
+
 impl Lowerer {
     pub fn new() -> Self {
         Self {
@@ -182,6 +193,23 @@ impl Lowerer {
         }
     }
 
+    /// The type of an array literal, read off its items.
+    ///
+    /// `["a", "b"]` is `[String]` and `[1.5]` is `[float]`; a literal that is empty or
+    /// mixes element types says only `Array`, because there is nothing to read the
+    /// element type from. That bare spelling is deliberate: `array_kind` treats it as
+    /// `int`, which is the header `NovaArray` provides.
+    fn array_literal_type(items: &[Expr]) -> String {
+        let mut kinds = items.iter().filter_map(Self::literal_type);
+        let Some(first) = kinds.next() else {
+            return "Array".to_string();
+        };
+        if !kinds.all(|kind| kind == first) {
+            return "Array".to_string();
+        }
+        format!("[{first}]")
+    }
+
     /// The declared type of an expression, where the lowerer can know it.
     /// The type of an expression, with the active generic substitution applied.
     fn expr_type(&self, expr: &Expr) -> Option<String> {
@@ -232,7 +260,10 @@ impl Lowerer {
                     left_type.or(right_type)
                 }
             }
-            Expr::Array(_) => Some("Array".to_string()),
+            // An array literal's element type is in its items, so report it rather than
+            // the bare `Array`. The bare spelling is what made `print(names[0])` and
+            // `array_len(names)` fall back to the `int` runtime.
+            Expr::Array(items) => Some(Self::array_literal_type(items)),
             // A `match` used as a value has the type of its arms. Without this arm the
             // chain reported no type, `let level_str = match level { ... }` fell back to
             // `int`, and `stdlib/io` emitted `initialization of 'int' from 'char *'`.
@@ -267,7 +298,20 @@ impl Lowerer {
                 .final_expr
                 .as_ref()
                 .and_then(|expr| self.expr_type(expr)),
-            Expr::Index(_, _) => Some("int".to_string()),
+            // An index yields the array's element type. Hardcoding `int` here is what
+            // made `print(names[0])` instantiate `print_int` and then hand a `char *`
+            // to it — the same lost-type shape as the generic binding itself.
+            Expr::Index(array, _) => Some(
+                self.expr_type(array)
+                    .map(|typ| {
+                        let bare = typ
+                            .trim_start_matches('&')
+                            .trim_start_matches("mut ")
+                            .trim();
+                        array_element_type(bare).unwrap_or_else(|| "int".to_string())
+                    })
+                    .unwrap_or_else(|| "int".to_string()),
+            ),
             Expr::Field(object, field) => {
                 let object_type = self.expr_type(object)?;
                 let base = object_type.split('<').next().unwrap_or(&object_type).to_string();
@@ -909,23 +953,28 @@ impl Lowerer {
     }
 
     /// An array header for a mutating call, and whether it is already a pointer.
-    /// Whether an expression's type is an array of `double`.
     ///
-    /// `NovaArray` holds `int`, so a `[float]` array needs its own header and its own
-    /// runtime functions — [ADR 0006](../../docs/adr/0006-array-element-types.md).
-    fn is_float_array(&self, expr: &Expr) -> bool {
-        self.expr_type(expr)
-            .map(|typ| {
-                let bare = typ
-                    .trim_start_matches('&')
-                    .trim_start_matches("mut ")
-                    .trim();
-                matches!(
-                    bare,
-                    "[float]" | "[f32]" | "[f64]" | "Array<float>" | "Array<f32>" | "Array<f64>"
-                )
-            })
-            .unwrap_or(false)
+    /// What an array holds decides which runtime it uses. A bare `Array` — what an
+    /// unannotated literal types as — names no element type and stays `Int`, which is
+    /// the header `NovaArray` provides.
+    fn array_kind(&self, expr: &Expr) -> ArrayKind {
+        let Some(typ) = self.expr_type(expr) else {
+            return ArrayKind::Int;
+        };
+        let bare = typ
+            .trim_start_matches('&')
+            .trim_start_matches("mut ")
+            .trim();
+        match array_element_type(bare)
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase()
+            .as_str()
+        {
+            "float" | "f32" | "f64" => ArrayKind::Float,
+            "string" | "str" => ArrayKind::String,
+            _ => ArrayKind::Int,
+        }
     }
 
     fn lower_array_handle(&mut self, expr: &Expr) -> (SirExpr, bool) {
@@ -1004,10 +1053,10 @@ impl Lowerer {
             "__builtin_now" => Some(typed("nova_now_ms", vec![], "int")),
             "__builtin_sleep" => Some(typed("nova_sleep_ms", lowered(self), "void")),
             "__builtin_array_len" => {
-                let callee = if self.is_float_array(args.first()?) {
-                    "nova_array_float_len"
-                } else {
-                    "nova_array_len"
+                let callee = match self.array_kind(args.first()?) {
+                    ArrayKind::Int => "nova_array_len",
+                    ArrayKind::Float => "nova_array_float_len",
+                    ArrayKind::String => "nova_array_string_len",
                 };
                 Some(typed(callee, vec![self.lower_array_value(args.first()?)], "int"))
             }
@@ -1021,10 +1070,10 @@ impl Lowerer {
                     SirExpr::AddressOf(Box::new(array))
                 };
                 let value = self.lower_expr(args.get(1)?);
-                let callee = if self.is_float_array(args.first()?) {
-                    "nova_array_float_push"
-                } else {
-                    "nova_array_push"
+                let callee = match self.array_kind(args.first()?) {
+                    ArrayKind::Int => "nova_array_push",
+                    ArrayKind::Float => "nova_array_float_push",
+                    ArrayKind::String => "nova_array_string_push",
                 };
                 Some(typed(callee, vec![array, value], "void"))
             }
@@ -1035,10 +1084,12 @@ impl Lowerer {
                 } else {
                     SirExpr::AddressOf(Box::new(array))
                 };
-                if self.is_float_array(args.first()?) {
-                    return Some(typed("nova_array_float_pop", vec![array], "float"));
-                }
-                Some(typed("nova_array_pop", vec![array], "int"))
+                let (callee, typ) = match self.array_kind(args.first()?) {
+                    ArrayKind::Int => ("nova_array_pop", "int"),
+                    ArrayKind::Float => ("nova_array_float_pop", "float"),
+                    ArrayKind::String => ("nova_array_string_pop", "String"),
+                };
+                Some(typed(callee, vec![array], typ))
             }
             // Floating-point maths. Every one is a C library call under a name the
             // compiler can emit; `nova-compiler build` links `-lm` for this reason.
@@ -1762,7 +1813,7 @@ impl Lowerer {
                 expr: Box::new(SirExpr::Array(
                     items.iter().map(|item| self.lower_expr(item)).collect(),
                 )),
-                typ: "Array".to_string(),
+                typ: Self::array_literal_type(items),
             },
             Expr::Literal(lit) => {
                 SirExpr::Literal(match lit {
@@ -1995,11 +2046,31 @@ impl Lowerer {
                     value: Box::new(self.lower_expr(value)),
                     struct_type: self.expr_type(object).unwrap_or_default(),
                 },
-                Expr::Index(array, index) => SirExpr::IndexAssign {
-                    array: Box::new(self.lower_array_value(array)),
-                    index: Box::new(self.lower_expr(index)),
-                    value: Box::new(self.lower_expr(value)),
-                },
+                Expr::Index(array, index) => {
+                    // Writing an element of a `[String]` or `[float]` array needs that
+                    // array's own setter, for the same reason reading one does:
+                    // `nova_array_set` takes and stores an `int`.
+                    let setter = match self.array_kind(array) {
+                        ArrayKind::Int => None,
+                        ArrayKind::Float => Some("nova_array_float_set"),
+                        ArrayKind::String => Some("nova_array_string_set"),
+                    };
+                    match setter {
+                        Some(setter) => SirExpr::Call {
+                            callee: setter.to_string(),
+                            args: vec![
+                                self.lower_array_value(array),
+                                self.lower_expr(index),
+                                self.lower_expr(value),
+                            ],
+                        },
+                        None => SirExpr::IndexAssign {
+                            array: Box::new(self.lower_array_value(array)),
+                            index: Box::new(self.lower_expr(index)),
+                            value: Box::new(self.lower_expr(value)),
+                        },
+                    }
+                }
                 target => SirExpr::Assign {
                     target: match target {
                         Expr::Identifier(name) => name.clone(),
@@ -2210,19 +2281,24 @@ impl Lowerer {
                         };
                     }
                 }
-                // A float array reads through its own runtime function and reports
-                // `float`; everything else stays an `int` element, so `print(arr[i])`
-                // keeps working.
-                if self.is_float_array(obj) {
+                // An array of `double` or of `String` reads through its own runtime
+                // function and reports its own element type; everything else stays an
+                // `int` element, so `print(arr[i])` keeps working.
+                let (callee, element) = match self.array_kind(obj) {
+                    ArrayKind::Int => (None, "int"),
+                    ArrayKind::Float => (Some("nova_array_float_get"), "float"),
+                    ArrayKind::String => (Some("nova_array_string_get"), "String"),
+                };
+                if let Some(callee) = callee {
                     return SirExpr::Typed {
                         expr: Box::new(SirExpr::Call {
-                            callee: "nova_array_float_get".to_string(),
+                            callee: callee.to_string(),
                             args: vec![
                                 self.lower_array_value(obj),
                                 self.lower_expr(index),
                             ],
                         }),
-                        typ: "float".to_string(),
+                        typ: element.to_string(),
                     };
                 }
                 let access = SirExpr::Index {
@@ -3921,6 +3997,81 @@ mod tests {
             "a bare generic keeps the reference it was given — `id<T>(x: T) -> T` \
              has to return what it was handed, and stripping the `&mut` here would \
              change what that function accepts"
+        );
+    }
+
+    /// An array literal reports its element type, and a `[String]` one uses the string
+    /// runtime for both the read and the write.
+    ///
+    /// The write is the half that was missing entirely: `arr[i] = value` went straight to
+    /// `SirExpr::IndexAssign`, which the backend renders as `nova_array_set` — a function
+    /// that takes and stores an `int`.
+    #[test]
+    fn a_string_array_uses_the_string_runtime() {
+        let program = lower(
+            "fn main() {\n\
+                 let mut names: [String] = [\"a\", \"b\"];\n\
+                 let first = names[0];\n\
+                 names[1] = \"c\";\n\
+             }\n",
+        );
+        let main = program
+            .functions
+            .iter()
+            .find(|f| f.name == "main")
+            .expect("main should be lowered");
+        let body = format!("{:?}", main.body);
+        assert!(
+            body.contains("nova_array_string_get"),
+            "reading a `[String]` element must use its own getter: {body}"
+        );
+        assert!(
+            body.contains("nova_array_string_set"),
+            "writing a `[String]` element must use its own setter: {body}"
+        );
+        assert!(
+            !body.contains("\"nova_array_set\""),
+            "the `int` setter must not be used for a `[String]` array: {body}"
+        );
+        assert!(
+            body.contains("String"),
+            "the element type must survive to the SIR: {body}"
+        );
+    }
+
+    /// The type of an array literal comes from its items.
+    ///
+    /// A bare `Array` is what made `print(names[0])` instantiate `print_int` and hand it
+    /// a `char *`. Empty and mixed literals keep the bare spelling on purpose: there is
+    /// nothing in them to read an element type from, and `array_kind` treats a bare
+    /// `Array` as `int`, which is the header `NovaArray` provides.
+    #[test]
+    fn an_array_literal_reports_its_element_type() {
+        let program = lower(
+            "fn main() {\n\
+                 let strings = [\"a\", \"b\"];\n\
+                 let floats = [1.5, 2.5];\n\
+                 let ints = [1, 2];\n\
+                 let empty: [String] = [];\n\
+             }\n",
+        );
+        let main = program
+            .functions
+            .iter()
+            .find(|f| f.name == "main")
+            .expect("main should be lowered");
+        let declared: Vec<String> = main
+            .body
+            .iter()
+            .filter_map(|statement| match statement {
+                SirStatement::Let { typ, .. } => typ.clone(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            declared,
+            vec!["[string]", "[float]", "[int]", "[String]"],
+            "a literal should report the element type of its items"
         );
     }
 }
