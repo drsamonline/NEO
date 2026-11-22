@@ -1,4 +1,4 @@
-65.91
+66.32
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -28,3 +28,9 @@
 # because the new match arms are exercised by programs the end-to-end tests compile and
 # run as subprocesses, which llvm-cov cannot see — the same blind spot that lowered the
 # floor for navigation and for the Option work.
+# 66.32% (8,792 of 13,257) when `[float]` arrays landed. It rose because the fix is
+# exercised by unit tests that run in-process: binding a generic inside an array type
+# fixed eight stdlib functions at once, and the pattern matcher has a test that walks
+# every shape it accepts. The end-to-end tests for the same work still contribute
+# nothing to this number — they drive the compiler as a subprocess, the blind spot that
+# lowered the floor for navigation and for the Option work.
