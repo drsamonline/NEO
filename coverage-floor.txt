@@ -1,4 +1,4 @@
-67.04
+68.02
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -50,3 +50,7 @@
 # changes because the fix is in the hot path: every conditional expression in the language
 # now goes through the two arms this added, and the end-to-end test that covers them runs
 # the compiler as a subprocess — so the unit test is what actually moved this number.
+# 68.02% (9,260 of 13,613) when arrays of arrays landed. The largest single rise of this
+# series, and the least deserved: `NovaArray_array` and `lower_loop_body` are covered by
+# five tests, but the reason the number moved is that `stdlib/text` now compiles and its
+# 249 lines of NOVA run through the end-to-end suite instead of being skipped.
