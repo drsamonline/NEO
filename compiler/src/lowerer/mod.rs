@@ -571,6 +571,14 @@ impl Lowerer {
 
     /// Bind a generic declaration's parameters to the types of a call's
     /// arguments. `None` when the callee is not generic.
+    ///
+    /// The parameter's type is a *pattern*, not a name. `fn array_len<T>(arr: [T])`
+    /// declares `[T]`, and the type argument is whatever fills the hole when that
+    /// pattern meets `[float]`. Matching only `param.typ.name` against the generic
+    /// list never saw `T` here — the name is `[T]` — so every instantiation fell
+    /// through to the `int` default and `stdlib/math` emitted `array_len_int` called
+    /// with a `NovaArray_float`. That is the same defect as the six before it: a
+    /// type string that loses its arguments between two places that both need it.
     fn generic_bindings(
         &self,
         name: &str,
@@ -579,15 +587,15 @@ impl Lowerer {
         let declaration = self.generic_decls.get(name)?.clone();
         let mut bindings = HashMap::new();
         for (param, arg) in declaration.params.iter().zip(args.iter()) {
-            if declaration
-                .generics
-                .iter()
-                .any(|generic| generic == &param.typ.name)
-            {
-                if let Some(found) = self.expr_type(arg) {
-                    bindings.entry(param.typ.name.clone()).or_insert(found);
-                }
-            }
+            let Some(found) = self.expr_type(arg) else {
+                continue;
+            };
+            bind_type_pattern(
+                &type_display(&param.typ),
+                &found,
+                &declaration.generics,
+                &mut bindings,
+            );
         }
         Some((declaration, bindings))
     }
@@ -3185,6 +3193,80 @@ fn option_payload_type(typ: &str) -> Option<String> {
     Some(inner.trim().to_string())
 }
 
+/// Match a parameter's type *pattern* against a concrete argument type, binding
+/// every generic parameter the pattern mentions.
+///
+/// `[T]` against `[float]` binds `T` to `float`; `&mut [T]` against
+/// `&mut [float]` does the same, because a reference is not part of the element
+/// type; a bare `T` binds to the whole argument type. A pattern that mentions no
+/// generic parameter binds nothing, so non-generic parameters are unaffected.
+///
+/// This exists because the array spelling `[T]` carries its element type inside
+/// the *name* rather than in `generics`, so the two shapes have to be matched
+/// structurally instead of compared as strings.
+fn bind_type_pattern(
+    pattern: &str,
+    concrete: &str,
+    generics: &[String],
+    bindings: &mut HashMap<String, String>,
+) {
+    let pattern = pattern.trim();
+    let concrete = concrete.trim();
+
+    // A bare generic takes the argument's type exactly as it is, reference
+    // included: `fn id<T>(x: T) -> T` must keep returning what it was given.
+    if generics.iter().any(|generic| generic == pattern) {
+        bindings
+            .entry(pattern.to_string())
+            .or_insert_with(|| concrete.to_string());
+        return;
+    }
+
+    // Everything below matches *structure*, and there a reference is not part of
+    // the element type: `&mut [T]` and `&mut [float]` differ in the same place
+    // `[T]` and `[float]` do.
+    let pattern = strip_reference(pattern);
+    let concrete = strip_reference(concrete);
+
+    // `[T]` — the element type lives in the name, so unwrap both sides.
+    if let Some(inner) = pattern
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    {
+        let element = concrete
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+            .unwrap_or(concrete);
+        bind_type_pattern(inner, element, generics, bindings);
+        return;
+    }
+
+    // `Array<T>` against `[float]` or `Array<float>`: one spelling on each side.
+    if let Some(inner) = generic_arguments(pattern) {
+        let against = generic_arguments(concrete).or_else(|| {
+            concrete
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'))
+                .map(|element| vec![element.trim().to_string()])
+        });
+        if let Some(against) = against {
+            for (pattern_arg, concrete_arg) in inner.iter().zip(against.iter()) {
+                bind_type_pattern(pattern_arg, concrete_arg, generics, bindings);
+            }
+        }
+    }
+}
+
+/// Drop a leading `&` or `&mut ` so the pattern and the argument agree on where
+/// the type starts.
+fn strip_reference(typ: &str) -> &str {
+    let typ = typ.trim();
+    typ.strip_prefix("&mut ")
+        .or_else(|| typ.strip_prefix('&'))
+        .unwrap_or(typ)
+        .trim()
+}
+
 /// Replace whole identifiers in a type name: `T` in `[T]`, but not inside
 /// `Total`.
 fn substitute_type_name(typ: &str, substitution: &HashMap<String, String>) -> String {
@@ -3693,5 +3775,122 @@ mod tests {
             ),
             other => panic!("unexpected statement: {other:?}"),
         }
+    }
+
+    /// A generic parameter that appears *inside* an array type is still a generic
+    /// parameter.
+    ///
+    /// `fn array_len<T>(arr: [T])` declares `[T]`, and `[T]` is stored in the type's
+    /// *name* with an empty `generics` list. The binding step compared the parameter's
+    /// name against the generic list, so `T` was never bound, every instantiation fell
+    /// back to `int`, and `stdlib/math` emitted `array_len_int` called with a
+    /// `NovaArray_float`. The compile gate passed; only an end-to-end test caught it.
+    /// This asserts the name, which is the thing that was wrong.
+    #[test]
+    fn a_generic_inside_an_array_type_is_bound() {
+        let program = lower(
+            "fn array_len<T>(arr: [T]) -> int { return 0; }\n\
+             fn sum_float(arr: [float]) -> int { return array_len(arr); }\n\
+             fn main() {\n\
+                 let mut a: [float] = [1.5, 2.5];\n\
+                 let n = array_len(a);\n\
+             }\n",
+        );
+        let names: Vec<&str> = program.functions.iter().map(|f| f.name.as_str()).collect();
+        assert!(
+            names.contains(&"array_len_float"),
+            "a `[float]` argument must instantiate `T` as `float`, not `int`: {names:?}"
+        );
+        assert!(
+            !names.contains(&"array_len_int"),
+            "nothing passes an `[int]` here, so `array_len_int` must not be emitted: {names:?}"
+        );
+
+        // The parameter is the whole point: an `array_len_float` whose parameter is
+        // still the `int`-backed `NovaArray` would fail in the C compiler instead.
+        let instantiation = program
+            .functions
+            .iter()
+            .find(|f| f.name == "array_len_float")
+            .expect("array_len_float");
+        assert_eq!(instantiation.params[0].typ, "[float]");
+    }
+
+    /// A reference does not change which type argument a call implies.
+    ///
+    /// `fn reverse<T>(arr: &mut [T])` is the same pattern behind a `&mut`. If the
+    /// reference were left in place the pattern would be `&mut [T]` against
+    /// `&mut [float]`, neither of which unwraps to an element type.
+    #[test]
+    fn a_generic_behind_a_mutable_reference_is_bound() {
+        let program = lower(
+            "fn reverse<T>(arr: &mut [T]) -> int { return 0; }\n\
+             fn main() {\n\
+                 let mut a: [float] = [1.5, 2.5];\n\
+                 let n = reverse(&mut a);\n\
+             }\n",
+        );
+        let names: Vec<&str> = program.functions.iter().map(|f| f.name.as_str()).collect();
+        assert!(
+            names.contains(&"reverse_float"),
+            "`&mut [float]` must instantiate `T` as `float`: {names:?}"
+        );
+    }
+
+    /// Every shape a generic parameter can appear in, matched directly.
+    ///
+    /// The end-to-end tests only reach the shapes `stdlib` happens to use. This covers
+    /// the rest — nested arrays, the `Array<T>` spelling, a pattern that names no
+    /// generic, and the rule that the first binding wins — so the branch that unwraps
+    /// one is not left as code nothing runs.
+    #[test]
+    fn a_type_pattern_binds_every_generic_it_mentions() {
+        let generics = vec!["T".to_string()];
+        let bind = |pattern: &str, concrete: &str| -> HashMap<String, String> {
+            let mut bindings = HashMap::new();
+            bind_type_pattern(pattern, concrete, &generics, &mut bindings);
+            bindings
+        };
+
+        assert_eq!(bind("T", "float").get("T"), Some(&"float".to_string()));
+        assert_eq!(bind("[T]", "[float]").get("T"), Some(&"float".to_string()));
+        assert_eq!(
+            bind("[[T]]", "[[float]]").get("T"),
+            Some(&"float".to_string()),
+            "a nested array unwraps to the element type, not to `[float]`"
+        );
+        assert_eq!(
+            bind("&mut [T]", "&mut [float]").get("T"),
+            Some(&"float".to_string())
+        );
+        assert_eq!(
+            bind("&[T]", "&[float]").get("T"),
+            Some(&"float".to_string()),
+            "the two sides need not agree on the reference to agree on the element"
+        );
+        assert_eq!(
+            bind("Array<T>", "[float]").get("T"),
+            Some(&"float".to_string()),
+            "`Array<T>` and `[T]` are one type under two spellings"
+        );
+        assert_eq!(
+            bind("Array<T>", "Array<float>").get("T"),
+            Some(&"float".to_string())
+        );
+        assert!(
+            bind("[int]", "[float]").is_empty(),
+            "a pattern naming no generic binds nothing"
+        );
+        assert!(
+            bind("T", "float").get("int").is_none(),
+            "only the declared generic is bound"
+        );
+        assert_eq!(
+            bind("T", "&mut Point").get("T"),
+            Some(&"&mut Point".to_string()),
+            "a bare generic keeps the reference it was given — `id<T>(x: T) -> T` \
+             has to return what it was handed, and stripping the `&mut` here would \
+             change what that function accepts"
+        );
     }
 }

@@ -191,37 +191,17 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).to_string()
 }
 
-/// Every `math` call that used to crash, now that the name collision is fixed.
-///
-/// Four of them crash, and the emitted C says why:
-///
-///     int round(double x)  { return (int)nova_math_round(x); }
-///     int floor(double x)  { return (int)nova_math_floor(x); }
-///     int ceil(double x)   { return (int)nova_math_ceil(x); }
-///     double powf(double base, double exp) { return nova_math_powf(base, exp); }
-///
-/// Those were **definitions of libm symbols**. `nova_math_floor` lives in the runtime
-/// translation unit and calls `floor`; at link time that resolved to the program's own
-/// `floor`, which called `nova_math_floor` again — unbounded recursion, so SIGSEGV.
-///
-/// The backend now emits a NOVA function whose name belongs to the C library as
-/// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
-/// of the defect and is now the guard against it returning.
 /// Does a `[float]` array survive being passed to `sum_float`?
 ///
-/// **No. This test is ignored because it demonstrates a real defect, and it is kept so
-/// the defect is runnable rather than remembered.** Run it with
-/// `cargo test --test end_to_end -- --ignored a_float_array_sum`.
+/// It did not: `sum_float([1.5, 2.5])` returned **3**, because `NovaArray` held `int`
+/// elements and `nova_array_get` returned `int`, so the literals were truncated to `1`
+/// and `2` before anything summed them. `stdlib/math` still compiled and passed every
+/// gate, and computed the wrong answer for `mean`, `variance`, `stddev` and `median`.
 ///
-/// `NovaArray` holds `int` elements and `nova_array_get` returns `int`, so a float array
-/// is a promise the runtime cannot keep: `sum_float([1.5, 2.5])` returns **3**, not 4 —
-/// the literals were truncated to `1` and `2` before anything summed them.
-///
-/// `stdlib/math` therefore compiles, passes every gate, and computes the wrong answer
-/// for `mean`, `variance`, `stddev` and `median`. It un-ignores when
-/// [ADR 0006](../../docs/adr/0006-array-element-types.md) is implemented.
+/// This test was ignored for that defect, deliberately kept runnable rather than
+/// remembered, and un-ignores with [ADR 0006](../../docs/adr/0006-array-element-types.md)
+/// implemented. It is now the guard against the truncation returning.
 #[test]
-#[ignore = "demonstrates that a [float] array is truncated to int — ADR 0006"]
 fn a_float_array_sum_is_not_truncated() {
     if !c_compiler_available() {
         eprintln!("skipping: no host C compiler available (set CC)");
@@ -246,6 +226,57 @@ fn main() -> int {
     );
 }
 
+/// The four functions that were built on the truncated sum, each asserted.
+///
+/// `sum_float` alone is not enough: `mean`, `variance`, `stddev` and `median` all read
+/// the array through `array_len` and `arr[i]`, so a fix that repaired only the sum would
+/// leave four functions computing quietly wrong answers — which is how the defect
+/// survived its first gate. These five numbers come from one array, `[1.5, 2.5]`.
+#[test]
+fn float_array_statistics_are_not_truncated() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "float_stats",
+        "\
+use math;
+
+fn main() -> int {
+    print(sum_float([1.5, 2.5]));
+    print(mean([1.5, 2.5]));
+    print(median([1.5, 2.5]));
+    print(variance([1.5, 2.5]));
+    print(stddev([1.5, 2.5]));
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "4\n2\n2\n0.25\n0.5",
+        "sum 4, mean 2, median 2, variance 0.25, stddev 0.5 — an `int` array gives \
+         3, 1, 1, 0.25, 0.5 here"
+    );
+}
+
+/// Every `math` call that used to crash, now that the name collision is fixed.
+///
+/// Four of them crash, and the emitted C says why:
+///
+///     int round(double x)  { return (int)nova_math_round(x); }
+///     int floor(double x)  { return (int)nova_math_floor(x); }
+///     int ceil(double x)   { return (int)nova_math_ceil(x); }
+///     double powf(double base, double exp) { return nova_math_powf(base, exp); }
+///
+/// Those were **definitions of libm symbols**. `nova_math_floor` lives in the runtime
+/// translation unit and calls `floor`; at link time that resolved to the program's own
+/// `floor`, which called `nova_math_floor` again — unbounded recursion, so SIGSEGV.
+///
+/// The backend now emits a NOVA function whose name belongs to the C library as
+/// `nova_fn_<name>`, so the collision is gone. This test existed as a characterisation
+/// of the defect and is now the guard against it returning.
 #[test]
 fn every_math_call_works() {
     if !c_compiler_available() {
