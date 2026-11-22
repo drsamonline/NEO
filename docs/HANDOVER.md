@@ -89,6 +89,7 @@ both needed it.
 | `mangle_type` | `[int]` and `int` produced the same instantiation name | — |
 | a loop body of one expression | dropped entirely — `while (c) { }` | — |
 | `==` on two `String`s | compared pointers, so it was always false | — |
+| a nested `if` statement | its branch's trailing expression lowered as an expression, so `if a { if b { x = 1 } }` emitted `if (a) { ; }` | — |
 
 **Three of those compiled cleanly and were wrong.** The loop body and the string
 comparison were found by running `split`, not by any gate. That is the standing lesson of
@@ -103,11 +104,13 @@ were done on 2026-11-18 show the pattern: one shim function, one lowerer arm, on
 type, and `tools/stdlib-check.py` proves the count moved. This is now the largest gap
 between the library and the language.
 
-**2. The standard library has no tests.** `stdlib/not-compiling.txt` is empty, which means
-all four modules compile — and that gate only asks whether `cc` accepts the emitted C.
-`text` compiled while `split` was an infinite loop and while `==` on two `String`s compared
-pointers. Five functions are asserted end to end; 244 are not. A per-module test file is
-worth more than any of the items below.
+**2. Most of the standard library is still untested.** `compiler/tests/stdlib.rs` now
+builds a program per module and asserts the values: 22 from `core`, 26 from `text`, 14 from
+`math`. That is about ninety of 249, and writing it found two live bugs on the first
+attempt — `split_whitespace` and `title_case` both returned nothing, because a nested `if`
+statement was emitting `;`. The remaining ~160 functions are read, not run. Extending that
+file is worth more than any of the items below, and it is the cheapest place to find the
+next defect of this kind.
 
 **3. 17 specification chapters.** They describe surface that does not exist — ownership,
 memory, concurrency, attributes, interfaces. Writing them would be inventing a
