@@ -1126,7 +1126,7 @@ impl Lowerer {
             // `nova_unsupported` arms reachable from `text` and `io`.
             "__builtin_crc32" => Some(typed("nova_crc32", lowered(self), "int")),
             // Paths. `list_dir` answers a `[String]`, the rest answer `String`.
-            "__builtin_file_created" => Some(typed("nova_file_created", lowered(self), "int")),
+            "__builtin_file_changed" => Some(typed("nova_file_changed", lowered(self), "int")),
             "__builtin_file_modified" => Some(typed("nova_file_modified", lowered(self), "int")),
             "__builtin_file_accessed" => Some(typed("nova_file_accessed", lowered(self), "int")),
             "__builtin_basename" => Some(typed("nova_path_basename", lowered(self), "string")),

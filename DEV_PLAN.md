@@ -296,10 +296,14 @@ never executed when this line was first written; it has now.
 
 **And looking for the first time found two things the repository was wrong about.**
 Two GitHub Releases already existed — `v0.6.0` and `v0.6.1`, published 2026-11-11 —
-and `README.md` said "Releases: None published yet". Both releases carry **no assets**,
-and both tags point at the **same commit** 73 behind `master`, so they are one snapshot
-published twice with nothing to download. The README and `COMPATIBILITY.md` now say
-that instead.
+and `README.md` said "Releases: None published yet". Both carried **no assets**, and both
+tags point at the **same commit** 73 behind `master`, so they were one snapshot published
+twice with nothing to download. The README and `COMPATIBILITY.md` say that instead.
+
+`v0.7.0` is the first release with something to download. `v0.6.0` and `v0.6.1` remain
+assetless, and are left as they are rather than retro-fitted: a tag is a historical
+record, and editing one to look better than it was is the same lie in the other
+direction.
 
 - ✅ `workflow_dispatch` runs it as a **dry run**: verify, build all three platforms,
   package, smoke-test the packaged compiler, print the checksums, stop. No draft, no
@@ -318,9 +322,18 @@ that instead.
 - ✅ The verify step's logic is checked locally: `v0.6.1` passes against
   `Cargo.toml`/`VERSION`, `v0.7.0` fails. That is the gate that stops the four-version
   defect from shipping.
-- ⬜ **The first real run.** It needs a tag, and a tag publishes a public release, so
-  it is the owner's call. Cutting one means promoting `[Unreleased]` to a version
-  first — the accumulated work is not in 0.6.1.
+- ✅ **The first real run happened on 2026-11-18**, when `v0.7.0` was tagged. The
+  release carries six assets — three platform archives and a `.sha256` for each:
+
+  | Archive | Checksum |
+  |---|---|
+  | `nova-v0.7.0-x86_64-linux.tar.gz` | `nova-v0.7.0-x86_64-linux.tar.gz.sha256` |
+  | `nova-v0.7.0-arm64-macos.tar.gz` | `nova-v0.7.0-arm64-macos.tar.gz.sha256` |
+  | `nova-v0.7.0-x86_64-windows.zip` | `nova-v0.7.0-x86_64-windows.zip.sha256` |
+
+  That is the criterion this section set — "a tag produces a published release with
+  three platform archives" — and it is met. `gh release view v0.7.0` is the evidence;
+  this line said ⬜ for five days after it was true.
 - ⬜ Adopt `dist` (formerly cargo-dist) once the pipeline is proven, if it earns its
   keep: it generates the archives, the checksums and a PR-time check of the release
   process, at the cost of a dependency on its own conventions.
@@ -337,6 +350,25 @@ the packaged compiler compiles hello world on each.
 - **Language spec**: write a chapter only when every claim in it can be checked
   against `grammar/grammar.ebnf` or a passing test.
 - **Docs generated from code** (old milestone 17).
+
+**Done when** — "ongoing, lowest priority" is not a criterion, and a stage with no exit
+condition is a stage that cannot be declared finished. These are checkable:
+
+| Clause | Checked by | State |
+|---|---|---|
+| Every stdlib function either runs or is listed with a reason | `tools/stdlib-check.py` | ✅ 237 of 249 run, 12 listed |
+| Every stdlib function that runs has a test asserting its value | `compiler/tests/stdlib.rs` | 🟡 about 110 of 249 |
+| A language chapter exists only where every claim in it is checkable | review against `grammar/grammar.ebnf` and a passing test | 🟡 8 of 25 written |
+| The debugger ships, or is dropped in writing | this file | ⬜ |
+
+Two of the seventeen stubs — `02_tokens.md` and `04_identifiers.md` — describe surface that
+already exists and is already tested. They can be written now. The other fifteen cannot,
+because writing them would be inventing a specification the compiler does not implement,
+which `docs/specs/constitution.md` forbids first.
+
+**This stage has no end date on purpose, but it does have an exit.** The four clauses above
+are it; when they are met, the long tail is closed and further work is a new stage, not a
+permanent "ongoing".
 
 ---
 

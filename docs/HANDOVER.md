@@ -28,12 +28,17 @@ is unverified it says so.
 
 ### The standard library
 
-| Module | Compiles | Functions | Usable |
-|---|---|---|---|
-| `core` | ✅ | 55 | 54 |
-| `io` | ✅ | 59 | 28 |
-| `math` | ✅ | 76 | 75 |
-| `text` | ✅ | 59 | 54 |
+| Module | Compiles | Functions | Usable | Blocked |
+|---|---|---|---|---|
+| `core` | ✅ | 55 | 54 | 1 |
+| `io` | ✅ | 59 | 49 | 10 |
+| `math` | ✅ | 76 | 75 | 1 |
+| `text` | ✅ | 59 | **59** | **0** |
+
+The counts come from `python3 tools/stdlib-check.py`, which is the gate. This table used to
+disagree with it — it said `io` 28 and `text` 54 for three releases' worth of work after both
+had moved. The gate checks `stdlib/README.md` and not this file, which is why; copy the
+numbers from the gate, never from memory.
 
 ## The wrong answer is gone
 
