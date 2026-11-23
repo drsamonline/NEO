@@ -38,7 +38,7 @@ the code and a CI run, and the run is named where it matters.
 | JS / Rust / WASM backends | ⚠️ exercised subset; C is the reference | `tests/parity/` in CI |
 | Runtime crate | ✅ compiles and tests; **not linked to generated C** | 33 runtime tests |
 | Standard library | ⚠️ 4 modules, **211 of 249 functions usable** — the other 38 call a builtin the compiler does not implement; `core`, `io` and `math` compile, and **`math`'s float-array functions return wrong answers** (ADR 0006) | `stdlib/README.md`, `tools/stdlib-check.py` |
-| Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry mocked; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
+| Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry **refuses** rather than mocking; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ REPL/breakpoints real; stack frames, `list`, `print` and DWARF **refuse** | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
