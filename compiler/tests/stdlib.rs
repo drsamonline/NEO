@@ -17,8 +17,9 @@
 //! unimplemented builtin is testing the trap.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn compiler() -> &'static str {
     env!("CARGO_BIN_EXE_nova-compiler")
@@ -83,6 +84,55 @@ fn build_and_run(dir: &Path, name: &str, source: &str) -> String {
     );
 
     let run = Command::new(&binary).output().expect("run built binary");
+    assert!(
+        run.status.success(),
+        "program exited with {}:\nstderr: {}",
+        run.status,
+        String::from_utf8_lossy(&run.stderr)
+    );
+    String::from_utf8_lossy(&run.stdout).to_string()
+}
+
+/// Build a program and feed it `input` on stdin, returning what it printed.
+///
+/// `readline` and `readchar` are the only stdlib functions that consume input, and a test
+/// for them needs a program that receives some. `Command::output()` leaves stdin empty, so
+/// the child would see end-of-file immediately and the test would assert the wrong thing.
+fn run_with_stdin(name: &str, input: &str, source: &str) -> String {
+    let dir = scratch(name);
+    let file = dir.join(format!("{name}_program.nova"));
+    let binary = dir.join(name);
+    fs::write(&file, source).expect("write source");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&file)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let mut child = Command::new(&binary)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn built binary");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin pipe")
+        .write_all(input.as_bytes())
+        .expect("write to stdin");
+    let run = child.wait_with_output().expect("wait for built binary");
     assert!(
         run.status.success(),
         "program exited with {}:\nstderr: {}",
@@ -1530,4 +1580,64 @@ fn main() -> int {
         "pq",               // adjacent placeholders
     ];
     assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}
+
+/// `io.readline` and `io.readchar`, fed from a stdin fixture.
+///
+/// Both were blocked until `__builtin_readline` and `__builtin_readchar` existed — like
+/// `write` and `format`, the last three "hard to test" functions in `io` were not hard to
+/// test, they were unimplemented.
+///
+/// `readline` returns a line without its terminator, and the empty string at end of input.
+/// `readchar` consumes exactly one byte, so a `readline` after it returns the rest of that
+/// line — which is what the third assertion checks.
+#[test]
+fn io_reads_lines_and_characters_from_stdin() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdin(
+        "io_readers",
+        "hello\nworld\nXrest\n",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    print(readline());
+    print(readline());
+    let c = readchar();
+    print(c);
+    print(readline());
+    return 0;
+}
+"#,
+    );
+    assert_eq!(
+        stdout.trim_end(),
+        "hello\nworld\nX\nrest",
+        "two lines, one character, then the rest of that line"
+    );
+
+    // End of input is the empty string, not a trap.
+    let at_eof = run_with_stdin(
+        "io_readers_eof",
+        "only\n",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    print(readline());
+    print(strlen(readline()) == 0);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(
+        at_eof.trim_end(),
+        "only\ntrue",
+        "a read past the end of input is empty, not a crash"
+    );
 }

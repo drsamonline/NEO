@@ -210,6 +210,11 @@ void nova_write(const char *text);
  * argument left is left as it is written — the alternative is silently dropping text,
  * which is the failure this whole file keeps finding. */
 char *nova_format(const char *template, NovaArray_string args);
+/* The two functions that consume input. `nova_readline` returns a line without its
+ * terminator, or the empty string at end of input; `nova_readchar` returns `'\0'` there
+ * rather than a sentinel, because a `char` has no room for one. */
+char *nova_readline(void);
+char nova_readchar(void);
 double nova_gamma(double value);
 long long nova_file_changed(const char *path);
 long long nova_file_modified(const char *path);
@@ -862,6 +867,35 @@ char *nova_sha256(const char *text) {
         }
     }
     return nova_hex(digest, 32);
+}
+
+char *nova_readline(void) {
+    size_t capacity = 128;
+    size_t length = 0;
+    char *buffer = (char *)malloc(capacity);
+    if (buffer == NULL) nova_fail("out of memory");
+    int ch;
+    while ((ch = fgetc(stdin)) != EOF && ch != '\n') {
+        if (length + 2 > capacity) {
+            capacity *= 2;
+            char *grown = (char *)realloc(buffer, capacity);
+            if (grown == NULL) {
+                free(buffer);
+                nova_fail("out of memory");
+            }
+            buffer = grown;
+        }
+        buffer[length++] = (char)ch;
+    }
+    /* A CRLF line ends with a carriage return the caller did not ask for. */
+    if (length > 0 && buffer[length - 1] == '\r') length--;
+    buffer[length] = '\0';
+    return buffer;
+}
+
+char nova_readchar(void) {
+    int ch = fgetc(stdin);
+    return ch == EOF ? '\0' : (char)ch;
 }
 
 char *nova_format(const char *template, NovaArray_string args) {
