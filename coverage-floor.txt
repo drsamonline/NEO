@@ -1,4 +1,4 @@
-68.66
+68.68
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -74,3 +74,6 @@
 # that llvm-cov does not see, so this rise is all from the compiler changes.
 # 68.66% (9,411 of 13,706) when the file builtins landed. The runtime shims are C, which
 # llvm-cov does not instrument; the rise is the lowerer arms and the match-chain hoist.
+# 68.68% (9,420 of 13,716) when `int` became 64-bit and the digest builtins landed. The
+# runtime is C, which llvm-cov does not instrument, so the rise is the lowerer arms and the
+# array ABI change.
