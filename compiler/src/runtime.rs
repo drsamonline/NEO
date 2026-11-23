@@ -206,6 +206,10 @@ char *nova_sha256(const char *text);
 /* Write a string to stdout without a newline. `io.write` is the only caller, and
  * `io.writeln` and the whole logging family go through it. */
 void nova_write(const char *text);
+/* Replace each `{}` in `template` with the next string in `args`. A placeholder with no
+ * argument left is left as it is written — the alternative is silently dropping text,
+ * which is the failure this whole file keeps finding. */
+char *nova_format(const char *template, NovaArray_string args);
 double nova_gamma(double value);
 long long nova_file_changed(const char *path);
 long long nova_file_modified(const char *path);
@@ -858,6 +862,50 @@ char *nova_sha256(const char *text) {
         }
     }
     return nova_hex(digest, 32);
+}
+
+char *nova_format(const char *template, NovaArray_string args) {
+    const char *source = template != NULL ? template : "";
+    size_t capacity = strlen(source) + 64;
+    size_t length = 0;
+    char *out = (char *)malloc(capacity);
+    if (out == NULL) nova_fail("out of memory");
+    long long next = 0;
+
+    for (size_t i = 0; source[i] != '\0'; i++) {
+        const char *piece = NULL;
+        if (source[i] == '{' && source[i + 1] == '}' && next < args.len) {
+            piece = args.data[next++];
+            i++;
+        }
+        if (piece != NULL) {
+            size_t need = strlen(piece);
+            while (length + need + 1 > capacity) {
+                capacity *= 2;
+                char *grown = (char *)realloc(out, capacity);
+                if (grown == NULL) {
+                    free(out);
+                    nova_fail("out of memory");
+                }
+                out = grown;
+            }
+            memcpy(out + length, piece, need);
+            length += need;
+        } else {
+            if (length + 2 > capacity) {
+                capacity *= 2;
+                char *grown = (char *)realloc(out, capacity);
+                if (grown == NULL) {
+                    free(out);
+                    nova_fail("out of memory");
+                }
+                out = grown;
+            }
+            out[length++] = source[i];
+        }
+    }
+    out[length] = '\0';
+    return out;
 }
 
 void nova_write(const char *text) {

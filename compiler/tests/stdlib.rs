@@ -1490,3 +1490,44 @@ fn main() -> int {
     assert!(stdout.contains('\u{1b}'), "the colour helpers must emit an escape sequence");
     assert!(stdout.contains("true\ntrue"), "a terminal with no tty must still report a size");
 }
+
+/// `io.format` substitutes `{}` in order, and leaves a placeholder it cannot fill.
+///
+/// Leaving `{}` rather than dropping it is deliberate: a formatter that silently deletes
+/// text is the failure this file keeps finding. The empty array has to be declared —
+/// `format("x", [])` types the literal as `[int]` and does not compile — which is the
+/// untyped-empty-literal limitation, not a defect in `format`.
+#[test]
+fn io_format_substitutes_and_leaves_the_rest() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_format",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let none: [String] = [];
+    print(format("{} and {}", ["a", "b"]));
+    print(format("no placeholders", none));
+    print(format("{}", none));
+    print(format("{}-{}-{}", ["x", "y"]));
+    print(format("", none));
+    print(format("{}{}", ["p", "q"]));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "a and b",          // two placeholders, two arguments
+        "no placeholders",  // a template with none is copied through
+        "{}",               // an argument that is missing is left as written
+        "x-y-{}",           // the third is missing, the first two are not
+        "",                 // an empty template is an empty string
+        "pq",               // adjacent placeholders
+    ];
+    assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}
