@@ -1,8 +1,8 @@
 {
   "version": "0.7.0",
   "loc": {
-    "compiler_src": 14105,
-    "workspace": 32179
+    "compiler_src": 14101,
+    "workspace": 32175
   },
   "adrs": 15,
   "gates": [
@@ -12,6 +12,7 @@
     "example",
     "extension",
     "grammar",
+    "module",
     "stdlib",
     "type-name"
   ],
