@@ -237,6 +237,14 @@ check the runtime shim.
 **Note:** `workflow_dispatch` through the API needs a token with `actions:write`; `gh`
 gets a 403. Either use the Actions tab, or rely on the push-triggered workflows.
 
+## A check you cannot trust
+
+- **"Emitted WASM validates" is flaky.** On commit `cb51f71` the same job passed in the
+  `pull_request` run and failed in the `push` run — identical code, two results, 32 seconds
+  apart. It gates a backend no other check touches, so its red currently means nothing and its
+  green means very little. Rule 6 of the constitution says a flaky check is worse than no
+  check: this one should be made deterministic or removed until it is.
+
 ## Things that will cost you a cycle if you do not know them
 
 - **`/tmp` is 64 MB in the sandbox** and fills with clones. Work in `/scratch/work`.
