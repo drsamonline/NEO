@@ -91,21 +91,31 @@ impl Registry {
     }
 
     /// Search for packages
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, RegistryError> {
-        // For now, return mock results since we don't have a real registry
-        Ok(mock_search(query, limit))
+    pub fn search(&self, _query: &str, _limit: usize) -> Result<Vec<SearchResult>, RegistryError> {
+        // Refused rather than invented. This returned three fabricated packages —
+        // `nova-utils 1.2.0`, "15420 downloads", score 0.95 — as a successful search. A user
+        // looking for a package to depend on was shown a catalogue that does not exist.
+        Err(RegistryError::RegistryError(format!(
+            "the NOVA registry is not implemented: search cannot answer (see DEV_PLAN.md)"
+        )))
     }
     
     /// Get latest version of a package
-    pub fn get_latest_version(&self, name: &str) -> Result<String, RegistryError> {
-        // For now, return mock data
-        Ok(mock_get_latest_version(name))
+    pub fn get_latest_version(&self, _name: &str) -> Result<String, RegistryError> {
+        // Refused. This answered a version from a hard-coded table, so `outdated` and
+        // `update` reported real-looking results about packages nobody published.
+        Err(RegistryError::RegistryError(format!(
+            "the NOVA registry is not implemented: get_latest_version cannot answer (see DEV_PLAN.md)"
+        )))
     }
     
     /// Get package info for a specific version
-    pub fn get_package_version(&self, name: &str, version: &str) -> Result<PackageInfo, RegistryError> {
-        // For now, return mock data
-        Ok(mock_get_package(name, version))
+    pub fn get_package_version(&self, _name: &str, _version: &str) -> Result<PackageInfo, RegistryError> {
+        // Refused. This built a `PackageInfo` from the arguments it was given plus "1.0.0",
+        // so it always succeeded and always lied.
+        Err(RegistryError::RegistryError(format!(
+            "the NOVA registry is not implemented: get_package_version cannot answer (see DEV_PLAN.md)"
+        )))
     }
     
     /// Get latest package info
@@ -126,9 +136,14 @@ impl Registry {
         if manifest.package.version.is_empty() {
             return Err(RegistryError::PublishFailed("Package version is required".to_string()));
         }
-        
-        // Mock success
-        Ok(())
+
+        // Refused, and this is the one that mattered most: it returned `Ok(())` without
+        // uploading anything, and `commands.rs` then printed "✓ Published X v1.0.0 to <url>".
+        // A user was told their package was published when nothing had left the machine.
+        // A false success is worse than a refusal, because it is acted on.
+        Err(RegistryError::RegistryError(format!(
+            "the NOVA registry is not implemented: publish cannot upload (see DEV_PLAN.md)"
+        )))
     }
     
     /// Download a package.
@@ -156,82 +171,8 @@ impl Registry {
 
 // Mock implementations for development/testing
 
-fn mock_search(query: &str, limit: usize) -> Vec<SearchResult> {
-    let mock_packages = vec![
-        SearchResult {
-            name: "nova-utils".to_string(),
-            version: "1.2.0".to_string(),
-            description: "Common utilities for NOVA development".to_string(),
-            authors: vec!["NOVA Team".to_string()],
-            downloads: 15420,
-            score: 0.95,
-        },
-        SearchResult {
-            name: "nova-json".to_string(),
-            version: "0.8.3".to_string(),
-            description: "JSON parsing and serialization for NOVA".to_string(),
-            authors: vec!["NOVA Team".to_string()],
-            downloads: 8932,
-            score: 0.87,
-        },
-        SearchResult {
-            name: "nova-http".to_string(),
-            version: "2.1.0".to_string(),
-            description: "HTTP client and server library".to_string(),
-            authors: vec!["NOVA Team".to_string()],
-            downloads: 5621,
-            score: 0.82,
-        },
-        SearchResult {
-            name: "nova-crypto".to_string(),
-            version: "0.5.1".to_string(),
-            description: "Cryptographic primitives for NOVA".to_string(),
-            authors: vec!["Security Team".to_string()],
-            downloads: 3245,
-            score: 0.75,
-        },
-    ];
-    
-    let query_lower = query.to_lowercase();
-    let mut results: Vec<_> = mock_packages
-        .into_iter()
-        .filter(|p| {
-            p.name.to_lowercase().contains(&query_lower) ||
-            p.description.to_lowercase().contains(&query_lower)
-        })
-        .collect();
-    
-    results.truncate(limit);
-    results
-}
 
-fn mock_get_latest_version(name: &str) -> String {
-    match name {
-        "nova-utils" => "1.2.0".to_string(),
-        "nova-json" => "0.8.3".to_string(),
-        "nova-http" => "2.1.0".to_string(),
-        "nova-crypto" => "0.5.1".to_string(),
-        _ => "1.0.0".to_string(),
-    }
-}
 
-fn mock_get_package(name: &str, version: &str) -> PackageInfo {
-    PackageInfo {
-        name: name.to_string(),
-        version: version.to_string(),
-        description: format!("Mock package {}", name),
-        authors: vec!["NOVA Team".to_string()],
-        license: Some("MIT".to_string()),
-        homepage: Some(format!("https://github.com/nova-lang/{}", name)),
-        repository: Some(format!("https://github.com/nova-lang/{}", name)),
-        keywords: vec!["nova".to_string(), "package".to_string()],
-        categories: vec!["Development".to_string()],
-        dependencies: HashMap::new(),
-        created_at: "2024-01-01T00:00:00Z".to_string(),
-        updated_at: "2024-01-15T00:00:00Z".to_string(),
-        downloads: 1000,
-    }
-}
 
 /// Convenience function to search without creating a client
 pub fn search(query: &str, limit: usize) -> Result<Vec<SearchResult>, RegistryError> {
@@ -268,14 +209,24 @@ mod tests {
     }
     
     #[test]
-    fn test_mock_search() {
-        let results = mock_search("nova", 10);
-        assert!(!results.is_empty());
-    }
-    
-    #[test]
-    fn test_mock_get_version() {
-        let version = mock_get_latest_version("nova-utils");
-        assert_eq!(version, "1.2.0");
+    fn test_the_registry_refuses_instead_of_inventing() {
+        let registry = Registry::new(DEFAULT_REGISTRY).unwrap();
+
+        // Each of these used to answer fabricated data as `Ok`. They assert the refusal now:
+        // a mock that returns a value becomes a contract the moment a caller trusts it, and
+        // `publish` returning `Ok(())` made the CLI print "✓ Published".
+        for message in [
+            registry.search("nova", 10).unwrap_err().to_string(),
+            registry.get_latest_version("nova-utils").unwrap_err().to_string(),
+            registry
+                .get_package_version("nova-utils", "1.2.0")
+                .unwrap_err()
+                .to_string(),
+        ] {
+            assert!(
+                message.contains("not implemented"),
+                "the refusal must say what is missing: {message}"
+            );
+        }
     }
 }
