@@ -1366,3 +1366,127 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// `io`'s file operations that the fixture makes reachable: write, seek, read back.
+///
+/// `fread_bytes` is asserted by the byte it returns rather than by the array it builds —
+/// `"hello"` starts with `h`, which is 104.
+#[test]
+fn io_reads_and_writes_through_a_file_handle() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_fixture(
+        "io_handles",
+        &[],
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let root = "__FIXTURE__";
+    match fopen(join_path(root, "w.txt"), "w") {
+        Some(mut f) => {
+            print(fwrite(&mut f, "hello"));
+            print(fflush(&mut f));
+            print(fclose(&mut f));
+        },
+        None => print("no open"),
+    }
+    match fopen(join_path(root, "w.txt"), "r") {
+        Some(mut f) => {
+            print(fread_all(&mut f));
+            print(feof(&mut f));
+            print(fseek(&mut f, 0));
+            let bytes = fread_bytes(&mut f, 2);
+            print(array_len(bytes));
+            print(bytes[0]);
+            print(fclose(&mut f));
+        },
+        None => print("no open"),
+    }
+    match fopen(join_path(root, "bin.dat"), "w") {
+        Some(mut f) => {
+            print(fwrite_bytes(&mut f, [65, 66, 67]));
+            print(fclose(&mut f));
+        },
+        None => print("no open"),
+    }
+    print(file_size(join_path(root, "bin.dat")));
+    print(resolve_path("/tmp"));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "true",   // fwrite succeeded
+        "true",   // fflush succeeded
+        "true",   // fclose succeeded
+        "hello",  // fread_all returns the whole file
+        "true",   // feof is set after reading to the end
+        "true",   // fseek rewinds
+        "2",      // two bytes requested and returned
+        "104",    // 'h'
+        "true",   // fclose
+        "true",   // fwrite_bytes answers whether the whole array went out, not a count
+        "true",   // fclose
+        "3",      // and the file is three bytes
+        "/tmp",   // an absolute path resolves to itself
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `io`'s terminal and logging functions.
+///
+/// These cannot be asserted as whole strings: `info`, `warn`, `error` and `debug` prefix
+/// every line with a **timestamp**, so the output differs between runs. The test asserts the
+/// parts that do not change — the level tag and the message — against the captured stdout.
+///
+/// All of them were blocked until `__builtin_write` existed; `io.writeln` and the whole
+/// logging family go through `io.write`.
+#[test]
+fn io_writes_to_the_terminal() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_terminal",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    writeln("plain");
+    info("an info");
+    warn("a warning");
+    error("an error");
+    debug("a debug");
+    print_color("in red", "red");
+    print_colored("in both", "green", "blue");
+    progress_bar(1, 4, 8);
+    spinner(0);
+    clear_screen();
+    set_cursor(1, 1);
+    print(terminal_width() > 0);
+    print(terminal_height() > 0);
+    return 0;
+}
+"#,
+    );
+    assert!(stdout.starts_with("plain\n"), "writeln must print the text and a newline");
+    for (tag, message) in [
+        ("[INFO]", "an info"),
+        ("[WARN]", "a warning"),
+        ("[ERROR]", "an error"),
+        ("[DEBUG]", "a debug"),
+    ] {
+        assert!(stdout.contains(tag), "the output must carry the level {tag}");
+        assert!(stdout.contains(message), "the output must carry the message {message}");
+    }
+    assert!(stdout.contains("in red"), "print_color must print its text");
+    assert!(stdout.contains("in both"), "print_colored must print its text");
+    assert!(stdout.contains('\u{1b}'), "the colour helpers must emit an escape sequence");
+    assert!(stdout.contains("true\ntrue"), "a terminal with no tty must still report a size");
+}

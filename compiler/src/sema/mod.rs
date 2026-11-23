@@ -952,6 +952,7 @@ pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
         | "__builtin_fmod" | "__builtin_remainder" | "__builtin_nan"
         | "__builtin_infinity" | "__builtin_parse_float" => Type::Float,
         "__builtin_gamma" => Type::Float,
+        "__builtin_write" => Type::Unit,
         "__builtin_is_nan" | "__builtin_is_infinite" | "__builtin_is_finite" => Type::Bool,
         "__builtin_parse_int" => Type::Int,
         // Files and the clock. Each answers through `stat` or the OS rather than
