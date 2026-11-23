@@ -151,12 +151,20 @@ shim, one arm, one type, and `tools/stdlib-check.py` proves the count moved.
 `crc32`, `base64_encode`/`decode`, `md5`, `sha256` and the four terminal calls are done too,
 which makes **`text` fully usable for the first time** — 59 of 59.
 
-What remains is `serialize`/`deserialize` and the path helpers (`list_dir`, `basename`,
-`extension`, `parent_dir`, `join_path`, `args`, `stat`) — 19 functions in all, down from 38.
+The path helpers are done too — `list_dir`, `basename`, `extension`, `parent_dir`,
+`join_path`, `resolve_path` — which takes `io` to 48 of 59 and the library to 236 of 249.
 
-`serialize`/`deserialize` are the only ones that need a decision before code: what the
-format is. That is an ADR first, not an implementation detail to settle while typing. The
-path helpers are mechanical and want a `struct dirent` walk for `list_dir`.
+What remains is 13 functions in three groups, and each needs something first:
+
+| Group | What it needs |
+|---|---|
+| `serialize`, `deserialize` | a decision: what the wire format is. An ADR before code. |
+| `args` | the emitted `main` is `int main(void)`, so there is no `argc`/`argv` to hand over. Changing it is a decision about every program's entry point. |
+| `stat` | returns `Option<FileMetadata>` — an `Option` of a *struct*, which the option machinery has only ever carried for scalar payloads. |
+
+`resolve_path` joins against `cwd` rather than calling `realpath`, which needs
+`_XOPEN_SOURCE` and a `PATH_MAX` buffer and fails on a path that does not exist — exactly
+when a caller wants the answer. It does not resolve symlinks, and says so.
 
 Wiring up the file group found **two defects that had nothing to do with files**, both of
 the shape this file keeps recording: `match` in *expression* position evaluated its

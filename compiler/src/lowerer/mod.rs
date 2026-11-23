@@ -1125,6 +1125,13 @@ impl Lowerer {
             // Checksums, encodings and the terminal. These were the last
             // `nova_unsupported` arms reachable from `text` and `io`.
             "__builtin_crc32" => Some(typed("nova_crc32", lowered(self), "int")),
+            // Paths. `list_dir` answers a `[String]`, the rest answer `String`.
+            "__builtin_basename" => Some(typed("nova_path_basename", lowered(self), "string")),
+            "__builtin_extension" => Some(typed("nova_path_extension", lowered(self), "string")),
+            "__builtin_parent_dir" => Some(typed("nova_path_parent", lowered(self), "string")),
+            "__builtin_join_path" => Some(typed("nova_path_join", lowered(self), "string")),
+            "__builtin_resolve_path" => Some(typed("nova_path_resolve", lowered(self), "string")),
+            "__builtin_list_dir" => Some(typed("nova_list_dir", lowered(self), "[String]")),
             "__builtin_md5" => Some(typed("nova_md5", lowered(self), "string")),
             "__builtin_sha256" => Some(typed("nova_sha256", lowered(self), "string")),
             "__builtin_base64_encode" => {

@@ -194,6 +194,12 @@ char *nova_sha256(const char *text);
 
 /* Terminal geometry and control. Width and height fall back to 80x24 when there is
  * no tty to ask, which is the case in CI and under a pipe. */
+char *nova_path_basename(const char *path);
+char *nova_path_extension(const char *path);
+char *nova_path_parent(const char *path);
+char *nova_path_join(const char *base, const char *path);
+char *nova_path_resolve(const char *path);
+NovaArray_string nova_list_dir(const char *path);
 long long nova_terminal_width(void);
 long long nova_terminal_height(void);
 void nova_clear_screen(void);
@@ -276,6 +282,8 @@ pub const SOURCE: &str = r#"/* nova_runtime.c - NOVA runtime shim (ABI v3).
  * `nova_terminal_width` falls back to 80x24 when the macro is absent, which is what
  * a Windows build or a redirected stdout gets. */
 #include <sys/ioctl.h>
+/* `opendir`/`readdir` for `list_dir`. */
+#include <dirent.h>
 #else
 #include <direct.h>
 #include <windows.h>
@@ -834,6 +842,121 @@ char *nova_sha256(const char *text) {
         }
     }
     return nova_hex(digest, 32);
+}
+
+/* Paths. Each answers a new string, so the caller owns nothing and leaks nothing
+ * that the rest of the runtime does not already leak. */
+char *nova_path_basename(const char *path) {
+    const char *source = path != NULL ? path : "";
+    size_t length = strlen(source);
+    /* Trailing separators are not part of the name: "/a/b/" is "b". */
+    while (length > 1 && source[length - 1] == '/') length--;
+    const char *slash = NULL;
+    for (size_t i = 0; i < length; i++) {
+        if (source[i] == '/') slash = source + i;
+    }
+    if (slash == NULL) {
+        char *out = (char *)malloc(length + 1);
+        if (out == NULL) nova_fail("out of memory");
+        memcpy(out, source, length);
+        out[length] = '\0';
+        return out;
+    }
+    size_t start = (size_t)(slash - source) + 1;
+    char *out = (char *)malloc(length - start + 1);
+    if (out == NULL) nova_fail("out of memory");
+    memcpy(out, source + start, length - start);
+    out[length - start] = '\0';
+    return out;
+}
+
+char *nova_path_extension(const char *path) {
+    char *name = nova_path_basename(path);
+    char *dot = strrchr(name, '.');
+    /* A leading dot is a hidden file, not an extension: ".bashrc" has none. */
+    if (dot == NULL || dot == name) {
+        free(name);
+        return nova_strdup("");
+    }
+    char *out = nova_strdup(dot + 1);
+    free(name);
+    return out;
+}
+
+char *nova_path_parent(const char *path) {
+    const char *source = path != NULL ? path : "";
+    size_t length = strlen(source);
+    while (length > 1 && source[length - 1] == '/') length--;
+    const char *slash = NULL;
+    for (size_t i = 0; i < length; i++) {
+        if (source[i] == '/') slash = source + i;
+    }
+    if (slash == NULL) return nova_strdup(".");
+    size_t end = (size_t)(slash - source);
+    if (end == 0) return nova_strdup("/");
+    char *out = (char *)malloc(end + 1);
+    if (out == NULL) nova_fail("out of memory");
+    memcpy(out, source, end);
+    out[end] = '\0';
+    return out;
+}
+
+char *nova_path_join(const char *base, const char *path) {
+    const char *left = base != NULL ? base : "";
+    const char *right = path != NULL ? path : "";
+    if (right[0] == '/') return nova_strdup(right);
+    size_t left_length = strlen(left);
+    int needs_slash = left_length > 0 && left[left_length - 1] != '/';
+    char *out = (char *)malloc(left_length + (needs_slash ? 1 : 0) + strlen(right) + 1);
+    if (out == NULL) nova_fail("out of memory");
+    memcpy(out, left, left_length);
+    size_t offset = left_length;
+    if (needs_slash) out[offset++] = '/';
+    memcpy(out + offset, right, strlen(right));
+    out[offset + strlen(right)] = '\0';
+    return out;
+}
+
+char *nova_path_resolve(const char *path) {
+    const char *source = path != NULL ? path : "";
+    if (source[0] == '/') return nova_strdup(source);
+    /* `realpath` would also resolve symlinks, but it needs `_XOPEN_SOURCE` and a
+     * `PATH_MAX` buffer, and it fails outright on a path that does not exist — which
+     * is exactly when a caller wants the answer. Joining against the working
+     * directory is honest about what it does and always succeeds. */
+    char *directory = nova_cwd();
+    char *resolved = nova_path_join(directory, source);
+    free(directory);
+    return resolved;
+}
+
+NovaArray_string nova_list_dir(const char *path) {
+    const char *source = path != NULL ? path : ".";
+    DIR *directory = opendir(source);
+    if (directory == NULL) return nova_array_string_from(NULL, 0);
+    char **names = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        /* "." and ".." are navigation, not contents. */
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        if (count == capacity) {
+            capacity = capacity == 0 ? 16 : capacity * 2;
+            char **grown = (char **)realloc(names, capacity * sizeof(char *));
+            if (grown == NULL) {
+                closedir(directory);
+                free(names);
+                nova_fail("out of memory");
+            }
+            names = grown;
+        }
+        names[count++] = nova_strdup(entry->d_name);
+    }
+    closedir(directory);
+    NovaArray_string array = nova_array_string_from(names, (long long)count);
+    free(names);
+    return array;
 }
 
 long long nova_terminal_width(void) {
