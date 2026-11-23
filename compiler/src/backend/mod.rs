@@ -487,6 +487,12 @@ impl CBackend {
     /// constant expression. The literal is emitted directly instead — it already has
     /// static storage, and duplicating it at start-up bought nothing.
     fn global_init_to_c(&self, init: &SirExpr) -> String {
+        // Unwrap the type annotation, as every sibling helper here does. A wrapped
+        // `nova_strdup` would fall through to `expr_to_c` and emit a call at file scope,
+        // which C does not allow in a static initialiser.
+        if let SirExpr::Typed { expr, .. } = init {
+            return self.global_init_to_c(expr);
+        }
         if let SirExpr::Call { callee, args } = init {
             if callee == "nova_strdup" {
                 if let Some(SirExpr::Literal(SirLiteral::String(text))) = args.first() {

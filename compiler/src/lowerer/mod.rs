@@ -718,7 +718,9 @@ impl Lowerer {
         let return_type = declaration
             .return_type
             .as_ref()
-            .map(|typ| substitute_type_name(&typ.name, &substitution));
+            // `type_display`, not `.name` — a generic returning `Option<T>` was reported
+            // as returning `Option`, which `c_type` maps to `int`.
+            .map(|typ| substitute_type_name(&type_display(typ), &substitution));
         Some((concrete_name, return_type))
     }
 
@@ -785,14 +787,13 @@ impl Lowerer {
                 // Inside the body `self` keeps the struct's type so field types
                 // resolve; in C it is a pointer to the receiver.
                 self.declare(&param.name, Some(type_name.to_string()));
-                let by_reference = param.typ.name.trim_start().starts_with('&');
+                // Always a pointer, whether or not the source wrote `&self`: the call
+                // site takes the receiver's address and the body reads `self->field`,
+                // so a by-value `self` produced `Holder_maybe(Holder self)` called with
+                // `&h` and dereferenced — three disagreements about one parameter.
                 params.push(SirParam {
                     name: param.name.clone(),
-                    typ: if by_reference {
-                        format!("{}*", type_name)
-                    } else {
-                        type_name.to_string()
-                    },
+                    typ: format!("{}*", type_name),
                 });
             } else {
                 self.declare(&param.name, Some(type_display(&param.typ)));
@@ -803,7 +804,9 @@ impl Lowerer {
             }
         }
 
-        let return_type = method.return_type.as_ref().map(|typ| typ.name.clone());
+        // `type_display`, not `.name`: a method returning `Option<int>` was declared to
+        // return `Option`, which `c_type` maps to `int`.
+        let return_type = method.return_type.as_ref().map(type_display);
         let previous = self.discard_result;
         self.discard_result = !Self::returns_value(&return_type);
         let body = match &method.body {
@@ -845,14 +848,10 @@ impl Lowerer {
             if is_self {
                 // Typing uses `Box<int>`; C uses the monomorphised `Box_int`.
                 self.declare(&param.name, Some(instance.self_type.clone()));
-                let by_reference = param.typ.name.trim_start().starts_with('&');
+                // Always a pointer — see the note in `lower_method`.
                 params.push(SirParam {
                     name: param.name.clone(),
-                    typ: if by_reference {
-                        format!("{}*", instance.concrete_type)
-                    } else {
-                        instance.concrete_type.clone()
-                    },
+                    typ: format!("{}*", instance.concrete_type),
                 });
             } else {
                 let typ = self.substitute(&type_display(&param.typ));
@@ -1298,7 +1297,8 @@ impl Lowerer {
                 let typ = const_def
                     .typ
                     .as_ref()
-                    .map(|typ| self.substitute(&typ.name))
+                    // `type_display`, not `.name`: `const x: Option<int>` declared an `int`.
+                    .map(|typ| self.substitute(&type_display(typ)))
                     .or_else(|| self.expr_type(&const_def.value));
                 self.declare(&const_def.name, typ.clone());
                 vec![SirStatement::Let {

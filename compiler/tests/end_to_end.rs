@@ -547,6 +547,58 @@ fn main() -> int {
     );
 }
 
+/// A method and a local `const` keep a generic return type.
+///
+/// Three places computed a type from `TypeExpr::name` instead of `type_display`, and
+/// `Option<int>`'s name is `Option`, which `c_type` maps to `int`. So a method returning
+/// `Option<int>` was declared to return an `int` while returning an `Option_int`, and a
+/// `const LIMIT: Option<int>` declared an `int`.
+///
+/// This also covers the receiver: `self` was emitted by value unless the source wrote `&`,
+/// while the call site passed an address and the body read `self->field` — three
+/// disagreements about one parameter, which is why a method returning an `Option` had
+/// never compiled.
+#[test]
+fn methods_and_consts_keep_their_generic_return_type() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "method_option",
+        "\
+struct Holder {
+    v: int
+}
+
+impl Holder {
+    fn maybe(self) -> Option<int> {
+        Some(self.v)
+    }
+}
+
+fn main() -> int {
+    let h = Holder { v: 5 };
+    match h.maybe() {
+        Some(x) => print(x),
+        None => print(0 - 1),
+    }
+    const LIMIT: Option<int> = Some(7);
+    match LIMIT {
+        Some(x) => print(x),
+        None => print(0 - 1),
+    }
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "5\n7",
+        "a method and a const must keep `Option<int>`, not collapse it to `int`"
+    );
+}
+
 /// A `[String]` array holds `char *`, not `int`.
 ///
 /// `NovaArray` holds `int` elements, so before `NovaArray_string` existed a `[String]`
