@@ -45,6 +45,7 @@ about a decision are about a reading of it that nobody chose.
 | [0009](0009-nested-arrays.md) | `[[int]]` is an array of `NovaArray` structs, copied by value so a write through a row reaches the matrix. Only `[int]` inner arrays are represented | accepted |
 | [0010](0010-file-handles.md) | An open file is an index into a fixed table, not a pointer | accepted |
 | [0011](0011-int-is-64-bit.md) | `int` is 64-bit in variables and arrays, not only in literals | accepted |
+| [0012](0012-entry-point-arguments.md) | The emitted entry point takes `argc`/`argv`, so `core.args()` can answer | accepted |
 
 ## Writing one
 

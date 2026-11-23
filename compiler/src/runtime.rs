@@ -214,6 +214,10 @@ char *nova_format(const char *template, NovaArray_string args);
  * terminator, or the empty string at end of input; `nova_readchar` returns `'\0'` there
  * rather than a sentinel, because a `char` has no room for one. */
 char *nova_readline(void);
+/* The command line. `nova_set_args` is called once at the top of `main`, before any
+ * statement can ask; `nova_args` answers everything after the program's own name. */
+void nova_set_args(int argc, char **argv);
+NovaArray_string nova_args(void);
 char nova_readchar(void);
 double nova_gamma(double value);
 long long nova_file_changed(const char *path);
@@ -867,6 +871,30 @@ char *nova_sha256(const char *text) {
         }
     }
     return nova_hex(digest, 32);
+}
+
+static int nova_argc = 0;
+static char **nova_argv = NULL;
+
+void nova_set_args(int argc, char **argv) {
+    nova_argc = argc;
+    nova_argv = argv;
+}
+
+NovaArray_string nova_args(void) {
+    /* `argv[0]` is the program's own path, which is not an argument the program was
+     * given. A program that wants it can be told its name another way; every caller that
+     * asks for "the arguments" means the ones after it. */
+    long long count = nova_argc > 1 ? (long long)nova_argc - 1 : 0;
+    char **items = NULL;
+    if (count > 0) {
+        items = (char **)malloc(sizeof(char *) * (size_t)count);
+        if (items == NULL) nova_fail("out of memory");
+        for (long long i = 0; i < count; i++) items[i] = nova_argv[i + 1];
+    }
+    NovaArray_string array = nova_array_string_from(items, count);
+    free(items);
+    return array;
 }
 
 char *nova_readline(void) {

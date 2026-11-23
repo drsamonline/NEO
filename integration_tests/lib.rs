@@ -73,7 +73,13 @@ fn hello_world_reaches_c_with_its_runtime_header() {
     let c = CBackend::new().generate(&sir);
 
     assert!(c.contains("#include \"nova_runtime.h\""), "no runtime header:\n{c}");
-    assert!(c.contains("int main(void)"), "no C entry point:\n{c}");
+    // The signature, not just the name: `main` takes `argc`/`argv` so `core.args()` has
+    // something to answer, and a test that only looked for `int main` would not notice if
+    // the arguments were dropped again.
+    assert!(
+        c.contains("int main(int argc, char **argv)"),
+        "no C entry point taking its arguments:\n{c}"
+    );
     assert!(c.contains("Hello, NOVA"), "the string literal was lost:\n{c}");
 }
 
@@ -94,7 +100,13 @@ fn main() -> int {
     let sir = lower(source).expect("arithmetic must pass the front end");
     let c = CBackend::new().generate(&sir);
 
-    assert!(c.contains("int main(void)"), "no C entry point:\n{c}");
+    // The signature, not just the name: `main` takes `argc`/`argv` so `core.args()` has
+    // something to answer, and a test that only looked for `int main` would not notice if
+    // the arguments were dropped again.
+    assert!(
+        c.contains("int main(int argc, char **argv)"),
+        "no C entry point taking its arguments:\n{c}"
+    );
     // The helper is a real function, not inlined and not dropped.
     assert!(c.matches("add").count() >= 2, "`add` was not emitted:\n{c}");
 }

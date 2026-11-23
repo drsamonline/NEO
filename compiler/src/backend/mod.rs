@@ -211,7 +211,10 @@ impl CBackend {
         if Self::is_entry(&func.name) {
             // C requires `int main`, whatever NOVA declared. The value the NOVA
             // program returns (if any) is returned from here.
-            let _ = writeln!(self.output, "int main(void) {{");
+            // `argc`/`argv` so `core.args()` has something to answer. The runtime
+            // stores them; every other function in the program reaches them through it.
+            let _ = writeln!(self.output, "int main(int argc, char **argv) {{");
+            let _ = writeln!(self.output, "    nova_set_args(argc, argv);");
             // Globals whose initialiser runs code are assigned here, before any
             // statement can read them, in declaration order.
             for init in std::mem::take(&mut self.deferred_global_inits) {

@@ -1863,3 +1863,66 @@ fn main() -> int {
         "the exit must carry the message it was given: {stdout}"
     );
 }
+
+/// `core.args` answers the command line the program was given, without its own path.
+///
+/// This needed the emitted entry point to become `int main(int argc, char **argv)` — see
+/// ADR 0012 — because a `main(void)` has no arguments to pass on. `argv[0]` is the program's
+/// path and is deliberately not included: a program asking for "the arguments" means the
+/// ones after it.
+#[test]
+fn core_args_answers_the_command_line() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let dir = scratch("core_args");
+    let file = dir.join("core_args_program.nova");
+    let binary = dir.join("core_args");
+    fs::write(
+        &file,
+        r#"
+use core;
+
+fn main() -> int {
+    let given = args();
+    print(array_len(given));
+    if array_len(given) > 0 { print(given[0]); }
+    if array_len(given) > 1 { print(given[1]); }
+    return 0;
+}
+"#,
+    )
+    .expect("write source");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&file)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    // No arguments: the array is empty, not one entry holding the program's path.
+    let none = Command::new(&binary).output().expect("run with no arguments");
+    assert_eq!(String::from_utf8_lossy(&none.stdout).trim(), "0");
+
+    // Two arguments: both arrive, in order, without the program's own name in front.
+    let two = Command::new(&binary)
+        .arg("alpha")
+        .arg("beta")
+        .output()
+        .expect("run with two arguments");
+    assert_eq!(
+        String::from_utf8_lossy(&two.stdout).trim(),
+        "2\nalpha\nbeta",
+        "arguments must arrive in order and exclude argv[0]"
+    );
+}
