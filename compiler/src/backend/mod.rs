@@ -735,9 +735,13 @@ impl CBackend {
                         let _ = writeln!(self.output, "{}}}", indent_str);
                     }
                     None => {
+                        // A comment is not a rejection. This used to emit an empty loop
+                        // body, so `for x in [10, 20, 30]` compiled, ran, and iterated
+                        // zero times — the exact failure the constitution's rule 3
+                        // names. Trapping names the construct and stops.
                         let _ = writeln!(
                             self.output,
-                            "{}// unsupported for-loop iterable: only ranges are implemented",
+                            "{}{{ nova_unsupported(\"for over this iterable\"); }}",
                             indent_str
                         );
                     }
@@ -762,6 +766,12 @@ impl CBackend {
     /// Lower a range iterable to its C `(start, end)` bounds, or `None` when the
     /// iterable is not a range this backend can emit.
     fn range_bounds(&self, iterable: &SirExpr) -> Option<(String, String)> {
+        // The lowerer wraps a typed expression, so `range(0, 4)` arrives as
+        // `Typed { expr: Call { callee: "range" } }`. Matching the call directly missed
+        // it and every `for i in range(..)` loop silently iterated zero times.
+        if let SirExpr::Typed { expr, .. } = iterable {
+            return self.range_bounds(expr);
+        }
         match iterable {
             SirExpr::BinOp { left, op: SirBinOp::Range, right } => {
                 Some((self.expr_to_c(left), self.expr_to_c(right)))
