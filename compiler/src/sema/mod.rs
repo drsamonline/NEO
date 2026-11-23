@@ -972,7 +972,10 @@ pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
             Type::Int
         }
         "__builtin_base64_encode" | "__builtin_base64_decode" | "__builtin_md5"
-        | "__builtin_sha256" => Type::String,
+        | "__builtin_sha256" | "__builtin_basename" | "__builtin_extension"
+        | "__builtin_parent_dir" | "__builtin_join_path" | "__builtin_resolve_path" => {
+            Type::String
+        }
         "__builtin_clear_screen" | "__builtin_set_cursor" => Type::Unit,
         _ => return None,
     })

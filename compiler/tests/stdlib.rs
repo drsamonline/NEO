@@ -725,3 +725,51 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// `io`'s path helpers: split, join, and list.
+///
+/// These are pure string operations over a path, so every expectation is arithmetic rather
+/// than a value read off a run. The awkward cases are the ones worth asserting: a trailing
+/// separator is not part of the name, a leading dot is a hidden file and not an extension,
+/// and joining onto an absolute path discards the base.
+#[test]
+fn io_paths_split_and_join() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_paths",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    print(basename("/a/b/c.txt"));
+    print(basename("/a/b/"));
+    print(extension("/a/b/c.txt"));
+    print(extension("/a/b/.hidden"));
+    print(parent_dir("/a/b/c.txt"));
+    print(parent_dir("/c.txt"));
+    print(join_path("/a", "b"));
+    print(join_path("/a/", "b"));
+    print(join_path("/a", "/b"));
+    print(array_len(list_dir("/definitely/not/a/directory")));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "c.txt",  // the name, not the path
+        "b",      // a trailing separator is not part of the name
+        "txt",    // after the last dot
+        "",       // a leading dot is a hidden file, not an extension
+        "/a/b",   // the parent
+        "/",      // one level deep
+        "/a/b",   // one separator, not two
+        "/a/b",   // a trailing separator on the base is not doubled
+        "/b",     // an absolute path discards the base
+        "0",      // a directory that does not exist lists nothing, and does not trap
+    ];
+    assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}
