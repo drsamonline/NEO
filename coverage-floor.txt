@@ -1,4 +1,4 @@
-68.70
+68.78
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -79,3 +79,5 @@
 # array ABI change.
 # 68.70% (9,428 of 13,724) when the path builtins landed. The six shims are C, which
 # llvm-cov does not instrument; the rise is the lowerer arms.
+# 68.78% (9,449 of 13,739) when the tokens and identifiers chapters landed. The rise is the
+# two lexer tests and the unterminated-comment diagnostic; the chapters themselves are prose.
