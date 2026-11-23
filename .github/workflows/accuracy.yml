@@ -102,11 +102,25 @@ jobs:
       - run: cargo build -p nova-compiler
 
       - name: Install wasm-tools
+        # Retried, and its failure says so. This job failed on `cb51f71` in the push run and
+        # passed in the pull_request run for the same commit — a download is the only part of
+        # it that can differ between two runs, and a check whose red means "the network" is
+        # worse than no check. Rule 6.
         run: |
           set -eu
           url="https://github.com/bytecodealliance/wasm-tools/releases/download/v${WASM_TOOLS_VERSION}/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux.tar.gz"
-          curl -sSL -o /tmp/wasm-tools.tar.gz "$url"
-          echo "${WASM_TOOLS_SHA256}  /tmp/wasm-tools.tar.gz" | sha256sum -c -
+          for attempt in 1 2 3; do
+            if curl -sSL --retry 3 --retry-connrefused --max-time 120 -o /tmp/wasm-tools.tar.gz "$url" \
+              && echo "${WASM_TOOLS_SHA256}  /tmp/wasm-tools.tar.gz" | sha256sum -c -; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::could not download wasm-tools after 3 attempts — this is tooling, not the compiler"
+              exit 1
+            fi
+            echo "attempt $attempt failed; retrying"
+            sleep 5
+          done
           tar -xzf /tmp/wasm-tools.tar.gz -C /tmp
           /tmp/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux/wasm-tools --version
 
