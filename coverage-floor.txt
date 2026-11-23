@@ -1,4 +1,4 @@
-68.90
+68.76
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -95,3 +95,16 @@
 # lowerer's argument branch and the backend's annotation arm are both covered by the new test.
 # 68.90% (9,489 of 13,772) when the entry-point change landed. The runtime's args functions
 # are C and uninstrumented; the rise is the backend's main emission, which every test takes.
+# 68.76% (9,472 of 13,776) when the stream functions landed — a FALL of 0.14, lowered here
+# because the rule says a fall lowers the floor in the same commit.
+#
+# The likely cause, and it is a limitation of the metric rather than of the change: every
+# `run_with_stdlib` test embeds a NOVA program in a raw string, and `compiler/tests/stdlib.rs`
+# now holds 675 such lines. The Coverage job measures the test crate, so a new test adds a
+# block of lines that can never execute — the embedded program — while adding only a few that
+# do. Four covered lowerer arms did not pay for one new test.
+#
+# I cannot prove that locally: `cargo llvm-cov` does not link through this sandbox's
+# toolchain, so the number is CI's to report. If it is wrong, the way to find out is to
+# exclude `compiler/tests/**` from the measurement and see the floor jump — which is a
+# decision about what the metric means, not a fix.
