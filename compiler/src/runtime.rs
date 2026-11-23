@@ -1279,14 +1279,18 @@ char *nova_getenv(const char *name) {
 }
 
 char *nova_cwd(void) {
-    /* Static storage, so the caller owns nothing and the result cannot dangle. */
-    static char directory[4096];
+    /* A copy per call, not a shared static buffer. The buffer was static so the result
+     * could not dangle, but that made every `cwd()` alias the same memory: `let before =
+     * cwd(); chdir(p); let after = cwd();` left `before` pointing at `after`'s contents,
+     * so the two could not be compared. Every other string-returning function here
+     * already answers a fresh copy. */
+    char directory[4096];
 #ifdef _WIN32
-    if (_getcwd(directory, sizeof directory) == NULL) return "";
+    if (_getcwd(directory, sizeof directory) == NULL) return nova_strdup("");
 #else
-    if (getcwd(directory, sizeof directory) == NULL) return "";
+    if (getcwd(directory, sizeof directory) == NULL) return nova_strdup("");
 #endif
-    return directory;
+    return nova_strdup(directory);
 }
 
 int nova_chdir(const char *path) {

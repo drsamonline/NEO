@@ -762,37 +762,48 @@ fn soundex(s: String) -> String {
     if strlen(s) == 0 {
         return "0000";
     }
-    
+
     let s_upper = to_upper(s);
     let first = s_upper[0];
-    
+
     // Mapping: ABCDEFGHIJKLMNOPQRSTUVWXYZ
-    //          012010222012221002020202
-    let mut codes: String = "012010222012221002020202";
-    
+    //          01230120022455012623010202
+    //
+    // This was "012010222012221002020202" — twenty-four characters for a twenty-six
+    // letter alphabet, and wrong from D onward (D is 3, not 0; E is 0, not 1).
+    let mut codes: String = "01230120022455012623010202";
+
     let mut result: String = "";
     result = strcat(result, tostring(first));
-    
-    let mut prev_code = codes[first as int - 'A' as int] as int;
+
+    // The codes are kept as `char`, not as `int`. Reading one with `as int` gives its
+    // ASCII value — `'0'` is 48 — so the old `code != 0` test was true for every letter
+    // and every one of them was appended: "Robert" came out "R010" instead of "R163".
+    let mut prev_code = codes[first as int - 'A' as int];
     let mut i = 1;
-    
+
     while i < strlen(s_upper) && strlen(result) < 4 {
         let c = s_upper[i];
         if c >= 'A' && c <= 'Z' {
-            let code = codes[c as int - 'A' as int] as int;
-            if code != 0 && code != prev_code {
-                result = strcat(result, tostring(code as char));
+            let code = codes[c as int - 'A' as int];
+            if code != '0' && code != prev_code {
+                result = strcat(result, tostring(code));
             }
-            prev_code = code;
+            // `H` and `W` are silent: two letters with the same code stay adjacent across
+            // them, so they must not reset what the previous code was. A vowel does reset.
+            // Without this, "Ashcraft" was A226 instead of A261 — S and C are both 2, and
+            // the H between them should not make them count twice.
+            if c != 'H' && c != 'W' {
+                prev_code = code;
+            }
         }
         i = i + 1;
     }
-    
-    // Pad with zeros
+
     while strlen(result) < 4 {
         result = strcat(result, "0");
     }
-    
+
     substr(result, 0, 4)
 }
 

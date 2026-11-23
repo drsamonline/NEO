@@ -1641,3 +1641,150 @@ fn main() -> int {
         "a read past the end of input is empty, not a crash"
     );
 }
+
+/// `text`'s character access, casing, trimming and escaping.
+///
+/// `char_at`, `first_char` and `last_char` answer `Option<char>`, so the out-of-range case is
+/// asserted as `None` rather than as a trap — that is the difference between a checked index
+/// and a crash.
+#[test]
+fn text_character_access_and_casing() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "text_characters",
+        r#"
+use core;
+use text;
+
+fn main() -> int {
+    match char_at("abc", 1) { Some(c) => print(c), None => print('?'), }
+    match char_at("abc", 9) { Some(c) => print(c), None => print('?'), }
+    match first_char("abc") { Some(c) => print(c), None => print('?'), }
+    match last_char("abc") { Some(c) => print(c), None => print('?'), }
+    match first_char("") { Some(c) => print(c), None => print('?'), }
+    print(repeat("ab", 3));
+    print(to_upper("aBc"));
+    print(to_lower("aBc"));
+    print(trim_left("  x"));
+    print(trim_right("x  "));
+    print(strlen(unescape_string("a\\nb")));
+    print(strlen(unescape_string("a\\tb")));
+    print(strlen(unescape_string("plain")));
+    print(strlen(random_string(5)));
+    print(strlen(uuid()) > 0);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "b",        // char_at finds it
+        "?",        // and reports absence past the end
+        "a",        // the first character
+        "c",        // the last
+        "?",        // an empty string has no first character
+        "ababab",   // repeated
+        "ABC",      // upper-cased
+        "abc",      // lower-cased
+        "x",        // left-trimmed
+        "x",        // right-trimmed
+        "3",        // "a\nb" unescaped is three bytes: a, a newline, b
+        "3",        // so is a tab
+        "5",        // and a string with no escapes is unchanged
+        "5",        // random_string honours its length
+        "true",     // uuid is not empty
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `text.soundex` against the standard's own check values.
+///
+/// The first pair is the reason the algorithm exists: Robert and Rupert must collide.
+///
+/// This function had two defects. Its code table was twenty-four characters for a
+/// twenty-six letter alphabet and wrong from `D` onward, and it read each code with
+/// `as int` — the ASCII value — so `code != 0` was true for every letter and all of them
+/// were appended. "Robert" came out `R010`. `Ashcraft` then caught the third: `H` and `W`
+/// are silent and must not break the adjacency of two equal codes.
+#[test]
+fn text_soundex_matches_the_standard() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "text_soundex",
+        r#"
+use core;
+use text;
+
+fn main() -> int {
+    print(soundex("Robert"));
+    print(soundex("Rupert"));
+    print(soundex("Tymczak"));
+    print(soundex("Honeyman"));
+    print(soundex("Ashcraft"));
+    print(soundex(""));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "R163",  // Robert
+        "R163",  // Rupert — the classic collision the algorithm exists for
+        "T522",  // Tymczak, the case that catches a wrong Y or M
+        "H555",  // Honeyman
+        "A261",  // Ashcraft — H is silent, so S and C do not count twice
+        "0000",  // the empty string
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `core.chdir` moves the process, and `core.exit` stops it with a code.
+///
+/// `chdir` is asserted through the fixture: the working directory must change to the
+/// directory the harness created. `exit` terminates, so it is asserted through the
+/// rejection helper — the program must fail.
+#[test]
+fn core_chdir_moves_and_exit_stops() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_fixture(
+        "core_chdir",
+        &[("sub/", "")],
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let before = cwd();
+    print(chdir(join_path("__FIXTURE__", "sub")));
+    let after = cwd();
+    print(before == after);
+    print(strlen(after) > 0);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(
+        stdout.trim(),
+        "true\nfalse\ntrue",
+        "chdir must succeed, move the process, and leave a nameable directory"
+    );
+
+    run_expecting_rejection(
+        "core_exit",
+        r#"
+use core;
+
+fn main() -> int {
+    exit(3);
+    return 0;
+}
+"#,
+    );
+}
