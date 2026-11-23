@@ -1,0 +1,22 @@
+{
+  "version": "0.7.0",
+  "loc": {
+    "compiler_src": 12356,
+    "workspace": 28609
+  },
+  "adrs": 9,
+  "gates": [
+    "diagnostic",
+    "docs",
+    "error-code",
+    "example",
+    "extension",
+    "grammar",
+    "stdlib",
+    "type-name"
+  ],
+  "stdlib": {
+    "modules": 4,
+    "listed_as_not_compiling": 0
+  }
+}

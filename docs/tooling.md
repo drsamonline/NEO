@@ -17,6 +17,7 @@ Each is runnable locally with no toolchain, which is why they are Python.
 | `tools/diagnostic-check.py` | a diagnostic's text, span, code or help changes; or the `--error-format=json` contract breaks | Diagnostics are the compiler's interface |
 | `tools/error-code-check.py` | the codes emitted, described by `explain`, and documented in `docs/errors.md` are not the same set | Three lists that can drift, in both directions |
 | `tools/extension-check.py` | the TextMate grammar's keywords stop matching `token.rs`, or a contributed path does not exist | Highlighting a keyword the parser dropped is a small lie nothing else catches |
+| `tools/status.py` | `docs/status.json` no longer matches the version, line counts, ADR count, gate list or stdlib ratchet | Other repositories read that file instead of copying numbers into prose; drift is how the NEO skill claimed v0.6.0 for a week |
 | `tools/type-name-check.py` | a type is read through `TypeExpr::name` instead of `type_display`, or a helper inspects a `SirExpr` without unwrapping `Typed` | Ten defects in one session came from those two idioms; both drop information silently |
 | `tools/docs-check.py` | a document is a stub, a `docs/` page is unreachable from `docs/README.md`, a workflow or tool has no explanation | This page's own guarantee |
 
