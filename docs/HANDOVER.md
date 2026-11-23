@@ -134,12 +134,17 @@ does now, and `methods_and_consts_keep_their_generic_return_type` plus
 
 The sweep above still missed two places — struct field types, and seven sites in the
 analyser — which is the argument for a check rather than a careful reader.
-`tools/type-name-check.py` now fails CI on either idiom:
+`tools/type-name-check.py` now fails CI on any of three idioms:
 
 | Idiom | What it costs |
 |---|---|
 | a type read through `TypeExpr::name` | the generic arguments vanish; `Option<int>` becomes `Option`, which `c_type` maps to `int` |
 | a `SirExpr` inspected without unwrapping `Typed` | the annotation hides the shape; `for i in range(..)` iterated zero times |
+| an `Option_` struct name built outside `nova_common::types` | two copies of one rule agree until they don't: `[int]` and `int` both became `Option_int` |
+
+The third is the general shape of the other two — **a fact written down twice eventually
+disagrees with itself**. It scans `crates/` as well as `compiler/src`, because the shared
+function lives in the former.
 
 It is a heuristic — a handful of exact shapes the bug has actually taken, not a type
 checker. A compiler warning would be better and this repository has no lint infrastructure;
