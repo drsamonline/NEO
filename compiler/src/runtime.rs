@@ -203,6 +203,9 @@ char *nova_sha256(const char *text);
  * that reason. */
 /* The gamma function, for `math.factorialf`'s non-integer branch. `tgamma` is in
  * libm, which the compiler already links with `-lm`. */
+/* Write a string to stdout without a newline. `io.write` is the only caller, and
+ * `io.writeln` and the whole logging family go through it. */
+void nova_write(const char *text);
 double nova_gamma(double value);
 long long nova_file_changed(const char *path);
 long long nova_file_modified(const char *path);
@@ -855,6 +858,13 @@ char *nova_sha256(const char *text) {
         }
     }
     return nova_hex(digest, 32);
+}
+
+void nova_write(const char *text) {
+    if (text != NULL) fputs(text, stdout);
+    /* Flushed because the callers are interactive: a prompt written without a newline
+     * must appear before the program waits for input. */
+    fflush(stdout);
 }
 
 double nova_gamma(double value) {
