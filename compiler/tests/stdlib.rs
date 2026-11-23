@@ -6,13 +6,14 @@
 //! `String`s comparing pointers; nothing in CI said a word, because nothing ran the
 //! functions.
 //!
-//! **This is a start, not a claim of coverage.** 249 functions are declared and about
-//! ninety are exercised here. The rest are still read, not run. What is asserted is
-//! asserted by value, checked against arithmetic rather than against whatever the compiler
-//! happened to print.
+//! **This is a start, not a claim of coverage.** 249 functions are declared and 189 are
+//! exercised here. `math` is complete — every function it exports has an assertion. What is
+//! asserted is asserted by value, checked against arithmetic or a published standard rather
+//! than against whatever the compiler happened to print, except where no value is knowable:
+//! `rand` is asserted deterministic under a seed, `cwd` non-empty, `now` positive.
 //!
 //! Functions that call a `__builtin_*` the runtime does not implement are deliberately
-//! absent: `tools/stdlib-check.py` counts 38 of them, and a test that traps on an
+//! absent: `tools/stdlib-check.py` counts 11 of them, and a test that traps on an
 //! unimplemented builtin is testing the trap.
 
 use std::fs;
@@ -54,7 +55,11 @@ fn scratch(name: &str) -> PathBuf {
 /// Duplicated from `end_to_end.rs` on purpose: integration tests are separate crates, so
 /// sharing these would mean a third crate whose only job is to hold six small functions.
 fn run_with_stdlib(name: &str, source: &str) -> String {
-    let dir = scratch(name);
+    build_and_run(&scratch(name), name, source)
+}
+
+/// Build a program in `dir` and return what it printed.
+fn build_and_run(dir: &Path, name: &str, source: &str) -> String {
     // Not `<name>.nova`: `find_module` looks beside the importing file first, so a
     // program called `math.nova` that says `use math;` imports itself.
     let file = dir.join(format!("{name}_program.nova"));
@@ -85,6 +90,33 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
         String::from_utf8_lossy(&run.stderr)
     );
     String::from_utf8_lossy(&run.stdout).to_string()
+}
+
+/// Build a program against a directory tree with known contents, and return what it printed.
+///
+/// `files` maps a relative path to its contents; a path ending in `/` makes a directory.
+/// Every `__FIXTURE__` in the source is replaced with the fixture's absolute path, so the
+/// program names the files the harness created and neither side has to guess.
+///
+/// This exists because `io`'s functions want a filesystem rather than a value, and a test
+/// that invents its own paths leaves debris behind and behaves differently on a second run.
+fn run_with_fixture(name: &str, files: &[(&str, &str)], source: &str) -> String {
+    let dir = scratch(name);
+    let fixture = dir.join("fixture");
+    fs::create_dir_all(&fixture).expect("create fixture directory");
+    for (relative, contents) in files {
+        let path = fixture.join(relative);
+        if relative.ends_with('/') {
+            fs::create_dir_all(&path).expect("create fixture directory");
+        } else {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("create fixture parent");
+            }
+            fs::write(&path, contents).expect("write fixture file");
+        }
+    }
+    let source = source.replace("__FIXTURE__", &fixture.to_string_lossy());
+    build_and_run(&dir, name, &source)
 }
 
 /// Build a program and expect it to be rejected *at run time*, returning what it printed
@@ -1209,6 +1241,128 @@ fn main() -> int {
         "true",  // the same seed reproduces the normal
         "true",  // and the exponential
         "true",  // which is never negative
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `io`'s filesystem functions, against a directory tree the harness builds.
+///
+/// This is the test `run_with_fixture` exists for. Before it, `io`'s 45 untested functions
+/// had no way to reach a real filesystem: a program that invents its own paths leaves debris
+/// and behaves differently on a second run.
+///
+/// The fixture is two entries — a three-byte file and an empty directory — and every
+/// assertion is a count or a boolean a reader can predict from that.
+#[test]
+fn io_manipulates_a_real_directory_tree() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_fixture(
+        "io_filesystem",
+        &[("a.txt", "abc"), ("sub/", "")],
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let root = "__FIXTURE__";
+    print(file_exists(root));
+    print(is_directory(root));
+    print(array_len(list_dir(root)));
+    print(file_exists(join_path(root, "a.txt")));
+    print(is_file(join_path(root, "a.txt")));
+    print(file_size(join_path(root, "a.txt")));
+    print(is_directory(join_path(root, "sub")));
+    print(append_file(join_path(root, "a.txt"), "de"));
+    print(file_size(join_path(root, "a.txt")));
+    print(copy_file(join_path(root, "a.txt"), join_path(root, "b.txt")));
+    print(file_exists(join_path(root, "b.txt")));
+    print(rename_file(join_path(root, "b.txt"), join_path(root, "c.txt")));
+    print(file_exists(join_path(root, "c.txt")));
+    print(delete_file(join_path(root, "c.txt")));
+    print(file_exists(join_path(root, "c.txt")));
+    print(mkdir(join_path(root, "newdir")));
+    print(is_directory(join_path(root, "newdir")));
+    print(rmdir(join_path(root, "newdir")));
+    print(is_directory(join_path(root, "newdir")));
+    print(strlen(getcwd()) > 0);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "true",   // the fixture root exists
+        "true",   // and it is a directory
+        "2",      // one file and one subdirectory
+        "true",   // the file exists
+        "true",   // and it is a file, not a directory
+        "3",      // "abc"
+        "true",   // the subdirectory exists
+        "true",   // append succeeds
+        "5",      // "abcde"
+        "true",   // copy succeeds
+        "true",   // the copy exists
+        "true",   // rename succeeds
+        "true",   // under its new name
+        "true",   // delete succeeds
+        "false",  // and the file is gone
+        "true",   // mkdir succeeds
+        "true",   // the new directory is a directory
+        "true",   // rmdir succeeds
+        "false",  // and it is gone
+        "true",   // the working directory has a name
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `io`'s string parsers, which used to answer `Some` for everything.
+///
+/// `parse_int` wrapped `__builtin_parse_int` in `Some` unconditionally, and the builtin
+/// answers 0 for anything it cannot read — so `parse_int("nope")` was `Some(0)`, quietly
+/// turning a typo into a zero. `parse_float` had the same defect. Both validate the input
+/// now, so the `Option` means what it says.
+#[test]
+fn io_parsers_reject_what_they_cannot_read() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_parsers",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    match parse_int("42") { Some(v) => print(v), None => print(0 - 1), }
+    match parse_int("nope") { Some(v) => print(v), None => print(0 - 1), }
+    match parse_int("") { Some(v) => print(v), None => print(0 - 1), }
+    match parse_int("-7") { Some(v) => print(v), None => print(0 - 1), }
+    match parse_int("12x") { Some(v) => print(v), None => print(0 - 1), }
+    match parse_float("1.5") { Some(v) => print(v), None => print(0.0 - 1.0), }
+    match parse_float("x") { Some(v) => print(v), None => print(0.0 - 1.0), }
+    match parse_float("2e3") { Some(v) => print(v), None => print(0.0 - 1.0), }
+    match parse_float("1.2.3") { Some(v) => print(v), None => print(0.0 - 1.0), }
+    match parse_bool("yes") { Some(v) => print(v), None => print(false), }
+    match parse_bool("maybe") { Some(v) => print(v), None => print(false), }
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "42",     // a valid integer
+        "-1",     // a word is not one
+        "-1",     // neither is the empty string
+        "-7",     // a negative one
+        "-1",     // trailing junk makes it invalid
+        "1.5",    // a valid float
+        "-1",     // a letter is not one
+        "2000",   // an exponent is accepted
+        "-1",     // two decimal points are not
+        "true",   // a word the parser knows
+        "false",  // and one it does not
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
