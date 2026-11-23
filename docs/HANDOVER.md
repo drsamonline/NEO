@@ -184,9 +184,10 @@ scrutinee once per arm, so `write_file` opened its own output a second time and 
 code path), and `fread_all` rebuilt a string line by line, dropping every newline and
 stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
-**2. Most of the standard library is still untested, and so is `for`.** 160 of 249 functions
-are asserted in `compiler/tests/stdlib.rs`, including `map`/`filter`/`reduce`
-with closures — the first code in the repository to call one. Writing the first three tests
+**2. Most of the standard library is still untested, and so is `for`.** 189 of 249 functions
+are asserted in `compiler/tests/stdlib.rs`. **`math` is the first module with an assertion
+for every function it exports — 76 of 76.** `io` is the remaining gap at 14 of 59, because
+its functions want a filesystem rather than pure values. Writing the first three tests
 found two live bugs within minutes; the second batch found a third. **No example, parity
 program or stdlib function contains a `for` loop at all**, which is how `for i in
 range(0, 4)` came to iterate zero times without anything noticing — a whole construct with
