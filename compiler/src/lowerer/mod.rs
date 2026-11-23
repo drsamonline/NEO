@@ -1208,12 +1208,21 @@ impl Lowerer {
                     "float" => Some("nova_json_read_float"),
                     "bool" => Some("nova_json_read_bool"),
                     "string" => Some("nova_json_read_string"),
+                    // A record is read member by member: the runtime can extract one
+                    // member's text, and the field types are known here.
+                    _ if self.struct_types.contains_key(payload.trim()) => {
+                        Some("__record__")
+                    }
                     // Arrays are refused rather than attempted: an `Option<[T]>` payload is
                     // lost between the binding and the `match` that reads it, and a reader
                     // that returned a scalar where an array belongs is worse than one that
                     // says it cannot.
                     _ => None,
                 };
+                if reader == Some("__record__") {
+                    let text = lowered(self).into_iter().next();
+                    return text.and_then(|text| self.json_read_record(text, &payload));
+                }
                 match (reader, lowered(self).into_iter().next()) {
                     (Some(reader), Some(text)) => {
                         self.uses_option = true;
@@ -2942,6 +2951,128 @@ impl Lowerer {
             }),
             typ,
         }
+    }
+
+    /// Read a JSON object into `Option<Record>`, member by member.
+    ///
+    /// The runtime can extract one member's raw text and nothing more; the field names and
+    /// types are known only here. A member whose type has no reader rejects the whole
+    /// deserialization rather than leaving that field at its default, and a text that is not
+    /// an object answers `None` rather than a zeroed record — both are the difference between
+    /// a refusal and a lie.
+    fn json_read_record(&mut self, text: SirExpr, typ: &str) -> Option<SirExpr> {
+        let order = self.struct_field_order.get(typ)?.clone();
+        let types = self.struct_types.get(typ)?.clone();
+
+        let mut defaults: Vec<(String, SirExpr)> = Vec::new();
+        let mut reads: Vec<SirStatement> = Vec::new();
+        for (index, name) in order.iter().enumerate() {
+            let field_type = types.get(name)?.clone();
+            let reader = match field_type.trim().to_lowercase().as_str() {
+                "int" => Some("nova_json_read_int"),
+                "float" => Some("nova_json_read_float"),
+                "bool" => Some("nova_json_read_bool"),
+                "string" => Some("nova_json_read_string"),
+                _ => None,
+            };
+            // No reader for this field: refuse the whole record rather than zero it.
+            let reader = reader?;
+            let default = match field_type.trim().to_lowercase().as_str() {
+                "float" => SirExpr::Literal(SirLiteral::Float(0.0)),
+                "bool" => SirExpr::Literal(SirLiteral::Bool(false)),
+                "string" => SirExpr::Literal(SirLiteral::String(String::new())),
+                _ => SirExpr::Literal(SirLiteral::Int(0)),
+            };
+            defaults.push((name.clone(), default));
+
+            // One name per member: they are declared in the same C scope, and a shared
+            // name is a redefinition.
+            let field_text = format!("__json_field_{index}");
+            reads.push(SirStatement::Let {
+                name: field_text.clone(),
+                typ: Some("String".to_string()),
+                value: SirExpr::Call {
+                    callee: "nova_json_field".to_string(),
+                    args: vec![
+                        text.clone(),
+                        SirExpr::Literal(SirLiteral::String(name.clone())),
+                    ],
+                },
+            });
+            reads.push(SirStatement::If {
+                condition: SirExpr::Call {
+                    callee: "nova_json_present".to_string(),
+                    args: vec![SirExpr::Var(field_text.clone())],
+                },
+                then_block: vec![SirStatement::Expr(SirExpr::Call {
+                    callee: reader.to_string(),
+                    args: vec![
+                        SirExpr::Var(field_text),
+                        SirExpr::AddressOf(Box::new(SirExpr::FieldAccess {
+                            object: Box::new(SirExpr::Var("__json_value".to_string())),
+                            field: name.clone(),
+                            struct_type: typ.to_string(),
+                        })),
+                    ],
+                })],
+                else_block: None,
+            });
+        }
+
+        self.uses_option = true;
+        self.option_payloads.insert(typ.to_string());
+        let option = |fields: Vec<(String, SirExpr)>| SirExpr::Typed {
+            expr: Box::new(SirExpr::StructLiteral {
+                name: option_struct_name(typ),
+                fields,
+            }),
+            typ: format!("Option<{typ}>"),
+        };
+        let value = SirExpr::StructLiteral {
+            name: typ.to_string(),
+            fields: defaults,
+        };
+        let mut statements = vec![
+            SirStatement::Let {
+                name: "__json_value".to_string(),
+                typ: Some(typ.to_string()),
+                value,
+            },
+            SirStatement::Let {
+                name: "__json_ok".to_string(),
+                typ: Some("bool".to_string()),
+                value: SirExpr::Call {
+                    callee: "nova_json_is_object".to_string(),
+                    args: vec![text],
+                },
+            },
+            SirStatement::If {
+                condition: SirExpr::Var("__json_ok".to_string()),
+                then_block: reads,
+                else_block: None,
+            },
+        ];
+        statements.push(SirStatement::Expr(SirExpr::Literal(SirLiteral::Unit)));
+        Some(SirExpr::Block(
+            statements,
+            Some(Box::new(SirExpr::Typed {
+                expr: Box::new(SirExpr::If {
+                    condition: Box::new(SirExpr::Var("__json_ok".to_string())),
+                    then_expr: Box::new(option(vec![
+                        ("tag".to_string(), SirExpr::Literal(SirLiteral::Int(0))),
+                        (
+                            "payload".to_string(),
+                            SirExpr::Var("__json_value".to_string()),
+                        ),
+                    ])),
+                    else_expr: Some(Box::new(option(vec![(
+                        "tag".to_string(),
+                        SirExpr::Literal(SirLiteral::Int(1)),
+                    )]))),
+                }),
+                typ: format!("Option<{typ}>"),
+            })),
+        ))
     }
 
     /// A JSON value for `value`, whose NOVA type is `typ`, as a `String` expression.

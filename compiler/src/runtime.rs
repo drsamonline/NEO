@@ -235,6 +235,15 @@ int nova_json_read_int(const char *text, long long *out);
 int nova_json_read_float(const char *text, double *out);
 int nova_json_read_bool(const char *text, int *out);
 int nova_json_read_string(const char *text, char **out);
+/* Reading a record. `nova_json_field` answers the raw text of one member's value, or "" when
+ * the member is absent or the text is not an object; `nova_json_present` is the test for that.
+ * The slice is balanced and string-aware, so a nested object or an escaped quote inside a
+ * string does not end it early. */
+char *nova_json_field(const char *text, const char *key);
+int nova_json_present(const char *field);
+/* 1 when the whole text is one JSON object. Without this a struct reader on `nonsense` would
+ * leave every field at its default and answer `Some(zeroed)` — the silently-wrong failure. */
+int nova_json_is_object(const char *text);
 NovaArray_string nova_args(void);
 char nova_readchar(void);
 double nova_gamma(double value);
@@ -1064,15 +1073,13 @@ int nova_json_read_bool(const char *text, int *out) {
     return 0;
 }
 
-int nova_json_read_string(const char *text, char **out) {
-    if (text == NULL) return 0;
-    NovaJsonBuffer buffer;
-    nova_json_init(&buffer);
-    const char *cursor = nova_json_skip_space(text);
-    if (*cursor != '"') { free(buffer.data); return 0; }
+/* Decodes one JSON string at `cursor` into `buffer`, answering the cursor past the closing
+ * quote or NULL. Shared by the value reader and the object member reader. */
+static const char *nova_json_scan_string(const char *cursor, NovaJsonBuffer *buffer) {
+    if (*cursor != '"') return NULL;
     cursor++;
     while (*cursor != '"') {
-        if (*cursor == '\0') { free(buffer.data); return 0; }
+        if (*cursor == '\0') return NULL;
         if (*cursor == '\\') {
             cursor++;
             char decoded;
@@ -1085,19 +1092,128 @@ int nova_json_read_string(const char *text, char **out) {
                 case 'n': decoded = '\n'; break;
                 case 'r': decoded = '\r'; break;
                 case 't': decoded = '\t'; break;
-                default: free(buffer.data); return 0;
+                default: return NULL;
             }
-            nova_json_append(&buffer, &decoded, 1);
+            nova_json_append(buffer, &decoded, 1);
             cursor++;
         } else {
-            nova_json_append(&buffer, cursor, 1);
+            nova_json_append(buffer, cursor, 1);
             cursor++;
         }
     }
-    cursor++;
-    if (*nova_json_skip_space(cursor) != '\0') { free(buffer.data); return 0; }
+    return cursor + 1;
+}
+
+int nova_json_read_string(const char *text, char **out) {
+    if (text == NULL) return 0;
+    NovaJsonBuffer buffer;
+    nova_json_init(&buffer);
+    const char *cursor = nova_json_scan_string(nova_json_skip_space(text), &buffer);
+    if (cursor == NULL || *nova_json_skip_space(cursor) != '\0') {
+        free(buffer.data);
+        return 0;
+    }
     *out = buffer.data;
     return 1;
+}
+
+/* Forward declarations: these two are defined further down the JSON section, and the
+ * helpers below call them. */
+static const char *nova_json_skip_value(const char *cursor);
+static const char *nova_json_scan_string(const char *cursor, NovaJsonBuffer *buffer);
+
+int nova_json_is_object(const char *text) {
+    if (text == NULL) return 0;
+    const char *cursor = nova_json_skip_space(text);
+    if (*cursor != '{') return 0;
+    const char *end = nova_json_skip_value(cursor);
+    if (end == NULL) return 0;
+    return *nova_json_skip_space(end) == '\0';
+}
+
+int nova_json_present(const char *field) {
+    return field != NULL && field[0] != '\0';
+}
+
+/* The cursor past one JSON value starting at `cursor`: a string, an object, an array, or a
+ * run of scalars. Answers NULL on an unterminated value. */
+static const char *nova_json_skip_value(const char *cursor) {
+    cursor = nova_json_skip_space(cursor);
+    if (*cursor == '"') {
+        NovaJsonBuffer ignored;
+        nova_json_init(&ignored);
+        const char *end = nova_json_scan_string(cursor, &ignored);
+        free(ignored.data);
+        return end;
+    }
+    if (*cursor == '{' || *cursor == '[') {
+        char open = *cursor;
+        char close = open == '{' ? '}' : ']';
+        int depth = 0;
+        int in_string = 0;
+        while (*cursor != '\0') {
+            char c = *cursor;
+            if (in_string) {
+                if (c == '\\') {
+                    cursor++;
+                    if (*cursor == '\0') return NULL;
+                } else if (c == '"') {
+                    in_string = 0;
+                }
+            } else if (c == '"') {
+                in_string = 1;
+            } else if (c == open) {
+                depth++;
+            } else if (c == close) {
+                depth--;
+                if (depth == 0) return cursor + 1;
+            }
+            cursor++;
+        }
+        return NULL;
+    }
+    while (*cursor != '\0' && *cursor != ',' && *cursor != '}' && *cursor != ']') cursor++;
+    return cursor;
+}
+
+char *nova_json_field(const char *text, const char *key) {
+    if (text == NULL || key == NULL) return nova_strdup("");
+    const char *cursor = nova_json_skip_space(text);
+    if (*cursor != '{') return nova_strdup("");
+    cursor = nova_json_skip_space(cursor + 1);
+    while (*cursor != '}' && *cursor != '\0') {
+        NovaJsonBuffer name;
+        nova_json_init(&name);
+        const char *after_name = nova_json_scan_string(cursor, &name);
+        if (after_name == NULL) {
+            free(name.data);
+            return nova_strdup("");
+        }
+        cursor = nova_json_skip_space(after_name);
+        if (*cursor != ':') {
+            free(name.data);
+            return nova_strdup("");
+        }
+        const char *value_start = nova_json_skip_space(cursor + 1);
+        const char *value_end = nova_json_skip_value(value_start);
+        if (value_end == NULL) {
+            free(name.data);
+            return nova_strdup("");
+        }
+        if (strcmp(name.data, key) == 0) {
+            free(name.data);
+            size_t length = (size_t)(value_end - value_start);
+            char *slice = (char *)malloc(length + 1);
+            if (slice == NULL) nova_fail("out of memory");
+            memcpy(slice, value_start, length);
+            slice[length] = '\0';
+            return slice;
+        }
+        free(name.data);
+        cursor = nova_json_skip_space(value_end);
+        if (*cursor == ',') cursor = nova_json_skip_space(cursor + 1);
+    }
+    return nova_strdup("");
 }
 
 static int nova_argc = 0;
