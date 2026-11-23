@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two idioms that have cost this repository ten defects. Fail if either returns.
+"""Three idioms that have cost this repository a dozen defects. Fail if any returns.
 
 **1. A type read through `.name` instead of `type_display`.**
 
@@ -21,6 +21,13 @@ The lowerer annotates expressions with their type, so `range(0, 4)` arrives as
 `Typed { expr: Call { callee: "range" } }`. A helper matching the call directly never
 matches, and `for i in range(..)` emitted an empty body — an infinite loop, in a module
 that compiled and passed every gate.
+
+**3. A struct name built in more than one place.**
+
+`Option<T>`'s C struct name was mangled in the lowerer and again in the backend. They agreed on
+every payload except one — `[int]` and `int` both became `Option_int`, so an `Option<[int]>` was
+declared as an `Option<int>` and its array payload read as a `long long`. A rule that needs two
+edits to change is in the wrong place; it lives only in `crates/nova-common/src/types.rs` now.
 
     python3 tools/type-name-check.py          # check
     python3 tools/type-name-check.py --list   # print what is checked
@@ -51,6 +58,17 @@ TYPE_NAME_PATTERNS = [
 
 # `.name` is legitimate inside the function that renders a type in full.
 TYPE_DISPLAY_FN = re.compile(r"fn type_display\(")
+
+# **3. A struct name built in more than one place.**
+#
+# `Option<T>`'s C struct name was mangled in the lowerer and again in the backend's `c_type`.
+# They agreed on every payload except one: `[int]` and `int` both became `Option_int`, because
+# the brackets are not alphanumeric. An `Option<[int]>` was then declared as an `Option<int>`
+# and its array payload read as a `long long`.
+#
+# One rule, one place: `crates/nova-common/src/types.rs`.
+OPTION_NAME_PATTERN = re.compile(r'"Option_(?:array_)?\{')
+OPTION_NAME_HOME = Path("crates") / "nova-common" / "src" / "types.rs"
 
 # A function whose signature inspects a SirExpr must unwrap `Typed`.
 SIR_EXPR_SIGNATURE = re.compile(r"fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^>]*>)?\s*\([^)]*&SirExpr")
@@ -126,29 +144,51 @@ def check_typed_unwrap(path: Path, text: str) -> list[str]:
     return problems
 
 
+def check_option_names(path: Path, text: str) -> list[str]:
+    """`Option_` names must be built only in `nova_common::types`."""
+    if path.relative_to(ROOT) == OPTION_NAME_HOME:
+        return []
+    problems: list[str] = []
+    stripped = strip_doc_comments(text).splitlines()
+    for number, line in enumerate(stripped, start=1):
+        if OPTION_NAME_PATTERN.search(line):
+            problems.append(
+                f"{path.relative_to(ROOT)}:{number}: an `Option_` struct name is built here "
+                f"and in `{OPTION_NAME_HOME}` — one rule, one place\n"
+                f"    {line.strip()}"
+            )
+    return problems
+
+
 def main(argv: list[str]) -> int:
     if "--list" in argv:
         print("A type must be rendered with `type_display`, never `.name`:")
         for _, why in TYPE_NAME_PATTERNS:
             print(f"  - {why}")
         print("A function that inspects a `SirExpr` must unwrap `SirExpr::Typed` first.")
+        print(
+            "An `Option_` struct name is built only in "
+            f"`{OPTION_NAME_HOME}`, never re-mangled elsewhere."
+        )
         return 0
 
     problems: list[str] = []
-    files = sorted(SOURCES.rglob("*.rs"))
+    files = sorted(SOURCES.rglob("*.rs")) + sorted((ROOT / "crates").rglob("*.rs"))
     for path in files:
         text = path.read_text()
         problems.extend(check_type_names(path, text))
         problems.extend(check_typed_unwrap(path, text))
+        problems.extend(check_option_names(path, text))
 
     if problems:
         print(f"{len(problems)} type-information hazard(s):\n")
         for problem in problems:
             print(f"  {problem}")
         print(
-            "\nBoth idioms are recorded in docs/HANDOVER.md under 'The audit those rows "
+            "\nAll three idioms are recorded in docs/HANDOVER.md under 'The audit those rows "
             "earned'. `type_display` keeps a type's arguments; `Typed` carries the type "
-            "the lowerer already worked out."
+            "the lowerer already worked out; and a name built twice eventually disagrees "
+            "with itself."
         )
         return 1
 
