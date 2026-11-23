@@ -15,6 +15,12 @@ pub struct Lowerer {
     signatures: HashMap<String, Option<String>>,
     /// Struct name -> field name -> declared type.
     struct_types: HashMap<String, HashMap<String, String>>,
+    /// Struct name -> field names **in declaration order**.
+    ///
+    /// `struct_types` is a map per struct, so it iterates in hash order: an encoder reading
+    /// it emitted `{"y":0,"x":0}` for `Point { x, y }`, and the keys would move between
+    /// runs. A JSON object whose keys reorder is not a stable format.
+    struct_field_order: HashMap<String, Vec<String>>,
     /// Struct name -> method name -> signature, collected from `impl` blocks.
     methods: HashMap<String, HashMap<String, MethodSig>>,
     /// Enum name -> variant names, in declaration order.
@@ -132,6 +138,7 @@ impl Lowerer {
             scopes: Vec::new(),
             signatures: HashMap::new(),
             struct_types: HashMap::new(),
+            struct_field_order: HashMap::new(),
             methods: HashMap::new(),
             enums: HashMap::new(),
             enum_ordinals: HashMap::new(),
@@ -467,6 +474,14 @@ impl Lowerer {
                 nova_common::Item::Struct(struct_def) => {
                     self.struct_generics
                         .insert(struct_def.name.clone(), struct_def.generics.clone());
+                    self.struct_field_order.insert(
+                        struct_def.name.clone(),
+                        struct_def
+                            .fields
+                            .iter()
+                            .map(|field| field.name.clone())
+                            .collect(),
+                    );
                     self.struct_types.insert(
                         struct_def.name.clone(),
                         struct_def
@@ -1282,10 +1297,17 @@ impl Lowerer {
                     "[int]" => Some("nova_json_array_int"),
                     "[float]" => Some("nova_json_array_float"),
                     "[string]" => Some("nova_json_array_string"),
+                    // A record is encoded field by field, because the lowerer knows the
+                    // field names and types and the runtime does not. Anything still
+                    // unmatched below is rejected rather than encoded as something else.
                     _ => None,
                 };
                 match function {
                     Some(function) => Some(typed(function, lowered(self), "string")),
+                    None if self.struct_types.contains_key(typ.trim()) => {
+                        let value = lowered(self).into_iter().next();
+                        value.and_then(|value| self.json_object(value, typ.trim()))
+                    }
                     None => Some(typed(
                         "nova_unsupported",
                         vec![SirExpr::Literal(SirLiteral::String(format!(
@@ -2920,6 +2942,82 @@ impl Lowerer {
             }),
             typ,
         }
+    }
+
+    /// A JSON value for `value`, whose NOVA type is `typ`, as a `String` expression.
+    ///
+    /// Records are encoded here rather than in the runtime because only the lowerer knows a
+    /// struct's field names and types. Scalars go straight to a `nova_json_*` function and
+    /// arrays to the array one; anything else answers `None` so the caller rejects it instead
+    /// of emitting a plausible-looking lie.
+    fn json_value(&mut self, value: SirExpr, typ: &str) -> Option<SirExpr> {
+        let scalar = match typ.trim().to_lowercase().as_str() {
+            "int" => Some("nova_json_int"),
+            "float" => Some("nova_json_float"),
+            "bool" => Some("nova_json_bool"),
+            "string" => Some("nova_json_string"),
+            "[int]" => Some("nova_json_array_int"),
+            "[float]" => Some("nova_json_array_float"),
+            "[string]" => Some("nova_json_array_string"),
+            _ => None,
+        };
+        if let Some(function) = scalar {
+            return Some(SirExpr::Typed {
+                expr: Box::new(SirExpr::Call {
+                    callee: function.to_string(),
+                    args: vec![value],
+                }),
+                typ: "String".to_string(),
+            });
+        }
+        if self.struct_types.contains_key(typ.trim()) {
+            return self.json_object(value, typ.trim());
+        }
+        None
+    }
+
+    /// `{"a":1,"b":"x"}` from a struct value.
+    fn json_object(&mut self, value: SirExpr, typ: &str) -> Option<SirExpr> {
+        let order = self.struct_field_order.get(typ)?.clone();
+        let types = self.struct_types.get(typ)?.clone();
+        let fields: Vec<(String, String)> = order
+            .into_iter()
+            .filter_map(|name| types.get(&name).map(|typ| (name, typ.clone())))
+            .collect();
+        let concat = |left: SirExpr, right: SirExpr| SirExpr::Typed {
+            expr: Box::new(SirExpr::Call {
+                callee: "nova_strcat".to_string(),
+                args: vec![left, right],
+            }),
+            typ: "String".to_string(),
+        };
+        let literal = |text: &str| SirExpr::Literal(SirLiteral::String(text.to_string()));
+
+        let mut encoded = literal("{");
+        for (index, (field, field_type)) in fields.iter().enumerate() {
+            if index > 0 {
+                encoded = concat(encoded, literal(","));
+            }
+            // The key, quoted and escaped by the same function a string value uses.
+            encoded = concat(
+                encoded,
+                SirExpr::Typed {
+                    expr: Box::new(SirExpr::Call {
+                        callee: "nova_json_string".to_string(),
+                        args: vec![literal(field)],
+                    }),
+                    typ: "String".to_string(),
+                },
+            );
+            encoded = concat(encoded, literal(":"));
+            let field_value = SirExpr::FieldAccess {
+                object: Box::new(value.clone()),
+                field: field.clone(),
+                struct_type: typ.to_string(),
+            };
+            encoded = concat(encoded, self.json_value(field_value, field_type)?);
+        }
+        Some(concat(encoded, literal("}")))
     }
 
     /// Lower a statement-position `match` to a C `switch`. Returns `None` when

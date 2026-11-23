@@ -40,10 +40,11 @@ which means the compiler already knows the type and is throwing the knowledge aw
 
 Accepted.
 
-**3. Serialize every type by reflection over its fields.** Structs would emit as objects.
+**3. Serialize every type by reflection over its fields.** Structs emit as objects.
 
-Not done yet, and not refused: it is a larger feature and this ADR does not pretend to have
-it. What it decides is what happens *until* then.
+Accepted, and implemented after the rest: the encoder is generated in SIR, because only the
+lowerer knows a struct's field names and types. `Point { x: 1, y: 2 }` becomes
+`{"x":1,"y":2}`, and a nested record keeps its nesting.
 
 ## Decision
 
@@ -60,9 +61,10 @@ function per type:
 | `[float]` | `nova_json_array_float` | `[1.5,2.5]` |
 | `[String]` | `nova_json_array_string` | `["x","y"]` |
 
-**A type with no function is rejected.** `serialize` of a struct, an enum, an `Option` or an
-array of structs compiles and traps at the call with `serialize<Point>` — naming the type it
-could not write. It does not serialise as its first field, as its pointer, or as `null`.
+**A type with no function is rejected.** An enum, an `Option`, or an array of structs compiles
+and traps at the call with `serialize<Point>` — naming the type it could not write. It does not
+serialise as its first field, as its pointer, or as `null`. Records used to be in that list and
+are not any more.
 Rule 3 of the constitution is that a construct the compiler cannot express gets a diagnostic
 rather than C that misbehaves, and a struct silently becoming `{}` or `0` is exactly that.
 
@@ -72,9 +74,8 @@ from a literal and `String` from a declaration; matching one spelling would have
 
 ## Consequences
 
-- `serialize` works for the scalar and array types and **not for records**. A JSON encoder
-  that cannot encode a record is a partial feature, and this is recorded as such rather than
-  described as complete.
+- `serialize` covers scalars, arrays and records. It does **not** cover enums, `Option`, or an
+  array of records — those still trap, naming the type.
 - Floats are written with `%.17g`, which round-trips a `double` exactly. NaN and infinity are
   written as `null`, because JSON has no tokens for them and a parser that accepts `nan` is
   not parsing JSON.
