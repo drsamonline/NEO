@@ -52,7 +52,7 @@ What exists today, and what you should read instead:
 | 20 | [SIR](20_sir_intro.md) | ✅ written |
 | 21 | [Style guide](21_style_guide.md) | — |
 | 22 | [Best practices](22_best_practices.md) | — |
-| 23 | [Glossary](23_glossary.md) | — |
+| 23 | [Glossary](23_glossary.md) | ✅ written |
 | 24 | [RFC process](24_rfc_process.md) | — |
 
 ## Why the stubs are still here
