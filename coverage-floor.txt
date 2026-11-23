@@ -1,4 +1,4 @@
-69.44
+69.45
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -120,3 +120,5 @@
 # `json_read_record` is covered by the record test, which is the largest single test in the file.
 # 69.44% (9,777 of 14,079) when array deserialization landed. The three array readers are C and
 # uninstrumented; the rise is the lowerer's array branches and the `option_struct_name` rule.
+# 69.45% (9,781 of 14,083) when the two mangling copies became one. The rise is small and real:
+# the shared function has its own unit tests, and the deleted copy is gone from the denominator.
