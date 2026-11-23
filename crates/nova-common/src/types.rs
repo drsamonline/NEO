@@ -175,3 +175,49 @@ impl fmt::Display for Type {
         }
     }
 }
+
+/// The C struct name for `Option<payload>`.
+///
+/// This lives here rather than in the lowerer or the backend because **both need it and they
+/// disagreed**. `[int]` and `int` both mangled to `Option_int` — the brackets are not
+/// alphanumeric — so an `Option<[int]>` was declared as an `Option<int>` and its array payload
+/// was read as a `long long`. Fixing it meant fixing it twice, and two copies of one rule is
+/// the defect this project has found more often than any other.
+pub fn option_struct_name(payload: &str) -> String {
+    let trimmed = payload.trim();
+    // Arrays keep a marker of their own, so `[int]` and `int` cannot collide.
+    if let Some(inner) = trimmed
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    {
+        return format!("Option_array_{}", inner.trim());
+    }
+    let mangled: String = trimmed
+        .chars()
+        .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
+        .collect();
+    format!("Option_{}", mangled.trim_matches('_'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::option_struct_name;
+
+    #[test]
+    fn an_array_payload_does_not_collide_with_its_element() {
+        // The defect this function exists to prevent: `[int]` and `int` mangled alike, so an
+        // `Option<[int]>` was declared as an `Option<int>` and its payload read as a scalar.
+        assert_eq!(option_struct_name("int"), "Option_int");
+        assert_eq!(option_struct_name("[int]"), "Option_array_int");
+        assert_ne!(option_struct_name("int"), option_struct_name("[int]"));
+        assert_eq!(option_struct_name("[String]"), "Option_array_String");
+    }
+
+    #[test]
+    fn a_plain_payload_keeps_its_name() {
+        // Names already emitted must not change; this is what the two copies agreed on.
+        assert_eq!(option_struct_name("File"), "Option_File");
+        assert_eq!(option_struct_name("Point"), "Option_Point");
+        assert_eq!(option_struct_name("  int  "), "Option_int");
+    }
+}

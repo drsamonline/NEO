@@ -1,6 +1,7 @@
 //! AST to SIR Lowering
 
 use crate::sir::*;
+use nova_common::types::option_struct_name;
 use nova_common::{Program, Function, Statement, Expr, Literal, BinOp as AstBinOp, UnOp as AstUnOp, Pattern, MatchArm, Block};
 use std::collections::{HashMap, HashSet};
 
@@ -3865,24 +3866,6 @@ fn payload_struct_fields() -> Vec<SirStructField> {
 ///
 /// One struct per payload type. The alternative — one struct with `int`, `double` and
 /// `char*` slots — cannot hold a struct at all, which is what ADR 0003 is about.
-fn option_struct_name(payload: &str) -> String {
-    // `[int]` and `int` both mangled to `Option_int`: the brackets are not alphanumeric, so
-    // they were stripped and the two payloads shared one struct. An `Option<[int]>` then read
-    // its payload as a `long long` and the array was lost. Arrays keep a marker of their own.
-    if let Some(inner) = payload
-        .trim()
-        .strip_prefix('[')
-        .and_then(|rest| rest.strip_suffix(']'))
-    {
-        return format!("Option_array_{}", inner.trim());
-    }
-    let mangled: String = payload
-        .trim()
-        .chars()
-        .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
-        .collect();
-    format!("Option_{}", mangled.trim_matches('_'))
-}
 
 /// The payload type named by an `Option<...>` type string.
 /// Record the payload type of an `Option<...>` declaration.
