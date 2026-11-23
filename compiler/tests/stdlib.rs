@@ -87,6 +87,37 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).to_string()
 }
 
+/// Build a program and expect it to be rejected *at run time*, returning what it printed
+/// to stderr. Used for constructs the backend refuses rather than emits.
+fn run_expecting_rejection(name: &str, source: &str) -> String {
+    let dir = scratch(name);
+    let file = dir.join(format!("{name}_program.nova"));
+    let binary = dir.join(name);
+    fs::write(&file, source).expect("write source");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&file)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "build failed, so the construct was rejected at compile time instead: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run built binary");
+    assert!(
+        !run.status.success(),
+        "the program ran to completion, so the construct was silently accepted"
+    );
+    String::from_utf8_lossy(&run.stderr).to_string()
+}
+
 /// `core`'s arithmetic, array and string helpers.
 ///
 /// Every expected value is checkable by hand: 5! is 120, gcd(12, 18) is 6, and reversing
@@ -285,4 +316,135 @@ fn main() -> int {
         "4", "3", "3", "4", "3", "1024", "2.5", "3", "5", "4", "2", "2", "0.25", "0.5",
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `core`'s predicates, `typeof`, and `for` over a range.
+///
+/// The loop is here because it was broken and nothing noticed: no example, no parity
+/// program and no stdlib function contains a `for` at all, so `range_bounds` could miss
+/// the `Typed` wrapper around `range(0, 4)` and every such loop silently iterated zero
+/// times. `total` would have been 0 rather than 6.
+#[test]
+fn core_predicates_and_range_iteration() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "core_predicates",
+        r#"
+use core;
+
+fn main() -> int {
+    print(is_even(4));
+    print(is_odd(4));
+    print(fibonacci(10));
+    print(typeof(1));
+    print(typeof("a"));
+    print(typeof(true));
+    let mut total = 0;
+    for i in range(0, 4) {
+        total = total + i;
+    }
+    print(total);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "true",   // 4 is even
+        "false",  // 4 is not odd
+        "55",     // fibonacci(10)
+        "int",
+        "string",
+        "bool",
+        "6",      // 0 + 1 + 2 + 3
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `text`'s search, edit and formatting helpers.
+///
+/// `hash_string` is asserted for *determinism* rather than for a value: a recorded digest
+/// is a change detector, and the function promises a stable hash, not a particular one.
+#[test]
+fn text_search_and_edit_functions() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "text_search_edit",
+        r#"
+use core;
+use text;
+
+fn main() -> int {
+    print(find_string("hello world", "o"));
+    print(rfind_string("hello world", "o"));
+    print(count_substring("banana", "an"));
+    print(remove_char_at("abc", 1));
+    print(insert_at("ac", 1, "b"));
+    print(indent("a", 2));
+    print(dedent("  a"));
+    print(is_alphanumeric("a1"));
+    print(center("ab", 6, '-'));
+    print(zero_pad(7, 3));
+    print(format_number(1234567));
+    print(strings_similar("abc", "abd", 2));
+    print(url_decode("a%20b"));
+    print(hash_string("abc") == hash_string("abc"));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "4",           // first 'o'
+        "7",           // last 'o'
+        "2",           // "an" twice in "banana"
+        "ac",          // removed index 1
+        "abc",         // inserted at 1
+        "  a",         // indented by 2
+        "a",           // dedented
+        "true",
+        "--ab--",      // centred in 6
+        "007",
+        "1,234,567",   // thousands separators
+        "true",        // distance 1 is within 2
+        "a b",         // percent-decoded
+        "true",        // the hash is stable
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `for` over an array is not implemented, and says so instead of doing nothing.
+///
+/// The backend emitted a comment and an empty loop body, so the loop compiled, ran, and
+/// iterated zero times — a program that looks like it sums an array and returns 0. It
+/// traps now, and this asserts the trap rather than the wrong answer.
+#[test]
+fn for_over_an_array_is_rejected() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stderr = run_expecting_rejection(
+        "for_array",
+        r#"
+use core;
+
+fn main() -> int {
+    let mut n = 0;
+    for x in [10, 20, 30] {
+        n = n + x;
+    }
+    print(n);
+    return 0;
+}
+"#,
+    );
+    assert!(
+        stderr.contains("for over this iterable"),
+        "the rejection must name the construct, not just fail: {stderr}"
+    );
 }

@@ -39,10 +39,16 @@ records what it cost.
 function calls no builtin the compiler does not implement. It does **not** mean the
 function is correct. A function that is usable has been read, not run.
 
-**About ninety of the 249 are now run.** `compiler/tests/stdlib.rs` builds a program per
-module against the real library and asserts the values — 22 from `core`, 26 from `text`,
-14 from `math`. Every expected value is checkable by hand rather than recorded from a run.
-The other ~160 are still read, not run, and that is the largest gap in the library.
+**About eighty of the 249 distinct functions are now run.** `compiler/tests/stdlib.rs`
+builds a program per module against the real library and asserts the values — `core`,
+`text` and `math`, in five tests. Every expected value is checkable by hand rather than
+recorded from a run; the one exception is `hash_string`, which is asserted for *stability*
+rather than for a digest, because a recorded digest is a change detector.
+
+The rest are still read, not run, and that is the largest gap in the library. Writing the
+first three tests found two live bugs within minutes, and the second batch found a third —
+`for i in range(0, 4)` iterated zero times, and no example, parity program or stdlib
+function contains a `for` at all, so nothing had ever exercised it.
 
 **And it is per function, not per module.** The per-function number answers "does this
 call a missing builtin", and nothing else.
