@@ -148,13 +148,15 @@ the alternative to a heuristic gate is the no gate that let ten of these through
 pointer, and why `File` did not change. That is the pattern for the ones still missing: one
 shim, one arm, one type, and `tools/stdlib-check.py` proves the count moved.
 
-`crc32`, `base64_encode`/`decode` and the four terminal calls are done too. What remains
-is `md5`, `sha256`, `serialize`/`deserialize`, and the path helpers (`list_dir`, `basename`,
-`extension`, `parent_dir`, `join_path`, `args`) — 21 functions in all, down from 38.
+`crc32`, `base64_encode`/`decode`, `md5`, `sha256` and the four terminal calls are done too,
+which makes **`text` fully usable for the first time** — 59 of 59.
 
-`md5` and `sha256` are self-contained and should be next: the test vectors are published, so
-a wrong digest fails a test rather than a review. `serialize`/`deserialize` are the only ones
-that need a decision first — what the format is — and therefore an ADR.
+What remains is `serialize`/`deserialize` and the path helpers (`list_dir`, `basename`,
+`extension`, `parent_dir`, `join_path`, `args`, `stat`) — 19 functions in all, down from 38.
+
+`serialize`/`deserialize` are the only ones that need a decision before code: what the
+format is. That is an ADR first, not an implementation detail to settle while typing. The
+path helpers are mechanical and want a `struct dirent` walk for `list_dir`.
 
 Wiring up the file group found **two defects that had nothing to do with files**, both of
 the shape this file keeps recording: `match` in *expression* position evaluated its

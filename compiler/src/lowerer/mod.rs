@@ -1125,6 +1125,8 @@ impl Lowerer {
             // Checksums, encodings and the terminal. These were the last
             // `nova_unsupported` arms reachable from `text` and `io`.
             "__builtin_crc32" => Some(typed("nova_crc32", lowered(self), "int")),
+            "__builtin_md5" => Some(typed("nova_md5", lowered(self), "string")),
+            "__builtin_sha256" => Some(typed("nova_sha256", lowered(self), "string")),
             "__builtin_base64_encode" => {
                 Some(typed("nova_base64_encode", lowered(self), "string"))
             }
