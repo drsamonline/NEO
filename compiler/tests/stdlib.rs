@@ -828,3 +828,104 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// The bulk of `math`: trigonometry, interpolation, vectors, combinatorics.
+///
+/// Every expectation here is arithmetic a reader can check without running anything —
+/// `hypot(3, 4)` is 5, `dot2((1,2),(3,4))` is 11, `factorialf(5)` is 120. That is the point
+/// of asserting them: a wrong formula fails a reader, not just a run.
+///
+/// `factorialf` was the last function blocked by a missing builtin. Its non-integer branch
+/// calls the gamma function, which nothing implemented, so `factorialf(5.0)` trapped even
+/// though the integer branch never reaches it.
+#[test]
+fn math_functions_compute_standard_values() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "math_bulk",
+        r#"
+use core;
+use math;
+
+fn main() -> int {
+    print(sin(0.0));
+    print(cos(0.0));
+    print(tan(0.0));
+    print(degrees(3.141592653589793));
+    print(radians(180.0));
+    print(hypot(3.0, 4.0));
+    print(trunc(3.7));
+    print(fract(3.25));
+    print(minf([2.0, 5.0, 1.5]));
+    print(maxf([2.0, 5.0, 1.5]));
+    print(clampf(10.0, 0.0, 1.0));
+    print(clampi(10, 0, 5));
+    print(signf(0.0 - 3.0));
+    print(lerp(0.0, 10.0, 0.5));
+    print(inverse_lerp(0.0, 10.0, 5.0));
+    print(dot2(1.0, 2.0, 3.0, 4.0));
+    print(dot3(1.0, 2.0, 3.0, 4.0, 5.0, 6.0));
+    print(length2(3.0, 4.0));
+    print(distance(0.0, 0.0, 3.0, 4.0));
+    print(factorialf(5.0));
+    print(binomial(5, 2));
+    print(combinations(5, 2));
+    print(permutations(5, 2));
+    print(gcdf(12.0, 18.0));
+    print(lcmf(4.0, 6.0));
+    print(copysign(3.0, 0.0 - 1.0));
+    print(is_nan(nan()));
+    print(is_infinite(infinity()));
+    print(is_finite(1.0));
+    print(remap(5, 0, 10, 0, 100));
+    print(map_range(5, 0, 10, 0, 100));
+    print(smoothstep(0.0, 1.0, 0.5));
+    print(smootherstep(0.0, 1.0, 0.5));
+    print(approx_equal(1.0, 1.0001, 0.001));
+    print(nearly_equal(1.0, 1.0));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "0",         // sin 0
+        "1",         // cos 0
+        "0",         // tan 0
+        "180",       // pi radians is 180 degrees
+        "3.14159",   // 180 degrees is pi radians
+        "5",         // the 3-4-5 triangle
+        "3",         // truncation toward zero
+        "0.25",      // the fractional part
+        "1.5",       // smallest
+        "5",         // largest
+        "1",         // clamped to the upper bound
+        "5",         // clamped to the upper bound
+        "-1",        // the sign of a negative
+        "5",         // halfway between 0 and 10
+        "0.5",       // 5 is halfway between 0 and 10
+        "11",        // 1*3 + 2*4
+        "32",        // 1*4 + 2*5 + 3*6
+        "5",         // the 3-4-5 triangle again
+        "5",         // the same, as a distance
+        "120",       // 5!
+        "10",        // C(5,2)
+        "10",        // C(5,2)
+        "20",        // P(5,2)
+        "6",         // gcd(12, 18)
+        "12",        // lcm(4, 6)
+        "-3",        // the sign of y is applied to x
+        "true",      // nan is nan
+        "true",      // infinity is infinite
+        "true",      // 1 is finite
+        "50",        // 5 of the way from 0..10 into 0..100
+        "50",        // the integer version of the same
+        "0.5",       // smoothstep at the midpoint
+        "0.5",       // smootherstep at the midpoint
+        "true",      // within 0.001
+        "true",      // identical values are nearly equal
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}

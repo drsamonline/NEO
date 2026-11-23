@@ -201,6 +201,9 @@ char *nova_sha256(const char *text);
  * `nova_file_changed` is `st_ctime`, the inode change time. It is NOT the creation time:
  * Linux exposes no portable birth time, and the field it feeds is named `changed` for
  * that reason. */
+/* The gamma function, for `math.factorialf`'s non-integer branch. `tgamma` is in
+ * libm, which the compiler already links with `-lm`. */
+double nova_gamma(double value);
 long long nova_file_changed(const char *path);
 long long nova_file_modified(const char *path);
 long long nova_file_accessed(const char *path);
@@ -852,6 +855,10 @@ char *nova_sha256(const char *text) {
         }
     }
     return nova_hex(digest, 32);
+}
+
+double nova_gamma(double value) {
+    return tgamma(value);
 }
 
 long long nova_file_changed(const char *path) {

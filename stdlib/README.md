@@ -17,9 +17,9 @@ only place that says which.
 |---|---|---|---|
 | `core` | 55 | 54 | 1 |
 | `io` | 59 | 49 | 10 |
-| `math` | 76 | 75 | 1 |
+| `math` | 76 | 76 | 0 |
 | `text` | 59 | 59 | 0 |
-| **total** | **249** | **237** | **12** |
+| **total** | **249** | **238** | **11** |
 <!-- stdlib-check:end -->
 
 The compiler knows **forty-three** `__builtin_*` functions. A stdlib function whose body
