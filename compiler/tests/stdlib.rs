@@ -637,3 +637,51 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
 }
+
+/// `text`'s checksum and encoding helpers, against published vectors.
+///
+/// These are the first stdlib functions in this file whose answer is a *standard* rather
+/// than a value read off a run: the CRC-32 of `"123456789"` is `0xCBF43926`, and base64 is
+/// RFC 4648. That makes them checkable by anyone, which is the point of asserting them.
+///
+/// `crc32` is why `int` had to become 64-bit: `0xCBF43926` does not fit in a signed 32-bit
+/// integer, so a correct checksum came back negative. See ADR 0011.
+#[test]
+fn text_checksums_and_encodings_match_the_standard() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "text_digest",
+        r#"
+use core;
+use text;
+
+fn main() -> int {
+    print(crc32("123456789"));
+    print(base64_encode(""));
+    print(base64_encode("f"));
+    print(base64_encode("fo"));
+    print(base64_encode("foo"));
+    print(base64_encode("hello world"));
+    print(base64_decode("Zm9v"));
+    print(base64_decode("aGVsbG8gd29ybGQ="));
+    print(base64_decode(""));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "3421780262",        // CRC-32 of "123456789", the standard check value
+        "",                  // RFC 4648, empty input
+        "Zg==",              // one byte, two pad characters
+        "Zm8=",              // two bytes, one pad character
+        "Zm9v",              // three bytes, no padding
+        "aGVsbG8gd29ybGQ=",  // eleven bytes
+        "foo",               // round trip
+        "hello world",
+        // The final `base64_decode("")` prints an empty line, which `trim_end` absorbs.
+    ];
+    assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}

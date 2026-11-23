@@ -547,6 +547,51 @@ fn main() -> int {
     );
 }
 
+/// `int` holds 64 bits in a variable and in an array element, not only in a literal.
+///
+/// The language reference says every integer spelling is "a 64-bit signed value", and the
+/// runtime had always taken `long long`. The backend emitted C `int`, so a literal reached
+/// `print` as 64 bits and the same value assigned to a variable truncated:
+///
+/// ```nova
+/// print(3000000000);        // 3000000000
+/// let big = 3000000000;
+/// print(big);               // -1294967296
+/// ```
+///
+/// Widening the scalar alone would have moved the truncation into array elements, so the
+/// two moved together. See ADR 0011.
+#[test]
+fn int_is_64_bit_in_variables_and_arrays() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "int_width",
+        "\
+use core;
+
+fn main() -> int {
+    let big = 3000000000;
+    print(big);
+    let mut a: [int] = [];
+    array_push(a, 3000000000);
+    print(a[0]);
+    let literal = [4000000000];
+    print(literal[0]);
+    print(9223372036854775807);
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "3000000000\n3000000000\n4000000000\n9223372036854775807",
+        "a 64-bit int must survive a variable and an array element, not only a literal"
+    );
+}
+
 /// A struct field keeps its generic type, and the struct order follows its fields.
 ///
 /// `Holder { maybe: Option<int> }` emitted `Option_int maybe;` because the field's type was
