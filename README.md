@@ -59,28 +59,35 @@ NOVA is a statically-typed, compiled systems programming language with a complet
 - `nova-compiler test --parity` compares stdout and exit status across all four
   backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
   program.
-- **247 tests pass** (`cargo test --workspace`; WASM execution tests need
-  `node` and `wat2wasm`). Verified in CI.
+- **316 `#[test]` functions across the workspace** (`cargo test --workspace`; the WASM
+  execution tests need `node` and `wat2wasm`). CI runs them on every push.
 
-**✅ Phase 2: Runtime System - COMPLETE (Rust crate; the C shim is what generated programs use)**
-- The Rust `runtime/` crate (memory, GC, I/O, threading, async) compiles and is
-  tested, but generated C links only the small `nova_runtime` shim, not this crate.
-- ✅ Memory management (192 lines, arena allocation, GC foundation)
-- ✅ Type system (260 lines, type registry, dynamic values)
-- ✅ Error handling (297 lines, panic handling, backtraces)
-- ✅ FFI support (332 lines, C interop, FFI arrays)
-- ✅ Core runtime library (139 lines, initialization, stats)
-- ✅ Garbage collection (315 lines, mark-and-sweep implementation)
-- ✅ I/O runtime (535 lines, file I/O, streams, directories)
-- ✅ Threading primitives (314 lines, mutexes, RW locks, condition variables)
-- ✅ Async runtime (114 lines, futures, channels, delay)
-- Total: 2,881 lines, 30+ tests
+**✅ Phase 2: an unused Rust runtime crate — the language has none of what it contains**
+
+`runtime/` is a workspace crate of 1,498 source lines (plus tests): `gc.rs` 420, `types.rs` 276,
+`ffi.rs` 262, `error.rs` 250, `memory.rs` 198, `lib.rs` 92. It compiles and its tests pass.
+
+**Nothing depends on it.** No crate lists `nova-runtime` in `[dependencies]`, and generated C
+links only the `nova_runtime` shim in `compiler/src/runtime.rs`. That shim contains **no**
+garbage collector, **no** arena allocator, **no** FFI layer and **no** threading.
+
+So the compiled language, as it ships:
+
+| Claimed here previously | Actually true of a NOVA program |
+|---|---|
+| garbage collection, arena allocation | **none** — every allocation leaks; the process exits to reclaim |
+| FFI, C interop | **none** |
+| threading, async, channels | **none** |
+| backtraces | **none** — the debugger refuses them |
+
+The crate is a design sketch for a runtime that was never wired in. It is kept because it is
+tested and may become the real one; it is **not** a feature list, and this section previously
+read as one.
 
 **🔄 Phase 3: Tooling - PARTIAL (crates exist, integration incomplete)**
-- 🟡 Package manager (1,674 lines) - CLI and manifest parsing real; registry mocked and dependencies recorded but not built
-- 🟡 Language server (522 lines) - LSP handlers and real compiler diagnostics; go-to-definition is a string search, `references` TODO
-- 🟡 Debugger (1,405 lines) - REPL/breakpoints/session real; stack frames and DWARF are mocked
-- Total: 3,601 lines across all tools
+- 🟡 Package manager (1,984 lines) — `init`/`build`/`run` real; path and git dependencies resolve; **the registry refuses** rather than inventing packages
+- 🟡 Language server (1,668 lines) — LSP handlers and real compiler diagnostics; go-to-definition is a string search
+- 🟡 Debugger (1,737 lines) — REPL and breakpoints real; **backtrace, `list`, `print` and DWARF refuse** rather than inventing frames
 
 **🔄 Phase 4: Polish & Integration - IN PROGRESS**
 - Standard library implementation
