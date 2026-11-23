@@ -2036,49 +2036,22 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 
-    // A struct has no JSON form here, and the trap names the type rather than guessing.
-    let (stdout, _stderr) = run_expecting_rejection(
-        "io_serialize_struct",
+    // A record now encodes, and so does an enum (as its tag). An `Option` still has no JSON
+    // form, and the trap names the type rather than guessing. This is the assertion that
+    // keeps "rejects what it cannot write" honest after records became encodable.
+    let (_stdout, _stderr) = run_expecting_rejection(
+        "io_serialize_enum",
         r#"
 use core;
 use io;
 
-struct Point {
-    x: int,
-    y: int,
-}
-
 fn main() -> int {
-    let point = Point { x: 1, y: 2 };
-    print(serialize(point));
+    let maybe: Option<int> = Some(1);
+    print(serialize(maybe));
     return 0;
 }
 "#,
     );
-    let _ = stdout;
-    assert!(
-        stdout.is_empty() || !stdout.contains("1"),
-        "a struct must not serialise as its first field"
-    );
-}
-
-/// `io.deserialize` reads JSON back into a typed `Option`.
-///
-/// This was the last blocked function in the standard library, and it needed two fixes:
-/// inference must take `T` from the binding (ADR 0015) because `T` appears in no argument,
-/// and `lower_instance` must publish the instantiated return type so the body can build the
-/// right `Option`. `Option_int` and friends are structs the backend emits per program, so the
-/// runtime answers "did it parse" through an out-parameter and the lowerer builds the
-/// `Option` itself.
-///
-/// The `None` cases matter as much as the `Some` ones: a parser that returned `Some(0)` for
-/// garbage would be the same defect `parse_int` had.
-#[test]
-fn io_deserialize_reads_json_back() {
-    if !c_compiler_available() {
-        eprintln!("skipping: no host C compiler available (set CC)");
-        return;
-    }
     let stdout = run_with_stdlib(
         "io_deserialize",
         r#"
@@ -2145,4 +2118,52 @@ fn main() -> int {
         "1234\na b\ntrue",
         "what serialize writes, deserialize must read"
     );
+}
+
+/// `io.serialize` encodes a record, including nested ones.
+///
+/// The runtime cannot do this — only the lowerer knows a struct's field names and types — so
+/// the encoder is generated in SIR: a concatenation of the key, the encoded value, and the
+/// separators. Field keys go through the same string escaper a string value uses.
+///
+/// ADR 0014 said a struct "compiles and traps". That was true and is no longer; the entry now
+/// records the encoder instead.
+#[test]
+fn io_serialize_encodes_a_record() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_serialize_record",
+        r#"
+use core;
+use io;
+
+struct Point {
+    x: int,
+    y: int,
+}
+
+struct Line {
+    from: Point,
+    to: Point,
+    label: String,
+}
+
+fn main() -> int {
+    let origin = Point { x: 0, y: 0 };
+    print(serialize(origin));
+    let line = Line { from: origin, to: Point { x: 3, y: 4 }, label: "diag" };
+    print(serialize(line));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        r#"{"x":0,"y":0}"#,
+        // Nested records keep their nesting, and a string field stays quoted.
+        r#"{"from":{"x":0,"y":0},"to":{"x":3,"y":4},"label":"diag"}"#,
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
 }
