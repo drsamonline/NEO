@@ -1069,3 +1069,146 @@ fn main() -> int {
         "the trap must carry the message it was given: {stderr}"
     );
 }
+
+/// `math`'s remaining deterministic functions: transcendentals, 2D and 3D vectors, angles.
+///
+/// The tuple-returning ones — `normalize2`, `cross3`, `rotate2` — are reachable through
+/// destructuring, `let (x, y) = normalize2(3.0, 4.0)`, which is what makes them testable at
+/// all. Indexing a tuple with `t.0` does not parse.
+#[test]
+fn math_transcendentals_and_vectors_compute_standard_values() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "math_vectors",
+        r#"
+use core;
+use math;
+
+fn main() -> int {
+    print(acos(1.0));
+    print(asin(0.0));
+    print(atan(1.0));
+    print(atan2(1.0, 1.0));
+    print(cosh(0.0));
+    print(sinh(0.0));
+    print(tanh(0.0));
+    print(exp(0.0));
+    print(log(1.0));
+    print(log10(100.0));
+    print(log2(8.0));
+    print(fmod(7.0, 3.0));
+    print(remainder(7.0, 3.0));
+    print(cross2(1.0, 0.0, 0.0, 1.0));
+    print(length3(1.0, 2.0, 2.0));
+    print(distance3d(0.0, 0.0, 0.0, 1.0, 2.0, 2.0));
+    let (nx, ny) = normalize2(3.0, 4.0);
+    print(nx);
+    print(ny);
+    let (rx, ry) = rotate2(1.0, 0.0, PI / 2.0);
+    print(approx_equal(rx, 0.0, 0.0001));
+    print(approx_equal(ry, 1.0, 0.0001));
+    print(lerp_progress(0.0, 10.0, 5, 10));
+    print(lerpi(0, 10, 0.5));
+    print(normalize_angle(0.0 - PI));
+    print(normalize_angle_signed(PI + 1.0));
+    let (cx, cy, cz) = cross3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    print(cx);
+    print(cy);
+    print(cz);
+    let (ux, uy, uz) = normalize3(1.0, 2.0, 2.0);
+    print(ux);
+    print(uy);
+    print(uz);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "0",          // acos 1
+        "0",          // asin 0
+        "0.785398",   // atan 1 is pi/4
+        "0.785398",   // atan2(1,1) is pi/4
+        "1",          // cosh 0
+        "0",          // sinh 0
+        "0",          // tanh 0
+        "1",          // e^0
+        "0",          // ln 1
+        "2",          // log10 100
+        "3",          // log2 8
+        "1",          // 7 mod 3
+        "1",          // IEEE remainder, same here
+        "1",          // the 2D cross product of x-hat and y-hat
+        "3",          // |(1,2,2)|
+        "3",          // the distance between the origin and (1,2,2)
+        "0.6",        // (3,4) normalised
+        "0.8",
+        "true",       // rotating x-hat by a quarter turn lands on the y axis
+        "true",
+        "5",          // halfway through the range
+        "5",          // the integer version
+        "3.14159",    // -pi normalises to pi
+        "-2.14159",   // pi + 1 normalises to 1 - pi
+        "0",          // x-hat cross y-hat is z-hat
+        "0",
+        "1",
+        "0.333333",   // (1,2,2) normalised, each divided by its length of 3
+        "0.666667",
+        "0.666667",
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `math`'s random family, asserted for the properties a test can honestly hold them to.
+///
+/// All four are built on `rand()`, so `srand` makes them reproducible. Nothing here pins a
+/// value: it asserts that a seed reproduces a sequence, and that the outputs stay in their
+/// documented ranges.
+#[test]
+fn math_random_is_seeded_and_bounded() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "math_random",
+        r#"
+use core;
+use math;
+
+fn main() -> int {
+    srand(7);
+    let a = randomf();
+    srand(7);
+    let b = randomf();
+    print(a == b);
+    print(a >= 0.0 && a < 1.0);
+    let r = random_range(2.0, 3.0);
+    print(r >= 2.0 && r < 3.0);
+    srand(9);
+    let n1 = random_normal(0.0, 1.0);
+    srand(9);
+    let n2 = random_normal(0.0, 1.0);
+    print(n1 == n2);
+    srand(11);
+    let e1 = random_exponential(2.0);
+    srand(11);
+    let e2 = random_exponential(2.0);
+    print(e1 == e2);
+    print(e1 >= 0.0);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "true",  // the same seed reproduces randomf
+        "true",  // and it stays in [0, 1)
+        "true",  // random_range stays in [min, max)
+        "true",  // the same seed reproduces the normal
+        "true",  // and the exponential
+        "true",  // which is never negative
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
