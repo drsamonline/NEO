@@ -1002,8 +1002,15 @@ impl CBackend {
                     None => format!("({} ? {} : 0)", self.expr_to_c(condition), self.expr_to_c(then_expr)),
                 }
             }
-            // The type annotation is codegen metadata, not a value.
-            SirExpr::Typed { expr, .. } => self.expr_to_c(expr),
+            // An empty array literal has no element to inspect, so the annotation is the
+            // only thing that says which constructor to emit. Dropping it made every
+            // `[]` an `int` array, and `join([], ",")` did not compile against a
+            // `[String]` parameter.
+            SirExpr::Typed { expr, typ } => match expr.as_ref() {
+                SirExpr::Array(items) if items.is_empty() => Self::empty_array_c(typ),
+                // The type annotation is codegen metadata, not a value.
+                _ => self.expr_to_c(expr),
+            },
             SirExpr::Closure { name, env } => {
                 let env = env
                     .as_ref()

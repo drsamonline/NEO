@@ -950,7 +950,30 @@ impl Lowerer {
         args.iter()
             .enumerate()
             .map(|(index, arg)| {
-                let lowered = self.lower_expr(arg);
+                // An empty array literal takes its element type from the parameter it is
+                // passed to. `array_literal_type` answers `Array` for `[]` — there is no
+                // element to inspect — and `c_type` maps that to the `int` array, so
+                // `join([], ",")` did not compile against a `[String]` parameter and
+                // `takes_strings([])` failed the same way. Only the call site knows the
+                // parameter, so the fix belongs here.
+                let lowered = match (arg.unspanned(), params.get(index)) {
+                    (Expr::Array(items), Some(param)) if items.is_empty() => {
+                        let element = param
+                            .trim()
+                            .trim_start_matches('&')
+                            .trim_start_matches("mut ")
+                            .trim();
+                        if element.starts_with('[') {
+                            SirExpr::Typed {
+                                expr: Box::new(SirExpr::Array(Vec::new())),
+                                typ: element.to_string(),
+                            }
+                        } else {
+                            self.lower_expr(arg)
+                        }
+                    }
+                    _ => self.lower_expr(arg),
+                };
                 let wants_reference = params
                     .get(index)
                     .is_some_and(|typ| typ.trim_start().starts_with('&'));

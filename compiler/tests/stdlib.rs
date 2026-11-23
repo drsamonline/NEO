@@ -171,7 +171,7 @@ fn run_with_fixture(name: &str, files: &[(&str, &str)], source: &str) -> String 
 
 /// Build a program and expect it to be rejected *at run time*, returning what it printed
 /// to stderr. Used for constructs the backend refuses rather than emits.
-fn run_expecting_rejection(name: &str, source: &str) -> String {
+fn run_expecting_rejection(name: &str, source: &str) -> (String, String) {
     let dir = scratch(name);
     let file = dir.join(format!("{name}_program.nova"));
     let binary = dir.join(name);
@@ -197,7 +197,10 @@ fn run_expecting_rejection(name: &str, source: &str) -> String {
         !run.status.success(),
         "the program ran to completion, so the construct was silently accepted"
     );
-    String::from_utf8_lossy(&run.stderr).to_string()
+    (
+        String::from_utf8_lossy(&run.stdout).to_string(),
+        String::from_utf8_lossy(&run.stderr).to_string(),
+    )
 }
 
 /// `core`'s arithmetic, array and string helpers.
@@ -513,7 +516,7 @@ fn for_over_an_array_is_rejected() {
         eprintln!("skipping: no host C compiler available (set CC)");
         return;
     }
-    let stderr = run_expecting_rejection(
+    let (_stdout, stderr) = run_expecting_rejection(
         "for_array",
         r#"
 use core;
@@ -1135,7 +1138,7 @@ fn panic_reports_its_message() {
         eprintln!("skipping: no host C compiler available (set CC)");
         return;
     }
-    let stderr = run_expecting_rejection(
+    let (_stdout, stderr) = run_expecting_rejection(
         "core_panic",
         r#"
 use core;
@@ -1544,9 +1547,9 @@ fn main() -> int {
 /// `io.format` substitutes `{}` in order, and leaves a placeholder it cannot fill.
 ///
 /// Leaving `{}` rather than dropping it is deliberate: a formatter that silently deletes
-/// text is the failure this file keeps finding. The empty array has to be declared —
-/// `format("x", [])` types the literal as `[int]` and does not compile — which is the
-/// untyped-empty-literal limitation, not a defect in `format`.
+/// text is the failure this file keeps finding. The empty array can now be written as a
+/// literal — it takes its element type from the parameter — which it could not when this
+/// test was first written.
 #[test]
 fn io_format_substitutes_and_leaves_the_rest() {
     if !c_compiler_available() {
@@ -1560,12 +1563,11 @@ use core;
 use io;
 
 fn main() -> int {
-    let none: [String] = [];
     print(format("{} and {}", ["a", "b"]));
-    print(format("no placeholders", none));
-    print(format("{}", none));
+    print(format("no placeholders", []));
+    print(format("{}", []));
     print(format("{}-{}-{}", ["x", "y"]));
-    print(format("", none));
+    print(format("", []));
     print(format("{}{}", ["p", "q"]));
     return 0;
 }
@@ -1786,5 +1788,78 @@ fn main() -> int {
     return 0;
 }
 "#,
+    );
+}
+
+/// An empty array literal takes its element type from where it is used.
+///
+/// `array_literal_type` answers `Array` for `[]` — there is no element to inspect — and the
+/// backend mapped that to the `int` array, so `join([], ",")` did not compile against a
+/// `[String]` parameter. Only the call site knows the parameter, so the type now comes from
+/// there; the backend reads it from the annotation rather than ignoring it.
+#[test]
+fn an_empty_array_literal_takes_its_element_type() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "empty_literal",
+        r#"
+use core;
+use text;
+use io;
+
+fn count_of(items: [String]) -> int {
+    array_len(items)
+}
+
+fn main() -> int {
+    print(array_len([]));
+    print(count_of([]));
+    print(join([], ","));
+    print(strlen(join([], ",")) == 0);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "0",     // an empty int array
+        "0",     // an empty [String] argument
+        "",      // joining nothing gives nothing
+        "true",  // and it really is empty rather than a stray separator
+    ];
+    assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}
+
+/// `io.fatal` stops the program with its message, like `panic`.
+///
+/// The difference is the exit code: `fatal` leaves 1, `panic` leaves whatever the runtime
+/// chooses. Both are asserted through the rejection helper, which checks that the program
+/// fails *and* that the message reaches stderr — a trap that does not name its cause is
+/// barely better than a segfault.
+#[test]
+fn io_fatal_stops_with_its_message() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let (stdout, _stderr) = run_expecting_rejection(
+        "io_fatal",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    fatal("cannot continue");
+    return 0;
+}
+"#,
+    );
+    // `io.fatal` reports through `io.log`, which writes to stdout. That a fatal error
+    // belongs on stderr is a reasonable question and is not settled here.
+    assert!(
+        stdout.contains("cannot continue"),
+        "the exit must carry the message it was given: {stdout}"
     );
 }
