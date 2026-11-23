@@ -31,7 +31,7 @@ is unverified it says so.
 | Module | Compiles | Functions | Usable | Blocked |
 |---|---|---|---|---|
 | `core` | ✅ | 55 | **55** | **0** |
-| `io` | ✅ | 59 | 53 | 6 |
+| `io` | ✅ | 59 | 57 | 2 |
 | `math` | ✅ | 76 | **76** | **0** |
 | `text` | ✅ | 59 | **59** | **0** |
 
@@ -184,11 +184,12 @@ scrutinee once per arm, so `write_file` opened its own output a second time and 
 code path), and `fread_all` rebuilt a string line by line, dropping every newline and
 stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
-**2. The standard library is tested except for the blocked group.** 243 of 249 functions
+**2. The standard library is tested except for the blocked group.** 247 of 249 functions
 are asserted in `compiler/tests/stdlib.rs`. **`math` is the first module with an assertion
 for every function it exports — 76 of 76.** **`core`, `math` and `text` are complete on both counts** — every function usable, every
-function tested. Six remain, all in `io`, and all need a decision rather than a shim:
-`serialize`, `deserialize` and the four stream functions. Writing the first three tests
+function tested. **Two remain: `serialize` and `deserialize`**, and they need the one decision
+that is genuinely a product question — what the wire format is. Nothing else in the library
+is blocked. Writing the first three tests
 found two live bugs within minutes; the second batch found a third. **No example, parity
 program or stdlib function contains a `for` loop at all**, which is how `for i in
 range(0, 4)` came to iterate zero times without anything noticing — a whole construct with

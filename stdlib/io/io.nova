@@ -263,12 +263,17 @@ fn stream_write(stream: &mut Stream, data: [int]) -> int {
 
 /// Flush stream
 fn stream_flush(stream: &mut Stream) -> bool {
-    __builtin_stream_flush(stream.handle)
+    // `== 0`, like `fseek` and `fclose`: the runtime answers C's `fflush` result, which is
+    // zero on success. Returning it directly made a successful flush report `false`.
+    __builtin_stream_flush(stream.handle) == 0
 }
 
 /// Close stream
 fn stream_close(stream: &mut Stream) {
-    __builtin_stream_close(stream.handle)
+    __builtin_stream_close(stream.handle);
+    // The handle is stale afterwards, exactly as `fclose` leaves a `File`. Clearing it
+    // means a second close fails instead of closing whatever slot was reused.
+    stream.handle = -1
 }
 
 /// Console input - read a line from stdin

@@ -1154,6 +1154,17 @@ impl Lowerer {
             "__builtin_write" => Some(typed("nova_write", lowered(self), "void")),
             "__builtin_format" => Some(typed("nova_format", lowered(self), "string")),
             "__builtin_args" => Some(typed("nova_args", vec![], "[String]")),
+            // A `Stream` is a `{ kind, handle }` wrapper over the same handle a `File`
+            // holds, so the stream builtins are the file builtins under another name.
+            // There is no separate runtime for them and no reason for one.
+            "__builtin_stream_read" => {
+                Some(typed("nova_file_read_bytes", lowered(self), "[int]"))
+            }
+            "__builtin_stream_write" => {
+                Some(typed("nova_file_write_bytes", lowered(self), "int"))
+            }
+            "__builtin_stream_flush" => Some(typed("nova_file_flush", lowered(self), "int")),
+            "__builtin_stream_close" => Some(typed("nova_file_close", lowered(self), "int")),
             "__builtin_readline" => Some(typed("nova_readline", vec![], "string")),
             "__builtin_readchar" => Some(typed("nova_readchar", vec![], "char")),
             "__builtin_file_modified" => Some(typed("nova_file_modified", lowered(self), "int")),
