@@ -32,7 +32,7 @@ is unverified it says so.
 |---|---|---|---|---|
 | `core` | ✅ | 55 | 54 | 1 |
 | `io` | ✅ | 59 | 49 | 10 |
-| `math` | ✅ | 76 | 75 | 1 |
+| `math` | ✅ | 76 | **76** | **0** |
 | `text` | ✅ | 59 | **59** | **0** |
 
 The counts come from `python3 tools/stdlib-check.py`, which is the gate. This table used to
@@ -184,8 +184,8 @@ scrutinee once per arm, so `write_file` opened its own output a second time and 
 code path), and `fread_all` rebuilt a string line by line, dropping every newline and
 stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
-**2. Most of the standard library is still untested, and so is `for`.** About a hundred of
-249 functions are asserted in `compiler/tests/stdlib.rs`, including `map`/`filter`/`reduce`
+**2. Most of the standard library is still untested, and so is `for`.** 141 of 249 functions
+are asserted in `compiler/tests/stdlib.rs`, including `map`/`filter`/`reduce`
 with closures — the first code in the repository to call one. Writing the first three tests
 found two live bugs within minutes; the second batch found a third. **No example, parity
 program or stdlib function contains a `for` loop at all**, which is how `for i in
