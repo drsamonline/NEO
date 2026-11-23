@@ -154,17 +154,23 @@ which makes **`text` fully usable for the first time** — 59 of 59.
 The path helpers are done too — `list_dir`, `basename`, `extension`, `parent_dir`,
 `join_path`, `resolve_path` — which takes `io` to 48 of 59 and the library to 236 of 249.
 
-What remains is 13 functions in three groups, and each needs something first:
+What remains is 12 functions, and the two groups left each need a decision first:
 
 | Group | What it needs |
 |---|---|
 | `serialize`, `deserialize` | a decision: what the wire format is. An ADR before code. |
 | `args` | the emitted `main` is `int main(void)`, so there is no `argc`/`argv` to hand over. Changing it is a decision about every program's entry point. |
-| `stat` | returns `Option<FileMetadata>` — an `Option` of a *struct*, which the option machinery has only ever carried for scalar payloads. |
+| ~~`stat`~~ | **done.** `Option<FileMetadata>` works, and the runtime still does not build the struct: it answers scalars and NOVA composes. See below. |
 
 `resolve_path` joins against `cwd` rather than calling `realpath`, which needs
 `_XOPEN_SOURCE` and a `PATH_MAX` buffer and fails on a path that does not exist — exactly
 when a caller wants the answer. It does not resolve symlinks, and says so.
+
+**`stat` composes its struct in NOVA, not in the runtime.** A builtin returning
+`FileMetadata` would need to know a layout the language defines, while the runtime is C that
+only ever sees the generated struct. It asks for `file_exists`, `file_size`,
+`is_directory` and three timestamp builtins, and builds the `Option` itself. That is the
+pattern for anything else that returns a struct: the runtime answers scalars.
 
 Wiring up the file group found **two defects that had nothing to do with files**, both of
 the shape this file keeps recording: `match` in *expression* position evaluated its

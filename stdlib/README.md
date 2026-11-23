@@ -16,10 +16,10 @@ only place that says which.
 | Module | Functions | Usable | Blocked |
 |---|---|---|---|
 | `core` | 55 | 54 | 1 |
-| `io` | 59 | 48 | 11 |
+| `io` | 59 | 49 | 10 |
 | `math` | 76 | 75 | 1 |
 | `text` | 59 | 59 | 0 |
-| **total** | **249** | **236** | **13** |
+| **total** | **249** | **237** | **12** |
 <!-- stdlib-check:end -->
 
 The compiler knows **forty-three** `__builtin_*` functions. A stdlib function whose body
@@ -60,11 +60,11 @@ were found only by running the functions: `text` compiled while `split` was an i
 loop and while `==` on two `String`s compared pointers. **A module that compiles is not a
 module that works**, and this table measures neither of those things.
 
-`math` went from 48 usable to **75** when the floating-point builtins landed, and
-`io` gained three parsing functions. `io` is still the worst case: 42 of its 60
-functions call builtins that do not exist (`__builtin_fopen`, `__builtin_fread_line`,
-`__builtin_stat`, `__builtin_mkdir` and the rest), so most of that module cannot be
-called at all.
+`text` is now **fully usable** — 59 of 59 — after the checksum, digest, encoding and
+path builtins landed. `math` went from 48 usable to 75 when the floating-point builtins
+did. `io` is still the worst case at 49 of 59, and what it is missing is not a backlog of
+similar work: `serialize`/`deserialize` need a decision about the format, `args` needs the
+emitted `main` to take `argc`/`argv`, and the rest are stream types.
 
 ## Keeping this true
 
