@@ -39,11 +39,12 @@ records what it cost.
 function calls no builtin the compiler does not implement. It does **not** mean the
 function is correct. A function that is usable has been read, not run.
 
-**About eighty of the 249 distinct functions are now run.** `compiler/tests/stdlib.rs`
+**About a hundred of the 249 distinct functions are now run.** `compiler/tests/stdlib.rs`
 builds a program per module against the real library and asserts the values — `core`,
-`text` and `math`, in five tests. Every expected value is checkable by hand rather than
-recorded from a run; the one exception is `hash_string`, which is asserted for *stability*
-rather than for a digest, because a recorded digest is a change detector.
+`text` and `math`, in nine tests, including the higher-order `map`/`filter`/`reduce` called
+with closures. Every expected value is checkable by hand rather than recorded from a run;
+the one exception is `hash_string`, which is asserted for *stability* rather than for a
+digest, because a recorded digest is a change detector.
 
 The rest are still read, not run, and that is the largest gap in the library. Writing the
 first three tests found two live bugs within minutes, and the second batch found a third —

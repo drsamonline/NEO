@@ -161,7 +161,10 @@ fn main() -> int {
     let mut a: [int] = [];
     array_push(a, 10);
     array_push(a, 20);
-    print(array_pop(a));
+    match array_pop(a) {
+        Some(v) => print(v),
+        None => print(0 - 1)
+    }
     print(array_len(a));
     return 0;
 }
@@ -447,4 +450,130 @@ fn main() -> int {
         stderr.contains("for over this iterable"),
         "the rejection must name the construct, not just fail: {stderr}"
     );
+}
+
+/// `core`'s higher-order functions, called with closures.
+///
+/// The closure syntax is `|x| body`, not `fn(x) { ... }` — the latter does not parse, and
+/// nothing in `examples/`, `tests/parity/` or the standard library uses a closure, so
+/// `map`, `filter` and `reduce` had never been called by anything.
+///
+/// `reduce`'s parameter order is `(arr, initial, f)`, which is easy to get wrong and was
+/// wrong in the first draft of this test.
+#[test]
+fn core_higher_order_functions_take_closures() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "core_higher_order",
+        r#"
+use core;
+
+fn main() -> int {
+    let doubled = map([1, 2, 3], |x| x * 2);
+    print(doubled[0]);
+    print(doubled[2]);
+    let evens = filter([1, 2, 3, 4], |x| is_even(x));
+    print(array_len(evens));
+    print(evens[0]);
+    print(reduce([1, 2, 3, 4], 0, |a, b| a + b));
+    print(reduce([1, 2, 3, 4], 1, |a, b| a * b));
+    print(id(7));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "2",   // 1 * 2
+        "6",   // 3 * 2
+        "2",   // two evens
+        "2",   // the first of them
+        "10",  // 1 + 2 + 3 + 4
+        "24",  // 1 * 2 * 3 * 4
+        "7",   // id
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `text`'s escaping, wrapping and hex helpers.
+#[test]
+fn text_escaping_and_wrapping() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "text_escaping",
+        r#"
+use core;
+use text;
+
+fn main() -> int {
+    print(escape_string("a\"b"));
+    print(escape_string("a\nb"));
+    print(wrap_text("one two three", 7));
+    print(to_hex(255));
+    print(url_encode("a b"));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "a\\\"b",       // the quote is escaped
+        "a\\nb",        // so is the newline
+        "one two\nthree", // wrapped at 7
+        "FF",           // to_hex is upper case
+        "a+b",          // form encoding: a space becomes '+', not %20
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// A generic function returning `Option<T>`, and a `match` that evaluates its scrutinee once.
+///
+/// Two defects met here. `find<T>` is declared `-> Option<int>`, but the instantiation's
+/// return type was computed from the type's *name* — `Option`, which `c_type` maps to
+/// `int` — so `find_int` was declared to return an `int` while returning an `Option_int`.
+/// And `match` read its scrutinee twice, once for the tag and once for the payload, so
+/// `match array_pop(a)` popped two elements.
+#[test]
+fn option_returning_generics_and_single_evaluation() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "option_generics",
+        r#"
+use core;
+
+fn main() -> int {
+    match find([1, 2, 3], |x| x > 1) {
+        Some(i) => print(i),
+        None => print(0 - 1)
+    }
+    match find([1, 2, 3], |x| x > 9) {
+        Some(i) => print(i),
+        None => print(0 - 1)
+    }
+    let mut a: [int] = [];
+    array_push(a, 10);
+    array_push(a, 20);
+    match array_pop(a) {
+        Some(v) => print(v),
+        None => print(0 - 1)
+    }
+    print(array_len(a));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "1",   // the first element greater than 1 is at index 1
+        "-1",  // nothing is greater than 9
+        "20",  // the last push — popped once, not twice
+        "1",   // one element left
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
 }

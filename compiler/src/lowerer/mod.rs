@@ -362,10 +362,13 @@ impl Lowerer {
                 }
                 Expr::Identifier(name) => {
                     if let Some((declaration, bindings)) = self.generic_bindings(name, args) {
+                        // `type_display`, not `.name`: `Option<int>`'s name is `Option`, so
+                        // `let a = find(...)` inferred `Option`, which `c_type` maps to
+                        // `int` — and the `switch` over the result read `.tag` on an `int`.
                         declaration
                             .return_type
                             .as_ref()
-                            .map(|typ| substitute_type_name(&typ.name, &bindings))
+                            .map(|typ| substitute_type_name(&type_display(typ), &bindings))
                     } else {
                         self.signatures.get(name).cloned().flatten()
                     }
@@ -602,11 +605,15 @@ impl Lowerer {
             });
         }
 
+        // `type_display`, not `.name` — the same mistake `lower_function` records in a
+        // comment below. `Option<int>`'s `.name` is `Option`, so a generic instantiation
+        // returning `Option<int>` was declared to return `Option`, which `c_type` maps to
+        // `int`. `find<T>` then returned an `Option_int` from an `int` function.
         let return_type = instance
             .function
             .return_type
             .as_ref()
-            .map(|typ| self.substitute(&typ.name));
+            .map(|typ| self.substitute(&type_display(typ)));
         let previous = self.discard_result;
         self.discard_result = !Self::returns_value(&return_type);
         let body = match &instance.function.body {
@@ -1130,13 +1137,33 @@ impl Lowerer {
                 } else {
                     SirExpr::AddressOf(Box::new(array))
                 };
-                let (callee, typ) = match self.array_kind(args.first()?) {
+                let (callee, element) = match self.array_kind(args.first()?) {
                     ArrayKind::Int => ("nova_array_pop", "int"),
                     ArrayKind::Float => ("nova_array_float_pop", "float"),
                     ArrayKind::String => ("nova_array_string_pop", "String"),
                     ArrayKind::Array => ("nova_array_array_pop", "[int]"),
                 };
-                Some(typed(callee, vec![array], typ))
+                // `array_pop<T>` is declared `-> Option<T>`, so the value has to arrive
+                // as one. It used to be a bare element, which only compiled because the
+                // instantiation's return type was wrong too — `Option<T>`'s `.name` is
+                // `Option`, and `c_type` maps that to `int`. Fixing the declaration
+                // exposed this. The runtime traps on an empty pop, so the tag is always
+                // Some; a caller cannot get `None` out of this function, which is worth
+                // deciding separately.
+                self.option_payloads.insert(element.to_string());
+                Some(SirExpr::Typed {
+                    expr: Box::new(SirExpr::StructLiteral {
+                        name: option_struct_name(element),
+                        fields: vec![
+                            ("tag".to_string(), SirExpr::Literal(SirLiteral::Int(0))),
+                            (
+                                "payload".to_string(),
+                                typed(callee, vec![array], element),
+                            ),
+                        ],
+                    }),
+                    typ: format!("Option<{element}>"),
+                })
             }
             // Floating-point maths. Every one is a C library call under a name the
             // compiler can emit; `nova-compiler build` links `-lm` for this reason.
@@ -2674,8 +2701,30 @@ impl Lowerer {
         if arms.iter().any(|arm| arm.guard.is_some()) {
             return None;
         }
-        let record_expr = self.lower_expr(scrutinee);
-        let scrutinee_type = self.expr_type(scrutinee);
+        let mut record_expr = self.lower_expr(scrutinee);
+        // The AST type is not always known: `__builtin_array_pop` has a static table
+        // entry that says `int`, while the lowered expression carries the real type.
+        // Without the fallback the `switch` tested the whole struct instead of `.tag`
+        // and bound `payload_i` instead of Option's `payload`.
+        let scrutinee_type = self.expr_type(scrutinee).or_else(|| match &record_expr {
+            SirExpr::Typed { typ, .. } => Some(typ.clone()),
+            _ => None,
+        });
+        // The scrutinee is read twice — once for the `tag` test and once for the payload
+        // — so anything with a side effect ran twice. `match array_pop(a) { .. }` popped
+        // two elements and bound the second. Hoisting it into a temporary evaluates it
+        // once, which is what the source means.
+        let mut hoisted: Vec<SirStatement> = Vec::new();
+        if !matches!(record_expr, SirExpr::Var(_) | SirExpr::Literal(_)) {
+            self.temp_counter += 1;
+            let name = format!("__match{}", self.temp_counter);
+            hoisted.push(SirStatement::Let {
+                name: name.clone(),
+                typ: scrutinee_type.clone(),
+                value: record_expr,
+            });
+            record_expr = SirExpr::Var(name);
+        }
         // A payload enum is a struct, so the switch tests its `tag`; a
         // payload-less enum is already an integer value.
         let is_payload_enum = scrutinee_type
@@ -2812,11 +2861,12 @@ impl Lowerer {
             }
         }
 
-        Some(vec![SirStatement::Switch {
+        hoisted.push(SirStatement::Switch {
             scrutinee: scrutinee_expr,
             cases,
             default,
-        }])
+        });
+        Some(hoisted)
     }
 
     /// The statements of one `match` arm body: a block keeps its statements, a
