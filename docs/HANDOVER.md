@@ -184,7 +184,7 @@ scrutinee once per arm, so `write_file` opened its own output a second time and 
 code path), and `fread_all` rebuilt a string line by line, dropping every newline and
 stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
-**2. Most of the standard library is still untested, and so is `for`.** 141 of 249 functions
+**2. Most of the standard library is still untested, and so is `for`.** 160 of 249 functions
 are asserted in `compiler/tests/stdlib.rs`, including `map`/`filter`/`reduce`
 with closures — the first code in the repository to call one. Writing the first three tests
 found two live bugs within minutes; the second batch found a third. **No example, parity

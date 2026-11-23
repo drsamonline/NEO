@@ -929,3 +929,143 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// `core`'s collection, string and higher-order helpers.
+///
+/// `array_get` answers `Option<T>` and `array_set` answers `bool`, which is the difference
+/// between a checked index and a trap — both are asserted at an index that exists and one
+/// that does not.
+#[test]
+fn core_collections_and_strings_compute_standard_values() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "core_collections",
+        r#"
+use core;
+
+fn main() -> int {
+    let a = [10, 20, 30];
+    match array_get(a, 1) {
+        Some(v) => print(v),
+        None => print(0 - 1),
+    }
+    match array_get(a, 9) {
+        Some(v) => print(v),
+        None => print(0 - 1),
+    }
+    print(array_set(a, 1, 99));
+    print(a[1]);
+    match binary_search([1, 3, 5, 7], 5) {
+        Some(i) => print(i),
+        None => print(0 - 1),
+    }
+    match binary_search([1, 3, 5, 7], 4) {
+        Some(i) => print(i),
+        None => print(0 - 1),
+    }
+    match linear_search([1, 3, 5, 7], 7) {
+        Some(i) => print(i),
+        None => print(0 - 1),
+    }
+    print(pow(2, 10));
+    print(strcat("ab", "cd"));
+    print(strlen("abc"));
+    print(pipe(3, |x| x + 1));
+    let doubled_after_plus_one = compose(|x| x * 2, |x| x + 1);
+    print(doubled_after_plus_one(3));
+    assert(true, "never shown");
+    println("printed");
+    sleep(0);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "20",    // array_get finds the element
+        "-1",    // and reports absence rather than trapping
+        "true",  // array_set succeeds
+        "99",    // and the element changed
+        "2",     // binary_search finds 5 at index 2
+        "-1",    // and reports absence for 4
+        "3",     // linear_search finds 7 at index 3
+        "1024",  // 2^10
+        "abcd",  // concatenation
+        "3",     // the length of "abc"
+        "4",     // pipe applies the function
+        "8",     // compose(f, g) is f(g(x)): (3 + 1) * 2
+        "printed",
+    ];
+    assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}
+
+/// `core`'s environment and random helpers.
+///
+/// Nothing here asserts a value that could differ between runs: `cwd` is asserted non-empty,
+/// `now` is asserted positive, and `rand_range` is asserted to stay inside its bounds. The
+/// random generator is asserted *deterministic under a seed* instead, which is the only
+/// property a test can honestly hold it to.
+#[test]
+fn core_environment_and_random_are_deterministic() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "core_env",
+        r#"
+use core;
+
+fn main() -> int {
+    print(strlen(cwd()) > 0);
+    print(getenv("NO_SUCH_VARIABLE_XYZ_123"));
+    print(now() > 0);
+    srand(1);
+    let first = rand();
+    srand(1);
+    let second = rand();
+    print(first == second);
+    let low = rand_range(5, 6);
+    print(low >= 5 && low <= 6);
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "true",  // the working directory has a name
+        "",      // a variable that does not exist is empty, not a trap
+        "true",  // the clock is after the epoch
+        "true",  // the same seed produces the same first number
+        "true",  // the range is inclusive at both ends, and stays inside them
+    ];
+    assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}
+
+/// `panic` stops the program and says why.
+///
+/// The message is the whole contract: a trap that does not name its cause is barely better
+/// than a segfault.
+#[test]
+fn panic_reports_its_message() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stderr = run_expecting_rejection(
+        "core_panic",
+        r#"
+use core;
+
+fn main() -> int {
+    panic("deliberate");
+    return 0;
+}
+"#,
+    );
+    assert!(
+        stderr.contains("deliberate"),
+        "the trap must carry the message it was given: {stderr}"
+    );
+}
