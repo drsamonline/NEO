@@ -24,7 +24,7 @@ is unverified it says so.
 | 4 — syntax tree, formatter, guard, `trait` | ✅ |
 | 5 — LSP nav, VS Code extension, path/git deps | ✅ |
 | 6 — release and distribution | ✅ v0.7.0 published |
-| 7 — long tail | 🟡 spec 8/25, stdlib truth ✅, debugger ⬜ |
+| 7 — long tail | 🟡 spec 10/25, stdlib truth ✅, debugger ⬜ |
 
 ### The standard library
 

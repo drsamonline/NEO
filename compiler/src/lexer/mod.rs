@@ -96,6 +96,11 @@ impl Lexer {
                         prev = ch;
                         self.advance();
                     }
+                    // Running out of input inside a block comment used to be accepted
+                    // silently, so a missing `*/` swallowed the rest of the file and the
+                    // program compiled to nothing with no complaint. The string and char
+                    // readers already report the same mistake; this one did not.
+                    self.diagnostics.error("Unterminated block comment");
                     return true;
                 }
             }
@@ -337,6 +342,26 @@ mod tests {
         assert!(!diags.has_errors());
         assert!(tokens.len() > 4);
     }
+    /// A `/*` with no `*/` used to be accepted silently, so a missing terminator
+    /// swallowed the rest of the file and the program compiled to nothing without a
+    /// word. The string and char readers already reported the same mistake.
+    #[test]
+    fn an_unterminated_block_comment_is_an_error() {
+        let mut lex = Lexer::new("fn main() {\n    /* never closed\n    return 0;\n}\n");
+        let (_, diags) = lex.tokenize();
+        assert!(
+            diags.has_errors(),
+            "an unterminated block comment must be reported, not swallowed"
+        );
+    }
+
+    #[test]
+    fn a_terminated_block_comment_is_not() {
+        let mut lex = Lexer::new("fn main() { /* closed */ return 0; }");
+        let (_, diags) = lex.tokenize();
+        assert!(!diags.has_errors(), "a closed comment must lex cleanly");
+    }
+
     #[test]
     fn test_keywords() {
         let mut lex = Lexer::new("fn main() {}");
