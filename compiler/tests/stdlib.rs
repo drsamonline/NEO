@@ -2167,3 +2167,62 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// `io.deserialize` reads a JSON object into a record, and round-trips what `serialize` writes.
+///
+/// The runtime can extract one member's raw text and nothing more; the field names and types
+/// are known only to the lowerer, which assigns them member by member. Two refusals matter as
+/// much as the successes:
+///
+/// - a text that is not an object answers `None` rather than a zeroed record;
+/// - a record with a field type that has no reader refuses the whole deserialization rather
+///   than leaving that field at its default.
+#[test]
+fn io_deserialize_reads_a_record() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_deserialize_record",
+        r#"
+use core;
+use io;
+
+struct Point {
+    x: int,
+    y: int,
+}
+
+struct Named {
+    label: String,
+    weight: float,
+    active: bool,
+}
+
+fn main() -> int {
+    let point: Option<Point> = deserialize("{\"x\":3,\"y\":4}");
+    match point { Some(v) => print(v.x), None => print(0 - 1), }
+    let junk: Option<Point> = deserialize("not an object");
+    match junk { Some(v) => print(v.x), None => print(0 - 1), }
+    let named: Option<Named> = deserialize("{\"label\":\"ab\",\"weight\":1.5,\"active\":true}");
+    match named {
+        Some(v) => { print(v.label); print(v.weight); print(v.active); },
+        None => print("none"),
+    }
+    let back: Option<Point> = deserialize(serialize(Point { x: 7, y: 8 }));
+    match back { Some(v) => print(v.y), None => print(0 - 1), }
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "3",     // a member is assigned by name
+        "-1",    // a text that is not an object is None, not a zeroed record
+        "ab",    // a String member
+        "1.5",   // a float member
+        "true",  // a bool member
+        "8",     // and what serialize wrote comes back
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}

@@ -81,5 +81,8 @@ from a literal and `String` from a declaration; matching one spelling would have
   not parsing JSON.
 - Strings pass bytes above `0x1F` through unchanged, which is correct for UTF-8 and wrong for
   nothing this library can produce.
-- `deserialize` is **not implemented**. It needs the same type-directed dispatch plus a
-  parser, and a parser written in a hurry is worse than an absent one.
+- `deserialize` covers scalars, `String` and records with those field types. It does **not**
+  cover arrays, enums, `Option`, or a record with a field of an unsupported type — that last
+  case refuses the whole deserialization rather than leaving the field at its default.
+- A record is read member by member: the runtime extracts one member's raw text, and the
+  lowerer assigns it. A text that is not an object answers `None`, not a zeroed record.
