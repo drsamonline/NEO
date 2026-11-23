@@ -100,6 +100,29 @@ both needed it.
 comparison were found by running `split`, not by any gate. That is the standing lesson of
 this file, and it is why item 2 below is what it is.
 
+### The audit those rows earned
+
+Nine of the defects above are one mistake: reading a type through `TypeExpr::name` when
+`type_display` was meant. `Option<int>`'s name is `Option`, and `c_type` maps that to
+`int`, so the argument vanishes silently. Rather than wait for a tenth, every such site was
+swept:
+
+| Site | What it broke |
+|---|---|
+| `resolve_generic_call` | a generic call's reported return type |
+| `lower_instance` | a generic instantiation's declared return type |
+| `expr_type`'s call arm | `let a = find(..)` inferred `int` |
+| `lower_method` | a method returning `Option<T>` declared to return `int` |
+| `lower_statement`'s local `const` | `const LIMIT: Option<int>` declared an `int` |
+
+The same sweep covered the other half of the pattern — helpers that match a `SirExpr`
+without unwrapping its `Typed` annotation. `range_bounds`, `global_init_to_c` and the
+`match` scrutinee all had it; the first made every `for i in range(..)` iterate zero times.
+
+**If you add a helper that inspects a `SirExpr`, unwrap `Typed` first.** Every existing one
+does now, and `methods_and_consts_keep_their_generic_return_type` plus
+`core_predicates_and_range_iteration` are the tests that notice when one stops.
+
 ## What is next, in order
 
 **1. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
