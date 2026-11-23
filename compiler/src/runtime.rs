@@ -234,7 +234,9 @@ char *nova_json_array_string(NovaArray_string values);
 int nova_json_read_int(const char *text, long long *out);
 int nova_json_read_float(const char *text, double *out);
 int nova_json_read_bool(const char *text, int *out);
-int nova_json_read_string(const char *text, char **out);
+int nova_json_read_string(const char *text, char **out);int nova_json_read_array_int(const char *text, NovaArray *out);
+int nova_json_read_array_float(const char *text, NovaArray_float *out);
+int nova_json_read_array_string(const char *text, NovaArray_string *out);
 /* Reading a record. `nova_json_field` answers the raw text of one member's value, or "" when
  * the member is absent or the text is not an object; `nova_json_present` is the test for that.
  * The slice is balanced and string-aware, so a nested object or an escaped quote inside a
@@ -1073,6 +1075,127 @@ int nova_json_read_bool(const char *text, int *out) {
     return 0;
 }
 
+/* Defined later in this section; the array readers below call it. */
+static const char *nova_json_scan_string(const char *cursor, NovaJsonBuffer *buffer);
+
+/* Arrays. Each scans `[ v , v ]` strictly and fails on anything else, rather than returning
+ * a partial array — a truncated array is a wrong answer that looks like a right one. */
+static const char *nova_json_after_open(const char *text) {
+    const char *cursor = nova_json_skip_space(text);
+    if (*cursor != '[') return NULL;
+    return nova_json_skip_space(cursor + 1);
+}
+
+int nova_json_read_array_int(const char *text, NovaArray *out) {
+    if (text == NULL) return 0;
+    const char *cursor = nova_json_after_open(text);
+    if (cursor == NULL) return 0;
+    long long *items = NULL;
+    long long length = 0, capacity = 0;
+    if (*cursor != ']') {
+        for (;;) {
+            const char *start = cursor;
+            if (*cursor == '-') cursor++;
+            if (*cursor < '0' || *cursor > '9') { free(items); return 0; }
+            while (*cursor >= '0' && *cursor <= '9') cursor++;
+            if (length + 1 > capacity) {
+                capacity = capacity == 0 ? 4 : capacity * 2;
+                long long *grown = (long long *)realloc(items, sizeof(long long) * (size_t)capacity);
+                if (grown == NULL) { free(items); return 0; }
+                items = grown;
+            }
+            items[length++] = strtoll(start, NULL, 10);
+            cursor = nova_json_skip_space(cursor);
+            if (*cursor == ',') { cursor = nova_json_skip_space(cursor + 1); continue; }
+            break;
+        }
+    }
+    if (*cursor != ']') { free(items); return 0; }
+    if (*nova_json_skip_space(cursor + 1) != '\0') { free(items); return 0; }
+    *out = nova_array_from(items, length);
+    free(items);
+    return 1;
+}
+
+int nova_json_read_array_float(const char *text, NovaArray_float *out) {
+    if (text == NULL) return 0;
+    const char *cursor = nova_json_after_open(text);
+    if (cursor == NULL) return 0;
+    double *items = NULL;
+    long long length = 0, capacity = 0;
+    if (*cursor != ']') {
+        for (;;) {
+            char *end = NULL;
+            double value = strtod(cursor, &end);
+            if (end == cursor) { free(items); return 0; }
+            if (length + 1 > capacity) {
+                capacity = capacity == 0 ? 4 : capacity * 2;
+                double *grown = (double *)realloc(items, sizeof(double) * (size_t)capacity);
+                if (grown == NULL) { free(items); return 0; }
+                items = grown;
+            }
+            items[length++] = value;
+            cursor = nova_json_skip_space(end);
+            if (*cursor == ',') { cursor = nova_json_skip_space(cursor + 1); continue; }
+            break;
+        }
+    }
+    if (*cursor != ']') { free(items); return 0; }
+    if (*nova_json_skip_space(cursor + 1) != '\0') { free(items); return 0; }
+    *out = nova_array_float_from(items, length);
+    free(items);
+    return 1;
+}
+
+int nova_json_read_array_string(const char *text, NovaArray_string *out) {
+    if (text == NULL) return 0;
+    const char *cursor = nova_json_after_open(text);
+    if (cursor == NULL) return 0;
+    char **items = NULL;
+    long long length = 0, capacity = 0;
+    if (*cursor != ']') {
+        for (;;) {
+            NovaJsonBuffer item;
+            nova_json_init(&item);
+            const char *end = nova_json_scan_string(cursor, &item);
+            if (end == NULL) {
+                free(item.data);
+                for (long long i = 0; i < length; i++) free(items[i]);
+                free(items);
+                return 0;
+            }
+            if (length + 1 > capacity) {
+                capacity = capacity == 0 ? 4 : capacity * 2;
+                char **grown = (char **)realloc(items, sizeof(char *) * (size_t)capacity);
+                if (grown == NULL) {
+                    free(item.data);
+                    for (long long i = 0; i < length; i++) free(items[i]);
+                    free(items);
+                    return 0;
+                }
+                items = grown;
+            }
+            items[length++] = item.data;
+            cursor = nova_json_skip_space(end);
+            if (*cursor == ',') { cursor = nova_json_skip_space(cursor + 1); continue; }
+            break;
+        }
+    }
+    if (*cursor != ']') {
+        for (long long i = 0; i < length; i++) free(items[i]);
+        free(items);
+        return 0;
+    }
+    if (*nova_json_skip_space(cursor + 1) != '\0') {
+        for (long long i = 0; i < length; i++) free(items[i]);
+        free(items);
+        return 0;
+    }
+    *out = nova_array_string_from(items, length);
+    free(items);
+    return 1;
+}
+
 /* Decodes one JSON string at `cursor` into `buffer`, answering the cursor past the closing
  * quote or NULL. Shared by the value reader and the object member reader. */
 static const char *nova_json_scan_string(const char *cursor, NovaJsonBuffer *buffer) {
@@ -1117,10 +1240,8 @@ int nova_json_read_string(const char *text, char **out) {
     return 1;
 }
 
-/* Forward declarations: these two are defined further down the JSON section, and the
- * helpers below call them. */
+/* Defined further down this section; the helpers below call it. */
 static const char *nova_json_skip_value(const char *cursor);
-static const char *nova_json_scan_string(const char *cursor, NovaJsonBuffer *buffer);
 
 int nova_json_is_object(const char *text) {
     if (text == NULL) return 0;
