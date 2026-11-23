@@ -1,4 +1,4 @@
-68.90
+69.04
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -111,3 +111,6 @@
 # 68.90% (9,507 of 13,798) when `serialize` landed, recovering the 0.14 the stream PR gave
 # back. The JSON runtime is C and uninstrumented; the rise is the lowerer's dispatch arm,
 # which the new test takes for every type it covers.
+# 69.04% (9,580 of 13,877) when `deserialize` landed. It rose by 0.14 — the most of any PR this
+# session — because the lowerer's dispatch arm and the `lower_instance` fix are both covered by
+# the new tests, and the JSON runtime is C, which llvm-cov does not count either way.
