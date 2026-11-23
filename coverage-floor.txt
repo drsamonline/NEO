@@ -1,4 +1,4 @@
-69.04
+69.16
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -114,3 +114,5 @@
 # 69.04% (9,580 of 13,877) when `deserialize` landed. It rose by 0.14 — the most of any PR this
 # session — because the lowerer's dispatch arm and the `lower_instance` fix are both covered by
 # the new tests, and the JSON runtime is C, which llvm-cov does not count either way.
+# 69.16% (9,648 of 13,950) when record encoding landed. The recursive encoder in `json_value`
+# and `json_object` is covered by the nested-record test.
