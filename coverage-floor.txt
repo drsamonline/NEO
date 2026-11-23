@@ -1,4 +1,4 @@
-69.40
+69.44
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -118,3 +118,5 @@
 # and `json_object` is covered by the nested-record test.
 # 69.40% (9,758 of 14,060) when record deserialization landed. The member-by-member reader in
 # `json_read_record` is covered by the record test, which is the largest single test in the file.
+# 69.44% (9,777 of 14,079) when array deserialization landed. The three array readers are C and
+# uninstrumented; the rise is the lowerer's array branches and the `option_struct_name` rule.
