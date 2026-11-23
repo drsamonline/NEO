@@ -1,4 +1,4 @@
-68.47
+68.49
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -66,3 +66,6 @@
 # 68.47% (9,330 of 13,627) when the `Option` typing fixes landed. The new arms in
 # `lower_match_statement` and the `Option` construction in the array-pop arm are covered by
 # tests that run the library in-process.
+# 68.49% (9,332 of 13,625) when the `.name` audit landed. It rose by 0.02: the three fixed
+# sites and the receiver change are a handful of lines, and the test that covers them runs
+# the compiler as a subprocess, which llvm-cov cannot see.
