@@ -1,4 +1,4 @@
-68.77
+68.87
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -86,3 +86,5 @@
 # runs the compiler as a subprocess, so neither adds a covered Rust line while both add lines
 # to the denominator. The 0.05% tolerance would have hidden this; it is the kind of drift the
 # ratchet exists to make visible.
+# 68.87% (9,466 of 13,745) when the break/continue fix landed. It rose because the lowerer's
+# statement arm is a branch every `break` in the suite now takes.
