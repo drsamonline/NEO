@@ -210,7 +210,12 @@ struct FileMetadata {
     name: String,
     size: int,
     is_dir: bool,
-    created: int,
+    // `changed`, not `created`: this is `st_ctime`, which on Linux is the inode change
+    // time — permissions, ownership, link count — and not the creation time. The field
+    // was named `created` and delivered something else. Creation time needs a platform
+    // API (`st_birthtime` on BSD and macOS, nothing portable on Linux), so this does not
+    // offer it rather than offering the wrong number under the right name.
+    changed: int,
     modified: int,
     accessed: int,
 }
@@ -227,7 +232,7 @@ fn stat(path: String) -> Option<FileMetadata> {
         name: basename(path),
         size: file_size(path),
         is_dir: is_directory(path),
-        created: __builtin_file_created(path),
+        changed: __builtin_file_changed(path),
         modified: __builtin_file_modified(path),
         accessed: __builtin_file_accessed(path),
     })

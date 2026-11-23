@@ -196,8 +196,12 @@ char *nova_sha256(const char *text);
  * no tty to ask, which is the case in CI and under a pipe. */
 /* Timestamps as seconds since the epoch, or -1 when the path cannot be read.
  * The runtime answers scalars and NOVA composes the struct: a `stat` that returned a
- * `FileMetadata` would need to know a layout the language defines. */
-long long nova_file_created(const char *path);
+ * `FileMetadata` would need to know a layout the language defines.
+ *
+ * `nova_file_changed` is `st_ctime`, the inode change time. It is NOT the creation time:
+ * Linux exposes no portable birth time, and the field it feeds is named `changed` for
+ * that reason. */
+long long nova_file_changed(const char *path);
 long long nova_file_modified(const char *path);
 long long nova_file_accessed(const char *path);
 char *nova_path_basename(const char *path);
@@ -850,7 +854,7 @@ char *nova_sha256(const char *text) {
     return nova_hex(digest, 32);
 }
 
-long long nova_file_created(const char *path) {
+long long nova_file_changed(const char *path) {
     struct stat info;
     if (path == NULL || stat(path, &info) != 0) return -1;
     return (long long)info.st_ctime;
