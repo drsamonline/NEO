@@ -1,4 +1,4 @@
-69.41
+69.49
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -126,3 +126,5 @@
 # 0.04, lowered in the same commit as the rule requires. Deleting the fabricated frames, source
 # listing and DWARF stub removed more covered lines than the refusals added: honesty is cheaper
 # in code than fiction, and the ratchet records that.
+# 69.49% (9,739 of 14,014) when the registry started refusing. It rose: the three mock functions
+# and their two tests were covered, and the refusals are four lines each.
