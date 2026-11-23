@@ -1,4 +1,4 @@
-68.40
+68.47
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -63,3 +63,6 @@
 # 68.40% (9,301 of 13,598) when the `for`-loop fixes landed. It rose because `range_bounds`
 # gained the branch that unwraps `Typed` — a line the old code never reached — and because
 # three more stdlib tests run real library code in-process.
+# 68.47% (9,330 of 13,627) when the `Option` typing fixes landed. The new arms in
+# `lower_match_statement` and the `Option` construction in the array-pop arm are covered by
+# tests that run the library in-process.
