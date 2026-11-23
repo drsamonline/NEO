@@ -1,4 +1,4 @@
-69.16
+69.40
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -116,3 +116,5 @@
 # the new tests, and the JSON runtime is C, which llvm-cov does not count either way.
 # 69.16% (9,648 of 13,950) when record encoding landed. The recursive encoder in `json_value`
 # and `json_object` is covered by the nested-record test.
+# 69.40% (9,758 of 14,060) when record deserialization landed. The member-by-member reader in
+# `json_read_record` is covered by the record test, which is the largest single test in the file.
