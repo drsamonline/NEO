@@ -1,4 +1,4 @@
-68.89
+68.90
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -93,3 +93,5 @@
 # test spawns a subprocess, so both add denominator lines and no covered Rust.
 # 68.89% (9,485 of 13,768) when the empty-array-literal fix landed. It rose because the
 # lowerer's argument branch and the backend's annotation arm are both covered by the new test.
+# 68.90% (9,489 of 13,772) when the entry-point change landed. The runtime's args functions
+# are C and uninstrumented; the rise is the backend's main emission, which every test takes.
