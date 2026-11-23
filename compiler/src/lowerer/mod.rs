@@ -688,7 +688,24 @@ impl Lowerer {
         let type_args: Vec<String> = declaration
             .generics
             .iter()
-            .map(|generic| bindings.get(generic).cloned().unwrap_or_else(|| "int".to_string()))
+            .map(|generic| {
+                bindings
+                    .get(generic)
+                    .cloned()
+                    // A generic that appears only in the return type has no argument to
+                    // infer from — `deserialize<T>(s: String) -> Option<T>` is the case
+                    // that exposed this. Falling straight through to `int` made every call
+                    // bind `T` to `int`, so `let f: Option<float> = deserialize(...)`
+                    // emitted `Option_float f = deserialize_int(...)`. The binding's
+                    // declared type is the only thing that says what `T` is.
+                    .or_else(|| {
+                        self.expected_type
+                            .as_deref()
+                            .and_then(option_payload_of)
+                            .map(|payload| payload.to_string())
+                    })
+                    .unwrap_or_else(|| "int".to_string())
+            })
             .collect();
 
         let mut substitution = HashMap::new();
