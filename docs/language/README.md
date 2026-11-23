@@ -44,7 +44,7 @@ What exists today, and what you should read instead:
 | 12 | [Errors](12_errors.md) | — |
 | 13 | [Concurrency](13_concurrency.md) | — |
 | 14 | [Attributes](14_attributes.md) | — |
-| 15 | [Generics](15_generics.md) | — |
+| 15 | [Generics](15_generics.md) | ✅ written |
 | 16 | [Interfaces](16_interfaces.md) | — |
 | 17 | [Packages](17_packages.md) | — |
 | 18 | [Domain packs](18_domain_packs.md) | — |
