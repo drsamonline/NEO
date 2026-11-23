@@ -1,4 +1,4 @@
-68.59
+68.66
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -72,3 +72,5 @@
 # 68.59% (9,375 of 13,668) when the type-name gate landed. The dependency ordering and the
 # sema rewrite are ordinary code with tests behind them; the gate itself is a Python script
 # that llvm-cov does not see, so this rise is all from the compiler changes.
+# 68.66% (9,411 of 13,706) when the file builtins landed. The runtime shims are C, which
+# llvm-cov does not instrument; the rise is the lowerer arms and the match-chain hoist.
