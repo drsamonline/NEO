@@ -222,3 +222,10 @@ gets a 403. Either use the Actions tab, or rely on the push-triggered workflows.
   is.
 - **`Option<T>` is monomorphised** per payload type, and `None` takes its type from
   context. Do not reintroduce the three-slot struct.
+- **`docs/status.json` is published, and gated.** `python3 tools/status.py --check` fails
+  when it stops matching the version, the line counts, the ADR count, the gate list or the
+  stdlib ratchet. Other repositories read it: `drsamonline/skills` rewrites the NEO skill's
+  status block from it every week, so a stale file misinforms them the same way a stale
+  handover misinforms us. It deliberately carries **no** test count and no coverage — those
+  move on every commit and a file carrying them could never be checked. They are in this
+  document instead, which CI cannot verify either, so keep them current by hand.
