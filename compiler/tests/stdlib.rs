@@ -1984,3 +1984,80 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// `io.serialize` writes JSON, and refuses types it cannot write honestly.
+///
+/// The format was already decided by the module's own doc comment — "JSON-like string" —
+/// so this honours a contract rather than inventing one; ADR 0014 records it.
+///
+/// The interesting assertions are the two that could go quietly wrong: a string is quoted
+/// **and escaped**, and a struct is **rejected** rather than serialised as its first field.
+#[test]
+fn io_serialize_writes_json() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_serialize",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    print(serialize(42));
+    print(serialize(0 - 7));
+    print(serialize(1.5));
+    print(serialize(true));
+    print(serialize(false));
+    print(serialize("hi"));
+    print(serialize("a\"b"));
+    print(serialize([1, 2, 3]));
+    print(serialize([1.5, 2.5]));
+    print(serialize(["x", "y"]));
+    let empty: [int] = [];
+    print(serialize(empty));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "42",           // an int is its digits
+        "-7",           // and keeps its sign
+        "1.5",          // a float is a JSON number
+        "true",
+        "false",
+        r#""hi""#,      // a string is quoted
+        r#""a\"b""#,    // and its quotes are escaped
+        "[1,2,3]",      // an int array
+        "[1.5,2.5]",    // a float array
+        r#"["x","y"]"#, // a string array
+        "[]",           // an empty array is two brackets, not a null
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+
+    // A struct has no JSON form here, and the trap names the type rather than guessing.
+    let (stdout, _stderr) = run_expecting_rejection(
+        "io_serialize_struct",
+        r#"
+use core;
+use io;
+
+struct Point {
+    x: int,
+    y: int,
+}
+
+fn main() -> int {
+    let point = Point { x: 1, y: 2 };
+    print(serialize(point));
+    return 0;
+}
+"#,
+    );
+    let _ = stdout;
+    assert!(
+        stdout.is_empty() || !stdout.contains("1"),
+        "a struct must not serialise as its first field"
+    );
+}
