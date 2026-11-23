@@ -1155,7 +1155,7 @@ fn generic_enum_payloads_and_growable_arrays_run() {
     let source = dir.join("generic_enum.nova");
     fs::write(
         &source,
-        "enum Result<T, E> {\n    Ok(T),\n    Err(E),\n}\n\nfn show(r: Result<int, String>) {\n    match r {\n        Result.Ok(v) => { print(v); },\n        Result.Err(e) => { print(e); },\n    }\n}\n\nfn main() {\n    show(Result.Ok(7));\n    show(Result.Err(\"bad\"));\n    let values: Array = [1, 2];\n    __builtin_array_push(values, 3);\n    print(__builtin_array_len(values));\n    print(__builtin_array_pop(values));\n}\n",
+        "enum Result<T, E> {\n    Ok(T),\n    Err(E),\n}\n\nfn show(r: Result<int, String>) {\n    match r {\n        Result.Ok(v) => { print(v); },\n        Result.Err(e) => { print(e); },\n    }\n}\n\nfn main() {\n    show(Result.Ok(7));\n    show(Result.Err(\"bad\"));\n    let values: Array = [1, 2];\n    __builtin_array_push(values, 3);\n    print(__builtin_array_len(values));\n    match __builtin_array_pop(values) {\n        Some(v) => { print(v); },\n        None => { print(0 - 1); },\n    }\n}\n",
     )
     .expect("write source");
 

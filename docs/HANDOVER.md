@@ -92,6 +92,9 @@ both needed it.
 | a nested `if` statement | its branch's trailing expression lowered as an expression, so `if a { if b { x = 1 } }` emitted `if (a) { ; }` | — |
 | `for` over a range | `range_bounds` matched the call but not the `Typed` wrapper around it, so every `for i in range(..)` iterated zero times | — |
 | `for` over anything else | emitted a comment and an empty body — a silent no-op. Now traps with the construct named | — |
+| `Option<T>` return type of an instantiation | computed from the type's `.name`, which is `Option` — `c_type` maps that to `int`, so `find_int` returned an `Option_int` from an `int` function | — |
+| `Option<T>` return type of a generic call | same `.name` mistake in `expr_type`, so `let a = find(..)` inferred `int` | — |
+| `match` over an `Option` | read its scrutinee twice, once for the tag and once for the payload — `match array_pop(a)` popped two elements | — |
 
 **Three of those compiled cleanly and were wrong.** The loop body and the string
 comparison were found by running `split`, not by any gate. That is the standing lesson of
@@ -106,8 +109,9 @@ were done on 2026-11-18 show the pattern: one shim function, one lowerer arm, on
 type, and `tools/stdlib-check.py` proves the count moved. This is now the largest gap
 between the library and the language.
 
-**2. Most of the standard library is still untested, and so is `for`.** About eighty of
-249 functions are asserted in `compiler/tests/stdlib.rs`. Writing the first three tests
+**2. Most of the standard library is still untested, and so is `for`.** About a hundred of
+249 functions are asserted in `compiler/tests/stdlib.rs`, including `map`/`filter`/`reduce`
+with closures — the first code in the repository to call one. Writing the first three tests
 found two live bugs within minutes; the second batch found a third. **No example, parity
 program or stdlib function contains a `for` loop at all**, which is how `for i in
 range(0, 4)` came to iterate zero times without anything noticing — a whole construct with
