@@ -236,13 +236,18 @@ check the runtime shim.
 **Note:** `workflow_dispatch` through the API needs a token with `actions:write`; `gh`
 gets a 403. Either use the Actions tab, or rely on the push-triggered workflows.
 
-## A check you cannot trust
+## A check that used to be untrustworthy
 
-- **"Emitted WASM validates" is flaky.** On commit `cb51f71` the same job passed in the
-  `pull_request` run and failed in the `push` run — identical code, two results, 32 seconds
-  apart. It gates a backend no other check touches, so its red currently means nothing and its
-  green means very little. Rule 6 of the constitution says a flaky check is worse than no
-  check: this one should be made deterministic or removed until it is.
+- **"Emitted WASM validates" failed once for reasons that were not the compiler.** On commit
+  `cb51f71` it passed in the `pull_request` run and failed in the `push` run — identical code,
+  two results, 32 seconds apart. The only part of the job that can differ between two runs is
+  the network: a `rustup` install and a `wasm-tools` download. Both are pinned, and the
+  download now retries three times and says **"this is tooling, not the compiler"** when it
+  gives up, so a red result means one thing again.
+- **The job's own guard is sound** and should not be removed with it: `validated -eq 0` fails
+  the job, so a backend that rejects the whole corpus cannot pass quietly.
+- **The retry path is untested in CI** — it only runs when a download fails, which is exactly
+  the case that is hard to provoke. That is recorded rather than claimed as verified.
 
 ## Things that will cost you a cycle if you do not know them
 
