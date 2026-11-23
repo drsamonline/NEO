@@ -1,4 +1,4 @@
-68.87
+68.86
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -88,3 +88,6 @@
 # ratchet exists to make visible.
 # 68.87% (9,466 of 13,745) when the break/continue fix landed. It rose because the lowerer's
 # statement arm is a branch every `break` in the suite now takes.
+# 68.86% (9,471 of 13,753) when the stdin readers landed — a FALL of 0.01, lowered in the
+# same commit as the rule requires. The two readers are C (not instrumented) and the new
+# test spawns a subprocess, so both add denominator lines and no covered Rust.
