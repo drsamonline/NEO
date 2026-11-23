@@ -228,6 +228,13 @@ char *nova_json_string(const char *value);
 char *nova_json_array_int(NovaArray values);
 char *nova_json_array_float(NovaArray_float values);
 char *nova_json_array_string(NovaArray_string values);
+/* The other direction. Each answers 1 on success and 0 on anything it cannot read, writing
+ * through the out-parameter only on success. The caller builds the `Option` — the runtime
+ * cannot, because `Option_int` and friends are emitted per program. */
+int nova_json_read_int(const char *text, long long *out);
+int nova_json_read_float(const char *text, double *out);
+int nova_json_read_bool(const char *text, int *out);
+int nova_json_read_string(const char *text, char **out);
 NovaArray_string nova_args(void);
 char nova_readchar(void);
 double nova_gamma(double value);
@@ -1010,6 +1017,87 @@ char *nova_json_array_string(NovaArray_string values) {
     }
     nova_json_put(&buffer, "]");
     return buffer.data;
+}
+
+static const char *nova_json_skip_space(const char *text) {
+    while (*text == ' ' || *text == '\t' || *text == '\n' || *text == '\r') text++;
+    return text;
+}
+
+int nova_json_read_int(const char *text, long long *out) {
+    if (text == NULL) return 0;
+    const char *cursor = nova_json_skip_space(text);
+    const char *start = cursor;
+    if (*cursor == '-') cursor++;
+    if (*cursor < '0' || *cursor > '9') return 0;
+    while (*cursor >= '0' && *cursor <= '9') cursor++;
+    if (*nova_json_skip_space(cursor) != '\0') return 0;
+    char *end = NULL;
+    long long value = strtoll(start, &end, 10);
+    if (end != cursor) return 0;
+    *out = value;
+    return 1;
+}
+
+int nova_json_read_float(const char *text, double *out) {
+    if (text == NULL) return 0;
+    const char *cursor = nova_json_skip_space(text);
+    char *end = NULL;
+    double value = strtod(cursor, &end);
+    if (end == cursor) return 0;
+    if (*nova_json_skip_space(end) != '\0') return 0;
+    *out = value;
+    return 1;
+}
+
+int nova_json_read_bool(const char *text, int *out) {
+    if (text == NULL) return 0;
+    const char *cursor = nova_json_skip_space(text);
+    if (strncmp(cursor, "true", 4) == 0 && *nova_json_skip_space(cursor + 4) == '\0') {
+        *out = 1;
+        return 1;
+    }
+    if (strncmp(cursor, "false", 5) == 0 && *nova_json_skip_space(cursor + 5) == '\0') {
+        *out = 0;
+        return 1;
+    }
+    return 0;
+}
+
+int nova_json_read_string(const char *text, char **out) {
+    if (text == NULL) return 0;
+    NovaJsonBuffer buffer;
+    nova_json_init(&buffer);
+    const char *cursor = nova_json_skip_space(text);
+    if (*cursor != '"') { free(buffer.data); return 0; }
+    cursor++;
+    while (*cursor != '"') {
+        if (*cursor == '\0') { free(buffer.data); return 0; }
+        if (*cursor == '\\') {
+            cursor++;
+            char decoded;
+            switch (*cursor) {
+                case '"': decoded = '"'; break;
+                case '\\': decoded = '\\'; break;
+                case '/': decoded = '/'; break;
+                case 'b': decoded = '\b'; break;
+                case 'f': decoded = '\f'; break;
+                case 'n': decoded = '\n'; break;
+                case 'r': decoded = '\r'; break;
+                case 't': decoded = '\t'; break;
+                default: free(buffer.data); return 0;
+            }
+            nova_json_append(&buffer, &decoded, 1);
+            cursor++;
+        } else {
+            nova_json_append(&buffer, cursor, 1);
+            cursor++;
+        }
+    }
+    cursor++;
+    if (*nova_json_skip_space(cursor) != '\0') { free(buffer.data); return 0; }
+    *out = buffer.data;
+    return 1;
 }
 
 static int nova_argc = 0;

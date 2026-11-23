@@ -2061,3 +2061,88 @@ fn main() -> int {
         "a struct must not serialise as its first field"
     );
 }
+
+/// `io.deserialize` reads JSON back into a typed `Option`.
+///
+/// This was the last blocked function in the standard library, and it needed two fixes:
+/// inference must take `T` from the binding (ADR 0015) because `T` appears in no argument,
+/// and `lower_instance` must publish the instantiated return type so the body can build the
+/// right `Option`. `Option_int` and friends are structs the backend emits per program, so the
+/// runtime answers "did it parse" through an out-parameter and the lowerer builds the
+/// `Option` itself.
+///
+/// The `None` cases matter as much as the `Some` ones: a parser that returned `Some(0)` for
+/// garbage would be the same defect `parse_int` had.
+#[test]
+fn io_deserialize_reads_json_back() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_deserialize",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let i: Option<int> = deserialize("42");
+    match i { Some(v) => print(v), None => print(0 - 1), }
+    let bad: Option<int> = deserialize("nope");
+    match bad { Some(v) => print(v), None => print(0 - 1), }
+    let f: Option<float> = deserialize("1.5");
+    match f { Some(v) => print(v), None => print(0.0 - 1.0), }
+    let b: Option<bool> = deserialize("true");
+    match b { Some(v) => print(v), None => print(false), }
+    let s: Option<String> = deserialize("\"hi\"");
+    match s { Some(v) => print(v), None => print("none"), }
+    let junk: Option<bool> = deserialize("yes");
+    match junk { Some(v) => print(v), None => print(false), }
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "42",    // an int
+        "-1",    // a word is not one, and is None rather than zero
+        "1.5",   // a float
+        "true",  // a bool
+        "hi",    // a quoted string, unquoted and unescaped
+        "false", // `yes` is not JSON's `true`
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
+
+/// `io.deserialize` round-trips what `io.serialize` writes.
+///
+/// Asserted as a pair rather than a value, because that is the property a user depends on:
+/// whatever `serialize` emits, `deserialize` reads back.
+#[test]
+fn io_serialize_and_deserialize_round_trip() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_round_trip",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let n: Option<int> = deserialize(serialize(1234));
+    match n { Some(v) => print(v), None => print(0 - 1), }
+    let t: Option<String> = deserialize(serialize("a b"));
+    match t { Some(v) => print(v), None => print("none"), }
+    let f: Option<bool> = deserialize(serialize(true));
+    match f { Some(v) => print(v), None => print(false), }
+    return 0;
+}
+"#,
+    );
+    assert_eq!(
+        stdout.trim(),
+        "1234\na b\ntrue",
+        "what serialize writes, deserialize must read"
+    );
+}
