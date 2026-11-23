@@ -1926,3 +1926,61 @@ fn main() -> int {
         "arguments must arrive in order and exclude argv[0]"
     );
 }
+
+/// `io`'s stream functions, which are the file functions under another name.
+///
+/// A `Stream` is `{ kind, handle }` over the same handle a `File` holds — ADR 0013 — so the
+/// test builds one by hand, because the module has no constructor. That gap is recorded
+/// rather than papered over: a `stream_open` would be a small addition, and its shape
+/// depends on whether pipes and sockets arrive as handles too.
+///
+/// `stream_flush` used to return the runtime's `fflush` result directly, so a **successful**
+/// flush reported `false`. It compares to zero now, like `fseek` and `fclose` already did.
+#[test]
+fn io_streams_are_file_handles() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_fixture(
+        "io_streams",
+        &[],
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let root = "__FIXTURE__";
+    match fopen(join_path(root, "s.txt"), "w") {
+        Some(mut f) => {
+            let mut s = Stream { kind: StreamType.OutputStream, handle: f.handle };
+            print(stream_write(&mut s, [72, 73]));
+            print(stream_flush(&mut s));
+            stream_close(&mut s);
+        },
+        None => print("no open"),
+    }
+    print(file_size(join_path(root, "s.txt")));
+    match fopen(join_path(root, "s.txt"), "r") {
+        Some(mut f) => {
+            let mut s = Stream { kind: StreamType.InputStream, handle: f.handle };
+            let bytes = stream_read(&mut s, 2);
+            print(array_len(bytes));
+            print(bytes[0]);
+            stream_close(&mut s);
+        },
+        None => print("no open"),
+    }
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "2",     // two bytes written
+        "true",  // a successful flush reports success
+        "2",     // and the file is two bytes
+        "2",     // two bytes read back
+        "72",    // 'H'
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
