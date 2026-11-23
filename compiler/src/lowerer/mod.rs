@@ -1130,6 +1130,8 @@ impl Lowerer {
             "__builtin_gamma" => Some(typed("nova_gamma", lowered(self), "float")),
             "__builtin_write" => Some(typed("nova_write", lowered(self), "void")),
             "__builtin_format" => Some(typed("nova_format", lowered(self), "string")),
+            "__builtin_readline" => Some(typed("nova_readline", vec![], "string")),
+            "__builtin_readchar" => Some(typed("nova_readchar", vec![], "char")),
             "__builtin_file_modified" => Some(typed("nova_file_modified", lowered(self), "int")),
             "__builtin_file_accessed" => Some(typed("nova_file_accessed", lowered(self), "int")),
             "__builtin_basename" => Some(typed("nova_path_basename", lowered(self), "string")),
