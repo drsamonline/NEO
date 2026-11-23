@@ -1,4 +1,4 @@
-68.78
+68.77
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -81,3 +81,8 @@
 # llvm-cov does not instrument; the rise is the lowerer arms.
 # 68.78% (9,449 of 13,739) when the tokens and identifiers chapters landed. The rise is the
 # two lexer tests and the unterminated-comment diagnostic; the chapters themselves are prose.
+# 68.77% (9,450 of 13,741) when the math assertions landed — a FALL of 0.01, lowered in the
+# same commit as the rule requires. The gamma shim is C (not instrumented) and the new test
+# runs the compiler as a subprocess, so neither adds a covered Rust line while both add lines
+# to the denominator. The 0.05% tolerance would have hidden this; it is the kind of drift the
+# ratchet exists to make visible.
