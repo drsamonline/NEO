@@ -685,3 +685,43 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
 }
+
+/// `text.md5` and `text.sha256` against the published vectors.
+///
+/// Both are RFC/FIPS standards with canonical check values, so these assertions can be
+/// checked against a standard rather than against this implementation. The empty string is
+/// included deliberately: it is the case where padding is entirely synthetic, and the one
+/// an off-by-one in the length field gets wrong.
+#[test]
+fn text_digests_match_published_vectors() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "text_digests",
+        r#"
+use core;
+use text;
+
+fn main() -> int {
+    print(md5(""));
+    print(md5("abc"));
+    print(md5("The quick brown fox jumps over the lazy dog"));
+    print(sha256(""));
+    print(sha256("abc"));
+    print(sha256("The quick brown fox jumps over the lazy dog"));
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "d41d8cd98f00b204e9800998ecf8427e",                                  // RFC 1321, empty
+        "900150983cd24fb0d6963f7d28e17f72",                                  // RFC 1321, "abc"
+        "9e107d9d372bb6826bd81d3542a419d6",                                  // the fox
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",  // FIPS 180-4, empty
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",  // FIPS 180-4, "abc"
+        "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592",  // the fox
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
