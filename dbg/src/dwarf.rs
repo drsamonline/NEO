@@ -20,6 +20,9 @@ pub enum DwarfError {
     #[error("Unsupported DWARF version: {0}")]
     UnsupportedVersion(u32),
 
+    #[error("{0}")]
+    NotImplemented(String),
+
     #[error("Missing debug section: {0}")]
     MissingSection(String),
 }
@@ -208,15 +211,15 @@ impl DwarfParser {
 
     /// Parse DWARF info from a buffer
     pub fn parse_buffer(&self, _data: &[u8]) -> Result<DwarfInfo, DwarfError> {
-        // Placeholder implementation
-        // In production, this would use gimli or similar library
-        // to parse .debug_info, .debug_abbrev, .debug_str, etc.
-        
-        Ok(DwarfInfo {
-            compile_units: Vec::new(),
-            type_table: HashMap::new(),
-            symbol_table: SymbolTable::default(),
-        })
+        // Refused rather than answered. This used to return `Ok` with an empty `DwarfInfo`
+        // for any input, which reads as "parsed it, nothing there" — a caller concludes the
+        // binary has no debug info when the truth is that nothing was read. A refusal is the
+        // difference between a limit and a lie (constitution rules 1 and 3).
+        Err(DwarfError::NotImplemented(
+            "DWARF parsing is not implemented: it needs a line-table emitter in the C backend \
+             and a parser here (see DEV_PLAN.md, 'DWARF debugger')"
+                .to_string(),
+        ))
     }
 
     /// Extract symbol table from DWARF info
@@ -339,14 +342,21 @@ mod tests {
     #[test]
     fn test_dwarf_parser_creation() {
         let parser = DwarfParser::new();
-        assert!(parser.parse_buffer(&[]).is_ok());
+        assert!(parser.parse_buffer(&[]).is_err(), "an unimplemented parser must refuse");
     }
 
     #[test]
     fn test_empty_dwarf_info() {
-        let parser = DwarfParser::new();
-        let info = parser.parse_buffer(&[]).unwrap();
-        
+        // The parser refuses, so the only way to hold an empty `DwarfInfo` is to build one.
+        // This test used to get it from `parse_buffer`, which is how the refusal hid: the
+        // "success" case was an empty value, and an empty value is indistinguishable from a
+        // binary with no debug info.
+        let info = DwarfInfo {
+            compile_units: Vec::new(),
+            type_table: HashMap::new(),
+            symbol_table: SymbolTable::default(),
+        };
+
         assert!(info.compile_units.is_empty());
         assert!(info.type_table.is_empty());
         assert!(info.symbol_table.functions.is_empty());

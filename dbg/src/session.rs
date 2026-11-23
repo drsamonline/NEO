@@ -210,48 +210,38 @@ impl DebugSession {
     
     /// Get backtrace
     pub fn backtrace(&self) -> Result<Vec<StackFrame>, DebuggerError> {
-        // Return mock stack frames
-        Ok(vec![
-            StackFrame {
-                index: 0,
-                function: "current_function".to_string(),
-                file: Some("main.nova".to_string()),
-                line: Some(10),
-                address: 0x400100,
-            },
-            StackFrame {
-                index: 1,
-                function: "caller_function".to_string(),
-                file: Some("main.nova".to_string()),
-                line: Some(25),
-                address: 0x400200,
-            },
-            StackFrame {
-                index: 2,
-                function: "main".to_string(),
-                file: Some("main.nova".to_string()),
-                line: Some(5),
-                address: 0x400000,
-            },
-        ])
+        // Refused rather than invented. This returned three fabricated frames — a function
+        // called `current_function` at `main.nova:10` — and the REPL printed them as though
+        // they were the program's stack. A user debugging a real fault would have been given
+        // a fiction that looked exactly like an answer.
+        Err(DebuggerError::Target(
+            "backtrace is not available: the emitted binary carries no line tables, so there \
+             are no frames to walk (see DEV_PLAN.md, 'DWARF debugger')"
+                .to_string(),
+        ))
     }
     
     /// Evaluate expression
-    pub fn evaluate(&self, expr: &str) -> Result<String, DebuggerError> {
-        // Mock evaluation
-        Ok(format!("<evaluated: {}>", expr))
+    pub fn evaluate(&self, _expr: &str) -> Result<String, DebuggerError> {
+        // Refused rather than answered with `<evaluated: expr>`, which looked like a result
+        // with a caveat when it was neither.
+        Err(DebuggerError::Target(
+            "expression evaluation is not implemented: the debugger has no way to read the \
+             target's variables (see DEV_PLAN.md, 'DWARF debugger')"
+                .to_string(),
+        ))
     }
     
     /// List source code
     pub fn list_source(&self, _location: Option<&str>) -> Result<Vec<String>, DebuggerError> {
-        // Return mock source lines
-        Ok(vec![
-            "1: fn main() {".to_string(),
-            "2:     var x = 10;".to_string(),
-            "3:     var y = 20;".to_string(),
-            "4:     print(x + y);".to_string(),
-            "5: }".to_string(),
-        ])
+        // Refused rather than invented. The fabricated listing was not even NOVA — it used
+        // `var`, which this language does not have — so it could not have come from any
+        // program the user was debugging.
+        Err(DebuggerError::Target(
+            "source listing is not available: the debugger does not read the program's \
+             source (see DEV_PLAN.md, 'DWARF debugger')"
+                .to_string(),
+        ))
     }
     
     /// Detach from target
@@ -370,8 +360,12 @@ mod tests {
         };
         let session = DebugSession::new(target).unwrap();
         
-        let frames = session.backtrace().unwrap();
-        assert_eq!(frames.len(), 3);
-        assert_eq!(frames[0].function, "current_function");
+        // The frames used to be fabricated, and this test asserted their contents — which
+        // is how a mock becomes a contract. It now asserts the refusal.
+        let error = session.backtrace().unwrap_err().to_string();
+        assert!(
+            error.contains("no line tables"),
+            "the refusal must say why: {error}"
+        );
     }
 }
