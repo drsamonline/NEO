@@ -259,9 +259,10 @@ gets a 403. Either use the Actions tab, or rely on the push-triggered workflows.
   is.
 - **`Option<T>` is monomorphised** per payload type, and `None` takes its type from
   context. Do not reintroduce the three-slot struct.
-- **A branch that ends in `break` emits an empty block value.** An `if`/`else if` chain
-  inside a `while`, where one branch breaks and another returns, produces C that does not
-  compile:
+- **`break` and `continue` in statement position lower as statements, not as expressions.**
+  They parse as `Statement::Expr(Expr::Break)`, and the *expression* form wraps them in a
+  block whose value is `Unit` — which renders as an empty string, so a branch holding only
+  `break` emitted `__block_0 = ;` and did not compile:
 
   ```nova
   while i < n {
@@ -271,9 +272,9 @@ gets a 403. Either use the Actions tab, or rely on the push-triggered workflows.
   }
   ```
 
-  emits `__block_7 = ;` — the block is lowered as a value, and the branch has none. Found
-  while writing `io.parse_float`, which was restructured to avoid the shape. **Not fixed**;
-  it is ordinary control flow and should be.
+  A search loop did not compile. Fixed in the lowerer's statement arm, with the backend
+  refusing to emit an empty assignment if a `Unit` block reaches it another way.
+  `break_and_continue_inside_a_branch_compile` covers both keywords.
 - **`docs/status.json` is published, and gated.** `python3 tools/status.py --check` fails
   when it stops matching the version, the line counts, the ADR count, the gate list or the
   stdlib ratchet. Other repositories read it: `drsamonline/skills` rewrites the NEO skill's

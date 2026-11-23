@@ -547,6 +547,73 @@ fn main() -> int {
     );
 }
 
+/// `break` and `continue` inside an `if` inside a loop.
+///
+/// `break;` parses as `Statement::Expr(Expr::Break)`, and the *expression* form wraps it in
+/// a block whose value is `Unit`. `Unit` renders as an empty string, so an `if` branch
+/// holding only `break` emitted:
+///
+/// ```c
+/// if ((i == 2)) { int __block_0; { break; __block_0 = ; } __block_0; }
+/// ```
+///
+/// which is not C. A search loop — the most ordinary shape there is — did not compile.
+/// `break` and `continue` in statement position now lower as statements, and the backend
+/// refuses to emit an empty assignment if a `Unit` block reaches it another way.
+#[test]
+fn break_and_continue_inside_a_branch_compile() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "break_continue",
+        "\
+use core;
+
+fn first_index_of(values: [int], target: int) -> int {
+    let mut i = 0;
+    while i < array_len(values) {
+        if values[i] == target {
+            break;
+        } else if values[i] > target {
+            return 0 - 1;
+        } else {
+            i = i + 1;
+        }
+    }
+    i
+}
+
+fn sum_of_evens(values: [int]) -> int {
+    let mut total = 0;
+    let mut i = 0;
+    while i < array_len(values) {
+        if is_odd(values[i]) {
+            i = i + 1;
+            continue;
+        }
+        total = total + values[i];
+        i = i + 1;
+    }
+    total
+}
+
+fn main() -> int {
+    print(first_index_of([1, 2, 3], 2));
+    print(first_index_of([1, 3, 5], 2));
+    print(sum_of_evens([1, 2, 3, 4]));
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "1\n-1\n6",
+        "a loop that breaks or continues inside a branch must compile and behave"
+    );
+}
+
 /// `int` holds 64 bits in a variable and in an array element, not only in a literal.
 ///
 /// The language reference says every integer spelling is "a 64-bit signed value", and the

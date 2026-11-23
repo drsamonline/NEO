@@ -1082,7 +1082,16 @@ impl CBackend {
                     for block in pending {
                         nested.output.push_str(&block);
                     }
-                    let _ = writeln!(nested.output, "{temporary} = {rendered};");
+                    // A `Unit` value renders as nothing, so assigning it emitted
+                    // `__block_0 = ;`. That happened whenever a block ended in `break`,
+                    // `continue` or `return` — a branch with no value. The lowerer no
+                    // longer produces that shape for statements, and this makes the
+                    // backend refuse to emit invalid C if one arrives another way.
+                    if rendered.trim().is_empty() {
+                        let _ = writeln!(nested.output, "{temporary} = 0;");
+                    } else {
+                        let _ = writeln!(nested.output, "{temporary} = {rendered};");
+                    }
                 }
 
                 self.hoisted.borrow_mut().push(format!(
