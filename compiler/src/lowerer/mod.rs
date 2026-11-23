@@ -1430,6 +1430,13 @@ impl Lowerer {
                     Expr::Return(value) => {
                         return vec![SirStatement::Return(value.as_ref().map(|v| self.lower_expr(v)))];
                     }
+                    // `break;` and `continue;` parse as `Statement::Expr`, and the
+                    // expression form wraps them in a block whose value is `Unit` — which
+                    // the backend renders as an empty string, so an `if` branch holding
+                    // only `break` emitted `__block_0 = ;`. In statement position they are
+                    // statements, and lowering them as such removes the block entirely.
+                    Expr::Break => return vec![SirStatement::Break],
+                    Expr::Continue => return vec![SirStatement::Continue],
                     _ => {}
                 }
                 // Check if the expression is a control flow construct that should be a statement
