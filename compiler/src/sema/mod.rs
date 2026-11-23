@@ -968,6 +968,11 @@ pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
         "__builtin_fread_line" | "__builtin_fread_all" => Type::String,
         "__builtin_feof" => Type::Bool,
         "__builtin_sleep" => Type::Unit,
+        "__builtin_crc32" | "__builtin_terminal_width" | "__builtin_terminal_height" => {
+            Type::Int
+        }
+        "__builtin_base64_encode" | "__builtin_base64_decode" => Type::String,
+        "__builtin_clear_screen" | "__builtin_set_cursor" => Type::Unit,
         _ => return None,
     })
 }

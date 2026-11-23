@@ -1122,6 +1122,19 @@ impl Lowerer {
             }
             "__builtin_now" => Some(typed("nova_now_ms", vec![], "int")),
             "__builtin_sleep" => Some(typed("nova_sleep_ms", lowered(self), "void")),
+            // Checksums, encodings and the terminal. These were the last
+            // `nova_unsupported` arms reachable from `text` and `io`.
+            "__builtin_crc32" => Some(typed("nova_crc32", lowered(self), "int")),
+            "__builtin_base64_encode" => {
+                Some(typed("nova_base64_encode", lowered(self), "string"))
+            }
+            "__builtin_base64_decode" => {
+                Some(typed("nova_base64_decode", lowered(self), "string"))
+            }
+            "__builtin_terminal_width" => Some(typed("nova_terminal_width", vec![], "int")),
+            "__builtin_terminal_height" => Some(typed("nova_terminal_height", vec![], "int")),
+            "__builtin_clear_screen" => Some(typed("nova_clear_screen", vec![], "void")),
+            "__builtin_set_cursor" => Some(typed("nova_set_cursor", lowered(self), "void")),
             "__builtin_array_len" => {
                 let callee = match self.array_kind(args.first()?) {
                     ArrayKind::Int => "nova_array_len",

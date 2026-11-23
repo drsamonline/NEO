@@ -402,7 +402,7 @@ impl CBackend {
 
     fn type_to_c_str(typ: &str) -> &'static str {
         match typ.to_lowercase().as_str() {
-            "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => "int",
+            "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => "long long",
             "float" | "f32" | "f64" => "double",
             "bool" => "int",
             "string" | "str" => "char*",
@@ -968,7 +968,7 @@ impl CBackend {
                     );
                 }
                 format!(
-                    "nova_array_from((int[]){{ {} }}, {})",
+                    "nova_array_from((long long[]){{ {} }}, {})",
                     values.join(", "),
                     items.len()
                 )

@@ -96,6 +96,7 @@ both needed it.
 | `Option<T>` return type of a generic call | same `.name` mistake in `expr_type`, so `let a = find(..)` inferred `int` | — |
 | `match` over an `Option` | read its scrutinee twice, once for the tag and once for the payload — `match array_pop(a)` popped two elements | — |
 | struct field types | a field of `Option<int>` declared an `int` — and fixing it showed structs were emitted in source order, so a struct came before the type it embeds | — |
+| `int` width | variables and array elements were C `int` while literals were 64-bit, so `let big = 3000000000` printed `-1294967296` on the line after `print(3000000000)` printed it correctly | [0011](adr/0011-int-is-64-bit.md) |
 
 **Three of those compiled cleanly and were wrong.** The loop body and the string
 comparison were found by running `split`, not by any gate. That is the standing lesson of
@@ -147,11 +148,13 @@ the alternative to a heuristic gate is the no gate that let ten of these through
 pointer, and why `File` did not change. That is the pattern for the ones still missing: one
 shim, one arm, one type, and `tools/stdlib-check.py` proves the count moved.
 
-What remains are the compression and encoding builtins — `base64_encode`/`decode`, `md5`,
-`sha256`, `crc32`, `serialize`/`deserialize` — and the terminal ones (`clear_screen`,
-`set_cursor`, `terminal_width`, `terminal_height`). Neither group is blocked on design: the
-hashes are self-contained, and the terminal calls are ANSI sequences that already assume a
-POSIX tty.
+`crc32`, `base64_encode`/`decode` and the four terminal calls are done too. What remains
+is `md5`, `sha256`, `serialize`/`deserialize`, and the path helpers (`list_dir`, `basename`,
+`extension`, `parent_dir`, `join_path`, `args`) — 21 functions in all, down from 38.
+
+`md5` and `sha256` are self-contained and should be next: the test vectors are published, so
+a wrong digest fails a test rather than a review. `serialize`/`deserialize` are the only ones
+that need a decision first — what the format is — and therefore an ADR.
 
 Wiring up the file group found **two defects that had nothing to do with files**, both of
 the shape this file keeps recording: `match` in *expression* position evaluated its

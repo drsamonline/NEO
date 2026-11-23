@@ -16,10 +16,10 @@ only place that says which.
 | Module | Functions | Usable | Blocked |
 |---|---|---|---|
 | `core` | 55 | 54 | 1 |
-| `io` | 59 | 38 | 21 |
+| `io` | 59 | 42 | 17 |
 | `math` | 76 | 75 | 1 |
-| `text` | 59 | 54 | 5 |
-| **total** | **249** | **221** | **28** |
+| `text` | 59 | 57 | 2 |
+| **total** | **249** | **228** | **21** |
 <!-- stdlib-check:end -->
 
 The compiler knows **forty-three** `__builtin_*` functions. A stdlib function whose body

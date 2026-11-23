@@ -36,7 +36,7 @@ extern "C" {
 /* An array value: a heap buffer, its length and its capacity, so indexing can
  * be checked and push/pop can grow it. Structs are copied by value. */
 typedef struct {
-    int *data;
+    long long *data;
     long long len;
     long long cap;
 } NovaArray;
@@ -70,12 +70,12 @@ void nova_string_free(char *value);
 
 /* Arrays. Reads and writes are bounds-checked and abort on a bad index. An
  * array literal is allocated with nova_array_from so push can grow it. */
-NovaArray nova_array_from(const int *items, long long len);
+NovaArray nova_array_from(const long long *items, long long len);
 long long nova_array_len(NovaArray array);
-int nova_array_get(NovaArray array, long long index);
-void nova_array_set(NovaArray array, long long index, int value);
-void nova_array_push(NovaArray *array, int value);
-int nova_array_pop(NovaArray *array);
+long long nova_array_get(NovaArray array, long long index);
+void nova_array_set(NovaArray array, long long index, long long value);
+void nova_array_push(NovaArray *array, long long value);
+long long nova_array_pop(NovaArray *array);
 
 /* Closures. A closure value pairs a lifted function with its heap environment;
  * a function-typed value is a NovaClosure*. The lifted function takes the raw
@@ -181,6 +181,23 @@ long long nova_file_tell(long long handle);
 int nova_file_flush(long long handle);
 NovaArray nova_file_read_bytes(long long handle, long long count);
 char *nova_file_read_all(long long handle);
+
+/* Checksums, digests and encodings. `crc32` answers the IEEE polynomial as an
+ * unsigned 32-bit value in a `long long`, so it never wraps negative in NOVA. The
+ * digests answer lower-case hex, and `base64_decode` returns what it could decode
+ * rather than failing, because `text`'s callers treat it as best-effort. */
+long long nova_crc32(const char *text);
+char *nova_base64_encode(const char *text);
+char *nova_base64_decode(const char *text);
+char *nova_md5(const char *text);
+char *nova_sha256(const char *text);
+
+/* Terminal geometry and control. Width and height fall back to 80x24 when there is
+ * no tty to ask, which is the case in CI and under a pipe. */
+long long nova_terminal_width(void);
+long long nova_terminal_height(void);
+void nova_clear_screen(void);
+void nova_set_cursor(long long x, long long y);
 long long nova_file_write_bytes(long long handle, NovaArray bytes);
 int nova_mkdir(const char *path);
 int nova_rmdir(const char *path);
@@ -255,6 +272,10 @@ pub const SOURCE: &str = r#"/* nova_runtime.c - NOVA runtime shim (ABI v3).
 #ifndef _WIN32
 #include <time.h>
 #include <unistd.h>
+/* `TIOCGWINSZ` and `struct winsize` live here. Included only where they exist:
+ * `nova_terminal_width` falls back to 80x24 when the macro is absent, which is what
+ * a Windows build or a redirected stdout gets. */
+#include <sys/ioctl.h>
 #else
 #include <direct.h>
 #include <windows.h>
@@ -401,16 +422,16 @@ void *nova_env_new(const void *data, long long size) {
     return env;
 }
 
-NovaArray nova_array_from(const int *items, long long len) {
+NovaArray nova_array_from(const long long *items, long long len) {
     NovaArray array;
     array.len = len;
     array.cap = len > 0 ? len : 4;
-    array.data = (int *)malloc((size_t)array.cap * sizeof(int));
+    array.data = (long long *)malloc((size_t)array.cap * sizeof(long long));
     if (array.data == NULL) {
         nova_fail("out of memory");
     }
     if (len > 0) {
-        memcpy(array.data, items, (size_t)len * sizeof(int));
+        memcpy(array.data, items, (size_t)len * sizeof(long long));
     }
     return array;
 }
@@ -419,27 +440,27 @@ long long nova_array_len(NovaArray array) {
     return array.len;
 }
 
-int nova_array_get(NovaArray array, long long index) {
+long long nova_array_get(NovaArray array, long long index) {
     if (index < 0 || index >= array.len || array.data == NULL) {
         nova_fail("array index out of bounds");
     }
     return array.data[index];
 }
 
-void nova_array_set(NovaArray array, long long index, int value) {
+void nova_array_set(NovaArray array, long long index, long long value) {
     if (index < 0 || index >= array.len || array.data == NULL) {
         nova_fail("array index out of bounds");
     }
     array.data[index] = value;
 }
 
-void nova_array_push(NovaArray *array, int value) {
+void nova_array_push(NovaArray *array, long long value) {
     if (array == NULL) {
         nova_fail("push on a missing array");
     }
     if (array->len >= array->cap) {
         long long cap = array->cap > 0 ? array->cap * 2 : 4;
-        int *grown = (int *)realloc(array->data, (size_t)cap * sizeof(int));
+        long long *grown = (long long *)realloc(array->data, (size_t)cap * sizeof(long long));
         if (grown == NULL) {
             nova_fail("out of memory");
         }
@@ -450,7 +471,7 @@ void nova_array_push(NovaArray *array, int value) {
     array->len += 1;
 }
 
-int nova_array_pop(NovaArray *array) {
+long long nova_array_pop(NovaArray *array) {
     if (array == NULL || array->len <= 0) {
         nova_fail("pop from an empty array");
     }
@@ -576,6 +597,114 @@ int nova_rmdir(const char *path) {
 #endif
 }
 
+/* Checksums and encodings. */
+long long nova_crc32(const char *text) {
+    static unsigned int table[256];
+    static int ready = 0;
+    if (!ready) {
+        for (unsigned int i = 0; i < 256; i++) {
+            unsigned int value = i;
+            for (int bit = 0; bit < 8; bit++) {
+                value = (value & 1) ? (0xEDB88320u ^ (value >> 1)) : (value >> 1);
+            }
+            table[i] = value;
+        }
+        ready = 1;
+    }
+    unsigned int crc = 0xFFFFFFFFu;
+    for (const unsigned char *p = (const unsigned char *)(text != NULL ? text : ""); *p; p++) {
+        crc = table[(crc ^ *p) & 0xFF] ^ (crc >> 8);
+    }
+    /* Unsigned on purpose: `text.crc32` returns an `int`, and a signed 32-bit CRC
+     * would read as a negative number for half of all inputs. */
+    return (long long)(unsigned long long)(crc ^ 0xFFFFFFFFu);
+}
+
+static const char NOVA_B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+char *nova_base64_encode(const char *text) {
+    const unsigned char *in = (const unsigned char *)(text != NULL ? text : "");
+    size_t length = strlen((const char *)in);
+    size_t out_length = 4 * ((length + 2) / 3);
+    char *out = (char *)malloc(out_length + 1);
+    if (out == NULL) nova_fail("out of memory");
+    size_t o = 0;
+    for (size_t i = 0; i < length; i += 3) {
+        unsigned int chunk = (unsigned int)in[i] << 16;
+        if (i + 1 < length) chunk |= (unsigned int)in[i + 1] << 8;
+        if (i + 2 < length) chunk |= (unsigned int)in[i + 2];
+        out[o++] = NOVA_B64[(chunk >> 18) & 0x3F];
+        out[o++] = NOVA_B64[(chunk >> 12) & 0x3F];
+        out[o++] = (i + 1 < length) ? NOVA_B64[(chunk >> 6) & 0x3F] : '=';
+        out[o++] = (i + 2 < length) ? NOVA_B64[chunk & 0x3F] : '=';
+    }
+    out[o] = '\0';
+    return out;
+}
+
+static int nova_b64_value(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+char *nova_base64_decode(const char *text) {
+    const char *in = text != NULL ? text : "";
+    size_t length = strlen(in);
+    char *out = (char *)malloc(length / 4 * 3 + 4);
+    if (out == NULL) nova_fail("out of memory");
+    size_t o = 0;
+    unsigned int chunk = 0;
+    int bits = 0;
+    for (size_t i = 0; i < length; i++) {
+        int value = nova_b64_value(in[i]);
+        if (value < 0) {
+            /* Padding and whitespace end or skip; anything else stops the decode and
+             * keeps what came out, which is what a best-effort caller expects. */
+            if (in[i] == '=') break;
+            continue;
+        }
+        chunk = (chunk << 6) | (unsigned int)value;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out[o++] = (char)((chunk >> bits) & 0xFF);
+        }
+    }
+    out[o] = '\0';
+    return out;
+}
+
+long long nova_terminal_width(void) {
+#ifdef TIOCGWINSZ
+    struct winsize size;
+    if (ioctl(1, TIOCGWINSZ, &size) == 0 && size.ws_col > 0) return (long long)size.ws_col;
+#endif
+    return 80;
+}
+
+long long nova_terminal_height(void) {
+#ifdef TIOCGWINSZ
+    struct winsize size;
+    if (ioctl(1, TIOCGWINSZ, &size) == 0 && size.ws_row > 0) return (long long)size.ws_row;
+#endif
+    return 24;
+}
+
+void nova_clear_screen(void) {
+    fputs("\033[2J\033[H", stdout);
+    fflush(stdout);
+}
+
+void nova_set_cursor(long long x, long long y) {
+    /* 1-based, as ANSI is: `set_cursor(1, 1)` is the top-left cell. */
+    fprintf(stdout, "\033[%lld;%lldH", y, x);
+    fflush(stdout);
+}
+
 /* Open files. A handle is an index into this table, not a pointer: see the header
  * for why. Slots are reused, so a program that opens and closes in a loop does not
  * exhaust the table. */
@@ -689,7 +818,7 @@ NovaArray nova_file_read_bytes(long long handle, long long count) {
     unsigned char *buffer = (unsigned char *)malloc((size_t)count);
     if (buffer == NULL) nova_fail("out of memory");
     size_t got = fread(buffer, 1, (size_t)count, file);
-    int *items = (int *)malloc((size_t)count * sizeof(int));
+    long long *items = (long long *)malloc((size_t)count * sizeof(long long));
     if (items == NULL) nova_fail("out of memory");
     for (size_t i = 0; i < got; i++) items[i] = (int)buffer[i];
     free(buffer);
@@ -943,7 +1072,7 @@ mod tests {
     fn header_and_source_declare_the_abi() {
         assert!(
             HEADER.contains(
-                "typedef struct {\n    int *data;\n    long long len;\n    long long cap;\n} NovaArray;"
+                "typedef struct {\n    long long *data;\n    long long len;\n    long long cap;\n} NovaArray;"
             ),
             "header must define NovaArray"
         );
