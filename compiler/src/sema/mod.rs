@@ -961,6 +961,12 @@ pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
         "__builtin_file_size" | "__builtin_now" => Type::Int,
         "__builtin_getenv" | "__builtin_cwd" | "__builtin_getcwd" => Type::String,
         "__builtin_chdir" => Type::Bool,
+        // Open files. The handle is an index into the runtime's table, not a
+        // pointer, so it types as an `int` and compares with `>= 0`.
+        "__builtin_fopen" | "__builtin_fclose" | "__builtin_fwrite" | "__builtin_fseek"
+        | "__builtin_ftell" | "__builtin_fflush" | "__builtin_fwrite_bytes" => Type::Int,
+        "__builtin_fread_line" | "__builtin_fread_all" => Type::String,
+        "__builtin_feof" => Type::Bool,
         "__builtin_sleep" => Type::Unit,
         _ => return None,
     })

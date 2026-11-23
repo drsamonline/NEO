@@ -577,3 +577,63 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// `io`'s file API: open, write, read back, close.
+///
+/// Every function in `io.nova` that touched a file used to trap, because the ten
+/// `__builtin_f*` calls fell through to `nova_unsupported`. Wiring them up exposed two
+/// defects of their own:
+///
+/// - `match fopen(path, "w") { .. }` opened the file **twice** — once for the payload
+///   binding and once for the tag test — so `write_file` truncated its own output and
+///   returned `true` over an empty file. `lower_match_chain` hoists the scrutinee now.
+/// - `fread_all` concatenated lines without their newlines and stopped at a blank line,
+///   because `fread_line` returns "" for both. It reads the whole file in one builtin now.
+///
+/// This round-trip is the guard for both: either defect makes it return the wrong string.
+#[test]
+fn io_reads_back_what_it_writes() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_roundtrip",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    print(write_file("/tmp/nova_stdlib_io_test.txt", "alpha\nbeta\n"));
+    match read_file("/tmp/nova_stdlib_io_test.txt") {
+        Some(text) => print(text),
+        None => print("missing"),
+    }
+    match fopen("/tmp/nova_stdlib_io_test.txt", "r") {
+        Some(mut f) => {
+            print(fread_line(&mut f));
+            print(ftell(&mut f));
+            print(fclose(&mut f));
+        },
+        None => print("missing"),
+    }
+    match fopen("/tmp/nova_no_such_file_at_all.txt", "r") {
+        Some(mut f) => print("opened"),
+        None => print("absent"),
+    }
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "true",              // write_file
+        "alpha",             // read_file keeps the newlines
+        "beta",
+        "",                  // trailing newline in the file
+        "alpha",             // fread_line
+        "6",                 // ftell: five characters and the newline
+        "true",              // fclose
+        "absent",            // a missing path is None, not a trap
+    ];
+    assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
+}

@@ -141,12 +141,24 @@ the alternative to a heuristic gate is the no gate that let ten of these through
 
 ## What is next, in order
 
-**1. 38 stdlib functions still call a builtin the runtime does not implement.** Mostly
-`fopen`/`fclose`/`fread`/`fwrite` — a `FILE *` does not fit in the `int` that
-`File.handle` declares, so these want a handle table or a changed `File`. The eleven that
-were done on 2026-11-18 show the pattern: one shim function, one lowerer arm, one sema
-type, and `tools/stdlib-check.py` proves the count moved. This is now the largest gap
-between the library and the language.
+**1. The file builtins are done; the rest of the missing builtins are not.** The ten
+`__builtin_f*` calls now have shims, lowerer arms and sema types, behind a handle table —
+[ADR 0010](adr/0010-file-handles.md) explains why a handle is an index rather than a
+pointer, and why `File` did not change. That is the pattern for the ones still missing: one
+shim, one arm, one type, and `tools/stdlib-check.py` proves the count moved.
+
+What remains are the compression and encoding builtins — `base64_encode`/`decode`, `md5`,
+`sha256`, `crc32`, `serialize`/`deserialize` — and the terminal ones (`clear_screen`,
+`set_cursor`, `terminal_width`, `terminal_height`). Neither group is blocked on design: the
+hashes are self-contained, and the terminal calls are ANSI sequences that already assume a
+POSIX tty.
+
+Wiring up the file group found **two defects that had nothing to do with files**, both of
+the shape this file keeps recording: `match` in *expression* position evaluated its
+scrutinee once per arm, so `write_file` opened its own output a second time and truncated it
+(the statement form was fixed in #77; the expression form had the same bug and a different
+code path), and `fread_all` rebuilt a string line by line, dropping every newline and
+stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
 **2. Most of the standard library is still untested, and so is `for`.** About a hundred of
 249 functions are asserted in `compiler/tests/stdlib.rs`, including `map`/`filter`/`reduce`

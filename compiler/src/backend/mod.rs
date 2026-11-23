@@ -668,8 +668,19 @@ impl CBackend {
                     _ => None,
                 };
                 if let Some((statements, final_expr)) = block {
+                    // The block's statements go into the hoist queue, not into the
+                    // statement body: the value may hoist blocks of its own (a `match`
+                    // arm's payload binding does), and those are flushed ahead of this
+                    // statement. Writing the statements here put them *after* the block
+                    // that used them — `File file = (__match1).payload;` was emitted
+                    // above `Option_File __match1 = ...`.
+                    let saved = std::mem::take(&mut self.output);
                     for statement in statements {
-                        self.write_statement(statement, indent);
+                        self.write_statement(statement, 0);
+                    }
+                    let rendered = std::mem::replace(&mut self.output, saved);
+                    if !rendered.trim().is_empty() {
+                        self.hoisted.borrow_mut().push(rendered);
                     }
                     match final_expr {
                         Some(value) => {
