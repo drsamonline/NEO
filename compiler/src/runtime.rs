@@ -217,6 +217,17 @@ char *nova_readline(void);
 /* The command line. `nova_set_args` is called once at the top of `main`, before any
  * statement can ask; `nova_args` answers everything after the program's own name. */
 void nova_set_args(int argc, char **argv);
+/* JSON, as much of it as NOVA values can express. `serialize` is type-directed in the
+ * lowerer — one function per type — because a C runtime cannot be generic and the
+ * alternative is a tagged union the language does not have. A type with no function here
+ * is rejected rather than emitted as something else. */
+char *nova_json_int(long long value);
+char *nova_json_float(double value);
+char *nova_json_bool(int value);
+char *nova_json_string(const char *value);
+char *nova_json_array_int(NovaArray values);
+char *nova_json_array_float(NovaArray_float values);
+char *nova_json_array_string(NovaArray_string values);
 NovaArray_string nova_args(void);
 char nova_readchar(void);
 double nova_gamma(double value);
@@ -871,6 +882,134 @@ char *nova_sha256(const char *text) {
         }
     }
     return nova_hex(digest, 32);
+}
+
+/* A growable byte buffer for building JSON, so the string functions below do not each
+ * need their own realloc dance. */
+typedef struct {
+    char *data;
+    size_t length;
+    size_t capacity;
+} NovaJsonBuffer;
+
+static void nova_json_init(NovaJsonBuffer *buffer) {
+    buffer->capacity = 64;
+    buffer->length = 0;
+    buffer->data = (char *)malloc(buffer->capacity);
+    if (buffer->data == NULL) nova_fail("out of memory");
+    buffer->data[0] = '\0';
+}
+
+static void nova_json_append(NovaJsonBuffer *buffer, const char *text, size_t count) {
+    while (buffer->length + count + 1 > buffer->capacity) {
+        buffer->capacity *= 2;
+        char *grown = (char *)realloc(buffer->data, buffer->capacity);
+        if (grown == NULL) {
+            free(buffer->data);
+            nova_fail("out of memory");
+        }
+        buffer->data = grown;
+    }
+    memcpy(buffer->data + buffer->length, text, count);
+    buffer->length += count;
+    buffer->data[buffer->length] = '\0';
+}
+
+static void nova_json_put(NovaJsonBuffer *buffer, const char *text) {
+    nova_json_append(buffer, text, strlen(text));
+}
+
+/* A JSON string: quoted, with the two characters JSON requires escaped and control
+ * characters as \u00XX. Bytes above 0x1F pass through, which is valid UTF-8 passthrough. */
+static void nova_json_put_string(NovaJsonBuffer *buffer, const char *value) {
+    nova_json_put(buffer, "\"");
+    for (size_t i = 0; value[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)value[i];
+        switch (c) {
+            case '"': nova_json_put(buffer, "\\\""); break;
+            case '\\': nova_json_put(buffer, "\\\\"); break;
+            case '\n': nova_json_put(buffer, "\\n"); break;
+            case '\r': nova_json_put(buffer, "\\r"); break;
+            case '\t': nova_json_put(buffer, "\\t"); break;
+            case '\b': nova_json_put(buffer, "\\b"); break;
+            case '\f': nova_json_put(buffer, "\\f"); break;
+            default:
+                if (c < 0x20) {
+                    char escape[8];
+                    snprintf(escape, sizeof escape, "\\u%04x", c);
+                    nova_json_put(buffer, escape);
+                } else {
+                    nova_json_append(buffer, (const char *)&value[i], 1);
+                }
+        }
+    }
+    nova_json_put(buffer, "\"");
+}
+
+char *nova_json_int(long long value) {
+    char text[32];
+    snprintf(text, sizeof text, "%lld", value);
+    return nova_strdup(text);
+}
+
+char *nova_json_float(double value) {
+    /* `%.17g` round-trips a double exactly; JSON has no NaN or infinity, so those are
+     * written as `null` rather than as tokens no parser accepts. */
+    if (value != value || value > 1e308 * 10 || value < -1e308 * 10) return nova_strdup("null");
+    char text[40];
+    snprintf(text, sizeof text, "%.17g", value);
+    return nova_strdup(text);
+}
+
+char *nova_json_bool(int value) {
+    return nova_strdup(value ? "true" : "false");
+}
+
+char *nova_json_string(const char *value) {
+    NovaJsonBuffer buffer;
+    nova_json_init(&buffer);
+    nova_json_put_string(&buffer, value != NULL ? value : "");
+    return buffer.data;
+}
+
+char *nova_json_array_int(NovaArray values) {
+    NovaJsonBuffer buffer;
+    nova_json_init(&buffer);
+    nova_json_put(&buffer, "[");
+    for (long long i = 0; i < values.len; i++) {
+        if (i > 0) nova_json_put(&buffer, ",");
+        char *item = nova_json_int(values.data[i]);
+        nova_json_put(&buffer, item);
+        free(item);
+    }
+    nova_json_put(&buffer, "]");
+    return buffer.data;
+}
+
+char *nova_json_array_float(NovaArray_float values) {
+    NovaJsonBuffer buffer;
+    nova_json_init(&buffer);
+    nova_json_put(&buffer, "[");
+    for (long long i = 0; i < values.len; i++) {
+        if (i > 0) nova_json_put(&buffer, ",");
+        char *item = nova_json_float(values.data[i]);
+        nova_json_put(&buffer, item);
+        free(item);
+    }
+    nova_json_put(&buffer, "]");
+    return buffer.data;
+}
+
+char *nova_json_array_string(NovaArray_string values) {
+    NovaJsonBuffer buffer;
+    nova_json_init(&buffer);
+    nova_json_put(&buffer, "[");
+    for (long long i = 0; i < values.len; i++) {
+        if (i > 0) nova_json_put(&buffer, ",");
+        nova_json_put_string(&buffer, values.data[i]);
+    }
+    nova_json_put(&buffer, "]");
+    return buffer.data;
 }
 
 static int nova_argc = 0;

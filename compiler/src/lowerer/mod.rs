@@ -1154,6 +1154,39 @@ impl Lowerer {
             "__builtin_write" => Some(typed("nova_write", lowered(self), "void")),
             "__builtin_format" => Some(typed("nova_format", lowered(self), "string")),
             "__builtin_args" => Some(typed("nova_args", vec![], "[String]")),
+            // `serialize` is generic in NOVA but a C runtime cannot be, so the call site
+            // picks the function from the value's type. A type with no JSON form is
+            // rejected rather than encoded as something else — a struct that serialised
+            // as its first field would be worse than a trap that says so.
+            "__builtin_serialize" => {
+                let typ = args
+                    .first()
+                    .and_then(|arg| self.expr_type(arg))
+                    .unwrap_or_else(|| "unknown".to_string());
+                // The type strings reach here in both spellings — a literal reports
+                // `string`, a declared parameter `String` — so the match is on the
+                // lowercased form rather than on one convention that happens to hold.
+                let function = match typ.trim().to_lowercase().as_str() {
+                    "int" => Some("nova_json_int"),
+                    "float" => Some("nova_json_float"),
+                    "bool" => Some("nova_json_bool"),
+                    "string" => Some("nova_json_string"),
+                    "[int]" => Some("nova_json_array_int"),
+                    "[float]" => Some("nova_json_array_float"),
+                    "[string]" => Some("nova_json_array_string"),
+                    _ => None,
+                };
+                match function {
+                    Some(function) => Some(typed(function, lowered(self), "string")),
+                    None => Some(typed(
+                        "nova_unsupported",
+                        vec![SirExpr::Literal(SirLiteral::String(format!(
+                            "serialize<{typ}>"
+                        )))],
+                        "string",
+                    )),
+                }
+            }
             // A `Stream` is a `{ kind, handle }` wrapper over the same handle a `File`
             // holds, so the stream builtins are the file builtins under another name.
             // There is no separate runtime for them and no reason for one.

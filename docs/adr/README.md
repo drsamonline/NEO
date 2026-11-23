@@ -47,6 +47,7 @@ about a decision are about a reading of it that nobody chose.
 | [0011](0011-int-is-64-bit.md) | `int` is 64-bit in variables and arrays, not only in literals | accepted |
 | [0012](0012-entry-point-arguments.md) | The emitted entry point takes `argc`/`argv`, so `core.args()` can answer | accepted |
 | [0013](0013-streams-are-file-handles.md) | A `Stream` is a file handle with a label; no separate runtime | accepted |
+| [0014](0014-serialize-is-json.md) | `serialize` writes JSON, and rejects types it cannot write honestly | accepted |
 
 ## Writing one
 
