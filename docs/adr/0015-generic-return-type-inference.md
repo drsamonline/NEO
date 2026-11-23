@@ -1,6 +1,6 @@
 # ADR 0015 — a generic that appears only in its return type takes `T` from the binding
 
-- **Status:** accepted for the inference fix; the feature it serves is still blocked
+- **Status:** accepted
 - **Date:** 2026-11-23
 - **Related:** [0014](0014-serialize-is-json.md), [the Generics chapter](../language/15_generics.md)
 
@@ -56,10 +56,15 @@ which lowers monomorphised bodies — does not. The body of `deserialize_float` 
 `lower_instance`, so `expected_type` is empty there and the dispatch sees no payload:
 `deserialize<>`.
 
-The fix is small and structural: `lower_instance` should set `expected_type` the way
-`lower_function` does, from `instance.function.return_type` with the instance's substitution
-applied. It was not made here because the budget for verifying it ran out, and a half-wired
-`deserialize` that traps on valid input is worse than one that is honestly absent.
+The fix was small and structural, and it is made: **`lower_instance` now sets `expected_type`
+the way `lower_function` does**, from `instance.function.return_type` with the instance's
+substitution applied. `deserialize` works for `int`, `float`, `bool` and `String`, and
+`io.serialize` and `io.deserialize` round-trip.
+
+Arrays are still refused, deliberately: an `Option<[T]>` payload is lost between the binding and
+the `match` that reads it, and `option_struct_name` mangles `[int]` to the same `Option_int` as
+`int`. Both are recorded in the [Generics chapter](../language/15_generics.md) as gaps rather
+than papered over.
 
 ## Why the inference fix is worth landing alone
 

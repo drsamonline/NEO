@@ -616,11 +616,20 @@ impl Lowerer {
             .map(|typ| self.substitute(&type_display(typ)));
         let previous = self.discard_result;
         self.discard_result = !Self::returns_value(&return_type);
+        // `lower_function` publishes the body's return type this way and `lower_instance`
+        // did not, so a monomorphised body could not see its own return type. That is what
+        // blocked `deserialize<T>(s: String) -> Option<T>`: `T` appears nowhere in the body
+        // except in the return type, and the dispatch that builds the `Option` reads it from
+        // here. Without this it saw an empty string and trapped with `deserialize<>`.
+        let previous_expected = self
+            .expected_type
+            .replace(return_type.clone().unwrap_or_default());
         let body = match &instance.function.body {
             Some(block) => self.lower_block(block),
             None => Vec::new(),
         };
         let body = Self::finish_body(body, &return_type);
+        self.expected_type = previous_expected;
         self.discard_result = previous;
 
         self.pop_scope();
@@ -1171,6 +1180,88 @@ impl Lowerer {
             "__builtin_write" => Some(typed("nova_write", lowered(self), "void")),
             "__builtin_format" => Some(typed("nova_format", lowered(self), "string")),
             "__builtin_args" => Some(typed("nova_args", vec![], "[String]")),
+            // `deserialize<T>(s)` returns `Option<T>`, and the runtime cannot build that:
+            // `Option_int` and friends are structs the backend emits per program. The
+            // runtime answers "did it parse" through an out-parameter and this arm builds
+            // the `Option` in SIR. `T` comes from `expected_type`, which both
+            // `lower_function` and `lower_instance` now set to the instantiated return type.
+            "__builtin_deserialize" => {
+                let declared = self.expected_type.clone().unwrap_or_default();
+                let payload = option_payload_of(&declared).unwrap_or_default().to_string();
+                let reader = match payload.trim().to_lowercase().as_str() {
+                    "int" => Some("nova_json_read_int"),
+                    "float" => Some("nova_json_read_float"),
+                    "bool" => Some("nova_json_read_bool"),
+                    "string" => Some("nova_json_read_string"),
+                    // Arrays are refused rather than attempted: an `Option<[T]>` payload is
+                    // lost between the binding and the `match` that reads it, and a reader
+                    // that returned a scalar where an array belongs is worse than one that
+                    // says it cannot.
+                    _ => None,
+                };
+                match (reader, lowered(self).into_iter().next()) {
+                    (Some(reader), Some(text)) => {
+                        self.uses_option = true;
+                        self.option_payloads.insert(payload.clone());
+                        let slot = "__json_value".to_string();
+                        let ok = "__json_ok".to_string();
+                        let default = match payload.trim().to_lowercase().as_str() {
+                            "float" => SirExpr::Literal(SirLiteral::Float(0.0)),
+                            "bool" => SirExpr::Literal(SirLiteral::Bool(false)),
+                            "string" => SirExpr::Literal(SirLiteral::String(String::new())),
+                            _ => SirExpr::Literal(SirLiteral::Int(0)),
+                        };
+                        let option = |fields: Vec<(String, SirExpr)>| SirExpr::Typed {
+                            expr: Box::new(SirExpr::StructLiteral {
+                                name: option_struct_name(&payload),
+                                fields,
+                            }),
+                            typ: format!("Option<{payload}>"),
+                        };
+                        Some(SirExpr::Block(
+                            vec![
+                                SirStatement::Let {
+                                    name: slot.clone(),
+                                    typ: Some(payload.clone()),
+                                    value: default,
+                                },
+                                SirStatement::Let {
+                                    name: ok.clone(),
+                                    typ: Some("bool".to_string()),
+                                    value: SirExpr::Call {
+                                        callee: reader.to_string(),
+                                        args: vec![
+                                            text,
+                                            SirExpr::AddressOf(Box::new(SirExpr::Var(slot.clone()))),
+                                        ],
+                                    },
+                                },
+                            ],
+                            Some(Box::new(SirExpr::Typed {
+                                expr: Box::new(SirExpr::If {
+                                    condition: Box::new(SirExpr::Var(ok)),
+                                    then_expr: Box::new(option(vec![
+                                        ("tag".to_string(), SirExpr::Literal(SirLiteral::Int(0))),
+                                        ("payload".to_string(), SirExpr::Var(slot)),
+                                    ])),
+                                    else_expr: Some(Box::new(option(vec![(
+                                        "tag".to_string(),
+                                        SirExpr::Literal(SirLiteral::Int(1)),
+                                    )]))),
+                                }),
+                                typ: format!("Option<{payload}>"),
+                            })),
+                        ))
+                    }
+                    _ => Some(typed(
+                        "nova_unsupported",
+                        vec![SirExpr::Literal(SirLiteral::String(format!(
+                            "deserialize<{payload}>"
+                        )))],
+                        "string",
+                    )),
+                }
+            }
             // `serialize` is generic in NOVA but a C runtime cannot be, so the call site
             // picks the function from the value's type. A type with no JSON form is
             // rejected rather than encoded as something else — a struct that serialised
