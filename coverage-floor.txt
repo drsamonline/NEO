@@ -1,4 +1,4 @@
-69.45
+69.41
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -122,3 +122,7 @@
 # uninstrumented; the rise is the lowerer's array branches and the `option_struct_name` rule.
 # 69.45% (9,781 of 14,083) when the two mangling copies became one. The rise is small and real:
 # the shared function has its own unit tests, and the deleted copy is gone from the denominator.
+# 69.41% (9,766 of 14,070) when the debugger started refusing instead of inventing — a FALL of
+# 0.04, lowered in the same commit as the rule requires. Deleting the fabricated frames, source
+# listing and DWARF stub removed more covered lines than the refusals added: honesty is cheaper
+# in code than fiction, and the ratchet records that.
