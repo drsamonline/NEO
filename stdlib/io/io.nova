@@ -457,11 +457,77 @@ fn format(template: String, args: [String]) -> String {
 /// returns `int`. That mismatch was invisible while the builtin had no known type;
 /// the moment it had one, sema reported E0308.
 fn parse_int(s: String) -> Option<int> {
+    // The builtin answers 0 for anything it cannot read, and 0 is also a valid integer.
+    // Wrapping it in `Some` unconditionally made `parse_int("nope")` return `Some(0)` —
+    // an Option that could never be None, quietly turning a typo into a zero. The input
+    // is validated here so the Option means what it says.
+    let n = strlen(s);
+    let mut start = 0;
+    if n > 0 && s[0] == '-' {
+        start = 1;
+    }
+    if start >= n {
+        return None;
+    }
+    let mut i = start;
+    while i < n {
+        let c = s[i];
+        if c < '0' || c > '9' {
+            return None;
+        }
+        i = i + 1;
+    }
     Some(__builtin_parse_int(s))
 }
 
 /// Parse float from string
 fn parse_float(s: String) -> Option<float> {
+    // Same defect as `parse_int`: the builtin answers 0.0 on failure and the Option was
+    // always `Some`. Accepts an optional sign, digits with at most one decimal point, and
+    // an optional exponent.
+    let n = strlen(s);
+    if n == 0 {
+        return None;
+    }
+    let mut i = 0;
+    if s[0] == '-' {
+        i = 1;
+    }
+    let mut digits = 0;
+    let mut dots = 0;
+    while i < n && s[i] != 'e' && s[i] != 'E' {
+        let c = s[i];
+        if c >= '0' && c <= '9' {
+            digits = digits + 1;
+        } else if c == '.' {
+            dots = dots + 1;
+            if dots > 1 {
+                return None;
+            }
+        } else {
+            return None;
+        }
+        i = i + 1;
+    }
+    if digits == 0 {
+        return None;
+    }
+    if i < n {
+        i = i + 1;
+        if i < n && (s[i] == '+' || s[i] == '-') {
+            i = i + 1;
+        }
+        if i >= n {
+            return None;
+        }
+        while i < n {
+            let d = s[i];
+            if d < '0' || d > '9' {
+                return None;
+            }
+            i = i + 1;
+        }
+    }
     Some(__builtin_parse_float(s))
 }
 

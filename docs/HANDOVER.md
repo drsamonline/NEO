@@ -184,7 +184,7 @@ scrutinee once per arm, so `write_file` opened its own output a second time and 
 code path), and `fread_all` rebuilt a string line by line, dropping every newline and
 stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
-**2. Most of the standard library is still untested, and so is `for`.** 189 of 249 functions
+**2. Most of the standard library is still untested, and so is `for`.** 203 of 249 functions
 are asserted in `compiler/tests/stdlib.rs`. **`math` is the first module with an assertion
 for every function it exports — 76 of 76.** `io` is the remaining gap at 14 of 59, because
 its functions want a filesystem rather than pure values. Writing the first three tests
@@ -259,6 +259,21 @@ gets a 403. Either use the Actions tab, or rely on the push-triggered workflows.
   is.
 - **`Option<T>` is monomorphised** per payload type, and `None` takes its type from
   context. Do not reintroduce the three-slot struct.
+- **A branch that ends in `break` emits an empty block value.** An `if`/`else if` chain
+  inside a `while`, where one branch breaks and another returns, produces C that does not
+  compile:
+
+  ```nova
+  while i < n {
+      if arr[i] == target { break; }
+      else if arr[i] > target { return 0 - 1; }
+      else { i = i + 1; }
+  }
+  ```
+
+  emits `__block_7 = ;` — the block is lowered as a value, and the branch has none. Found
+  while writing `io.parse_float`, which was restructured to avoid the shape. **Not fixed**;
+  it is ordinary control flow and should be.
 - **`docs/status.json` is published, and gated.** `python3 tools/status.py --check` fails
   when it stops matching the version, the line counts, the ADR count, the gate list or the
   stdlib ratchet. Other repositories read it: `drsamonline/skills` rewrites the NEO skill's
