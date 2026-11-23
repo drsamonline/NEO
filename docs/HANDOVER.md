@@ -31,7 +31,7 @@ is unverified it says so.
 | Module | Compiles | Functions | Usable | Blocked |
 |---|---|---|---|---|
 | `core` | ✅ | 55 | 54 | 1 |
-| `io` | ✅ | 59 | 50 | 9 |
+| `io` | ✅ | 59 | 51 | 8 |
 | `math` | ✅ | 76 | **76** | **0** |
 | `text` | ✅ | 59 | **59** | **0** |
 
@@ -184,7 +184,7 @@ scrutinee once per arm, so `write_file` opened its own output a second time and 
 code path), and `fread_all` rebuilt a string line by line, dropping every newline and
 stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
-**2. Most of the standard library is still untested, and so is `for`.** 224 of 249 functions
+**2. Most of the standard library is still untested, and so is `for`.** 225 of 249 functions
 are asserted in `compiler/tests/stdlib.rs`. **`math` is the first module with an assertion
 for every function it exports — 76 of 76.** `io` is at 49 of 59; what remains is the blocked
 group (`serialize`, the streams) and the two interactive readers. Writing the first three tests
