@@ -958,7 +958,8 @@ pub(crate) fn builtin_return_type(name: &str) -> Option<Type> {
         "__builtin_file_exists" | "__builtin_is_file" | "__builtin_is_directory"
         | "__builtin_rename_file" | "__builtin_copy_file" | "__builtin_remove_file"
         | "__builtin_delete_file" | "__builtin_mkdir" | "__builtin_rmdir" => Type::Bool,
-        "__builtin_file_size" | "__builtin_now" => Type::Int,
+        "__builtin_file_size" | "__builtin_now" | "__builtin_file_created"
+        | "__builtin_file_modified" | "__builtin_file_accessed" => Type::Int,
         "__builtin_getenv" | "__builtin_cwd" | "__builtin_getcwd" => Type::String,
         "__builtin_chdir" => Type::Bool,
         // Open files. The handle is an index into the runtime's table, not a

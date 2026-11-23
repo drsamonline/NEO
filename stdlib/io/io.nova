@@ -216,7 +216,21 @@ struct FileMetadata {
 }
 
 fn stat(path: String) -> Option<FileMetadata> {
-    __builtin_stat(path)
+    // Composed here rather than in the runtime. A builtin returning `FileMetadata`
+    // would have to know a layout the language defines, and the runtime is C that
+    // only ever sees the generated struct. Asking for the facts and building the
+    // struct in NOVA keeps that boundary where it belongs.
+    if !file_exists(path) {
+        return None;
+    }
+    Some(FileMetadata {
+        name: basename(path),
+        size: file_size(path),
+        is_dir: is_directory(path),
+        created: __builtin_file_created(path),
+        modified: __builtin_file_modified(path),
+        accessed: __builtin_file_accessed(path),
+    })
 }
 
 /// Stream types

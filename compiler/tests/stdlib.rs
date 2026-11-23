@@ -773,3 +773,58 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim_end().lines().collect::<Vec<_>>().join("\n"), expected.join("\n"));
 }
+
+/// `io.stat` returns an `Option` of a **struct** — the first payload that is not a scalar.
+///
+/// The runtime deliberately does not build the `FileMetadata`: it is C, and the struct is a
+/// layout the language defines. `stat` asks for the scalar facts and composes the struct in
+/// NOVA, which is also why `Option<FileMetadata>` exercises the option machinery's struct
+/// path rather than its scalar one.
+///
+/// `size` is the interesting field: it is the one a wrong `stat` buffer or a bytes-vs-
+/// characters mistake gets wrong.
+#[test]
+fn io_stat_carries_a_struct_in_an_option() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_stat",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    write_file("/tmp/nova_stdlib_stat.txt", "hello\n");
+    match stat("/tmp/nova_stdlib_stat.txt") {
+        Some(m) => {
+            print(m.name);
+            print(m.size);
+            print(m.is_dir);
+            print(m.modified > 0);
+        },
+        None => print("missing"),
+    }
+    match stat("/tmp") {
+        Some(m) => print(m.is_dir),
+        None => print("missing"),
+    }
+    match stat("/no/such/path/at/all") {
+        Some(m) => print("found"),
+        None => print("absent"),
+    }
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "nova_stdlib_stat.txt",  // the name, not the path
+        "6",                     // "hello" and its newline, in bytes
+        "false",                 // a regular file
+        "true",                  // it has a modification time
+        "true",                  // /tmp is a directory
+        "absent",                // a missing path is None, not a trap
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
