@@ -472,7 +472,7 @@ impl Lowerer {
                         struct_def
                             .fields
                             .iter()
-                            .map(|field| (field.name.clone(), field.typ.name.clone()))
+                            .map(|field| (field.name.clone(), type_display(&field.typ)))
                             .collect(),
                     );
                     structs.push(SirStruct {
@@ -482,7 +482,7 @@ impl Lowerer {
                             .iter()
                             .map(|field| SirStructField {
                                 name: field.name.clone(),
-                                typ: field.typ.name.clone(),
+                                typ: type_display(&field.typ),
                             })
                             .collect(),
                     });
@@ -3421,7 +3421,7 @@ fn diverging_call(callee: &Expr) -> bool {
     matches!(callee.unspanned(), Expr::Identifier(name) if name == "panic" || name == "exit")
 }
 
-fn type_display(typ: &nova_common::TypeExpr) -> String {
+pub(crate) fn type_display(typ: &nova_common::TypeExpr) -> String {
     if typ.generics.is_empty() {
         typ.name.clone()
     } else {

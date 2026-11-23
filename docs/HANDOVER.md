@@ -95,6 +95,7 @@ both needed it.
 | `Option<T>` return type of an instantiation | computed from the type's `.name`, which is `Option` — `c_type` maps that to `int`, so `find_int` returned an `Option_int` from an `int` function | — |
 | `Option<T>` return type of a generic call | same `.name` mistake in `expr_type`, so `let a = find(..)` inferred `int` | — |
 | `match` over an `Option` | read its scrutinee twice, once for the tag and once for the payload — `match array_pop(a)` popped two elements | — |
+| struct field types | a field of `Option<int>` declared an `int` — and fixing it showed structs were emitted in source order, so a struct came before the type it embeds | — |
 
 **Three of those compiled cleanly and were wrong.** The loop body and the string
 comparison were found by running `split`, not by any gate. That is the standing lesson of
@@ -122,6 +123,21 @@ without unwrapping its `Typed` annotation. `range_bounds`, `global_init_to_c` an
 **If you add a helper that inspects a `SirExpr`, unwrap `Typed` first.** Every existing one
 does now, and `methods_and_consts_keep_their_generic_return_type` plus
 `core_predicates_and_range_iteration` are the tests that notice when one stops.
+
+### And a gate, because the audit was by eye
+
+The sweep above still missed two places — struct field types, and seven sites in the
+analyser — which is the argument for a check rather than a careful reader.
+`tools/type-name-check.py` now fails CI on either idiom:
+
+| Idiom | What it costs |
+|---|---|
+| a type read through `TypeExpr::name` | the generic arguments vanish; `Option<int>` becomes `Option`, which `c_type` maps to `int` |
+| a `SirExpr` inspected without unwrapping `Typed` | the annotation hides the shape; `for i in range(..)` iterated zero times |
+
+It is a heuristic — a handful of exact shapes the bug has actually taken, not a type
+checker. A compiler warning would be better and this repository has no lint infrastructure;
+the alternative to a heuristic gate is the no gate that let ten of these through.
 
 ## What is next, in order
 

@@ -63,8 +63,59 @@ impl CBackend {
         let _ = writeln!(self.output, "#include \"nova_runtime.h\"");
         let _ = writeln!(self.output);
 
-        // Struct types first: functions refer to them by name.
+        // Forward-declare every struct before defining any of them. A struct can hold a
+        // field whose type is another struct — `Holder { maybe: Option<int> }` holds an
+        // `Option_int` — and the option structs are appended after the user's, so
+        // defining in order emitted `Option_int maybe;` above `typedef struct
+        // Option_int`. C needs the name to exist before it is used, not the definition.
         for struct_def in &program.structs {
+            let _ = writeln!(self.output, "typedef struct {} {};", struct_def.name, struct_def.name);
+        }
+        if !program.structs.is_empty() {
+            let _ = writeln!(self.output);
+        }
+
+        // Emit structs in dependency order. A struct *field* needs a complete type, so
+        // `Holder { maybe: Option<int> }` must follow `Option_int` — and the option
+        // structs are appended after the user's, which put them last. Pointer fields do
+        // not need a complete type, so only by-value struct fields constrain the order.
+        let mut pending: Vec<&SirStruct> = program.structs.iter().collect();
+        let mut emitted: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut ordered: Vec<&SirStruct> = Vec::new();
+        loop {
+            let mut ready = Vec::new();
+            let mut blocked = Vec::new();
+            for candidate in pending {
+                let complete = candidate.fields.iter().all(|field| {
+                    let typ = self.c_type(&field.typ);
+                    typ.ends_with('*')
+                        || !self.struct_names.contains(&typ)
+                        || emitted.contains(&typ)
+                });
+                if complete {
+                    ready.push(candidate);
+                } else {
+                    blocked.push(candidate);
+                }
+            }
+            if ready.is_empty() {
+                // A by-value cycle is not expressible in C either; keep the source order
+                // and let the C compiler name it.
+                ordered.extend(blocked);
+                break;
+            }
+            for struct_def in ready {
+                emitted.insert(struct_def.name.clone());
+                ordered.push(struct_def);
+            }
+            if blocked.is_empty() {
+                break;
+            }
+            pending = blocked;
+        }
+
+        // Struct types first: functions refer to them by name.
+        for struct_def in ordered {
             let _ = writeln!(self.output, "typedef struct {} {{", struct_def.name);
             for field in &struct_def.fields {
                 let _ = writeln!(self.output, "    {} {};", self.c_type(&field.typ), field.name);
