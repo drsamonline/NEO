@@ -57,6 +57,12 @@ jobs:
         run: python3 tools/grammar-check.py
       - name: Every shipped example is a NOVA program
         run: python3 tools/example-check.py
+      # Ten defects in one session came from two idioms: reading a type through
+      # `TypeExpr::name`, and inspecting a `SirExpr` without unwrapping `Typed`. A
+      # warning would be better; this repository has no lint infrastructure, and a
+      # heuristic gate beats the no gate that let ten of them through.
+      - name: A type keeps its arguments, and an expression keeps its shape
+        run: python3 tools/type-name-check.py
       - run: cargo build --workspace --all-targets
       - run: cargo test --workspace
       - name: Every example builds and runs

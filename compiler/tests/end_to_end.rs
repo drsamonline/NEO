@@ -547,6 +547,44 @@ fn main() -> int {
     );
 }
 
+/// A struct field keeps its generic type, and the struct order follows its fields.
+///
+/// `Holder { maybe: Option<int> }` emitted `Option_int maybe;` because the field's type was
+/// read through `.name`. Fixing that exposed an ordering problem: a struct *field* needs a
+/// complete type, and the option structs were emitted after the user's, so `Holder` came
+/// before `Option_int`. Structs are emitted in dependency order now.
+#[test]
+fn a_struct_field_keeps_its_generic_type() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "struct_option_field",
+        "\
+struct Holder {
+    label: String,
+    maybe: Option<int>
+}
+
+fn main() -> int {
+    let h = Holder { label: \"x\", maybe: Some(9) };
+    print(h.label);
+    match h.maybe {
+        Some(v) => print(v),
+        None => print(0 - 1),
+    }
+    return 0;
+}
+",
+    );
+    assert_eq!(
+        stdout.trim(),
+        "x\n9",
+        "a struct field must keep `Option<int>`, and the struct must follow the type it embeds"
+    );
+}
+
 /// A method and a local `const` keep a generic return type.
 ///
 /// Three places computed a type from `TypeExpr::name` instead of `type_display`, and

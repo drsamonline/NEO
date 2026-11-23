@@ -129,9 +129,12 @@ impl SemanticAnalyzer {
                         params: func
                             .params
                             .iter()
-                            .map(|param| type_from_name(&param.typ.name))
+                            .map(|param| type_from_name(&crate::lowerer::type_display(&param.typ)))
                             .collect(),
-                        return_type: func.return_type.as_ref().map(|t| type_from_name(&t.name)),
+                        return_type: func
+                            .return_type
+                            .as_ref()
+                            .map(|t| type_from_name(&crate::lowerer::type_display(t))),
                         generics: func.generics.clone(),
                     },
                 );
@@ -144,7 +147,9 @@ impl SemanticAnalyzer {
                     struct_def
                         .fields
                         .iter()
-                        .map(|field| (field.name.clone(), type_from_name(&field.typ.name)))
+                        .map(|field| {
+                            (field.name.clone(), type_from_name(&crate::lowerer::type_display(&field.typ)))
+                        })
                         .collect(),
                 );
             }
@@ -202,14 +207,22 @@ impl SemanticAnalyzer {
 
         self.return_context.push(ReturnContext {
             name: func.name.clone(),
-            typ: func.return_type.as_ref().map(|t| type_from_name(&t.name)),
+            typ: func
+                .return_type
+                .as_ref()
+                .map(|t| type_from_name(&crate::lowerer::type_display(t))),
             span: func.span,
             generics: func.generics.clone(),
         });
         self.type_scopes.push(
             func.params
                 .iter()
-                .map(|param| (param.name.clone(), type_from_name(&param.typ.name)))
+                .map(|param| {
+                    (
+                        param.name.clone(),
+                        type_from_name(&crate::lowerer::type_display(&param.typ)),
+                    )
+                })
                 .collect(),
         );
         
@@ -248,7 +261,7 @@ impl SemanticAnalyzer {
                     Symbol::new(const_def.name.clone(), SymbolKind::Const, const_def.span);
                 let _ = self.symbol_table.insert(symbol);
                 if let Some(scope) = self.type_scopes.last_mut() {
-                    if let Some(typ) = const_def.typ.as_ref().map(|t| type_from_name(&t.name)) {
+                    if let Some(typ) = const_def.typ.as_ref().map(|t| type_from_name(&crate::lowerer::type_display(t))) {
                         scope.insert(const_def.name.clone(), typ);
                     }
                 }
@@ -269,7 +282,7 @@ impl SemanticAnalyzer {
                 }
 
                 // Record the binding's type so later expressions can be inferred.
-                let declared = let_stmt.typ.as_ref().map(|t| type_from_name(&t.name));
+                let declared = let_stmt.typ.as_ref().map(|t| type_from_name(&crate::lowerer::type_display(t)));
                 let binding = declared.or_else(|| {
                     let_stmt
                         .init
@@ -676,7 +689,7 @@ impl SemanticAnalyzer {
     /// Check a function whose value is produced by a trailing expression
     /// (`fn f() -> int { 1 }`).
     fn check_tail_value(&mut self, func: &Function, expr: &nova_common::Expr) {
-        let Some(expected) = func.return_type.as_ref().map(|t| type_from_name(&t.name)) else {
+        let Some(expected) = func.return_type.as_ref().map(|t| type_from_name(&crate::lowerer::type_display(t))) else {
             return;
         };
         if matches!(expected, Type::Unit | Type::Never) {
@@ -705,7 +718,7 @@ impl SemanticAnalyzer {
         if !func.generics.is_empty() {
             return;
         }
-        let Some(expected) = func.return_type.as_ref().map(|t| type_from_name(&t.name)) else {
+        let Some(expected) = func.return_type.as_ref().map(|t| type_from_name(&crate::lowerer::type_display(t))) else {
             return;
         };
         if matches!(expected, Type::Unit | Type::Never) || block.final_expr.is_some() {
@@ -802,7 +815,7 @@ impl SemanticAnalyzer {
                 .final_expr
                 .as_ref()
                 .and_then(|e| self.infer_expr_type(e)),
-            Expr::Cast(_inner, ty) => Some(type_from_name(&ty.name)),
+            Expr::Cast(_inner, ty) => Some(type_from_name(&crate::lowerer::type_display(ty))),
             Expr::StructLiteral(name, _) => Some(Type::Struct(name.clone())),
             Expr::Field(object, field) => match self.infer_expr_type(object) {
                 Some(Type::Struct(name)) => self
