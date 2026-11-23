@@ -1,4 +1,4 @@
-68.49
+68.59
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -69,3 +69,6 @@
 # 68.49% (9,332 of 13,625) when the `.name` audit landed. It rose by 0.02: the three fixed
 # sites and the receiver change are a handful of lines, and the test that covers them runs
 # the compiler as a subprocess, which llvm-cov cannot see.
+# 68.59% (9,375 of 13,668) when the type-name gate landed. The dependency ordering and the
+# sema rewrite are ordinary code with tests behind them; the gate itself is a Python script
+# that llvm-cov does not see, so this rise is all from the compiler changes.
