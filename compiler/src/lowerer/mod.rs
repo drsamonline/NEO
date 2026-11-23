@@ -1213,10 +1213,9 @@ impl Lowerer {
                     _ if self.struct_types.contains_key(payload.trim()) => {
                         Some("__record__")
                     }
-                    // Arrays are refused rather than attempted: an `Option<[T]>` payload is
-                    // lost between the binding and the `match` that reads it, and a reader
-                    // that returned a scalar where an array belongs is worse than one that
-                    // says it cannot.
+                    "[int]" => Some("nova_json_read_array_int"),
+                    "[float]" => Some("nova_json_read_array_float"),
+                    "[string]" => Some("nova_json_read_array_string"),
                     _ => None,
                 };
                 if reader == Some("__record__") {
@@ -1233,6 +1232,10 @@ impl Lowerer {
                             "float" => SirExpr::Literal(SirLiteral::Float(0.0)),
                             "bool" => SirExpr::Literal(SirLiteral::Bool(false)),
                             "string" => SirExpr::Literal(SirLiteral::String(String::new())),
+                            _ if payload.trim().starts_with('[') => SirExpr::Typed {
+                                expr: Box::new(SirExpr::Array(Vec::new())),
+                                typ: payload.clone(),
+                            },
                             _ => SirExpr::Literal(SirLiteral::Int(0)),
                         };
                         let option = |fields: Vec<(String, SirExpr)>| SirExpr::Typed {
@@ -3863,6 +3866,16 @@ fn payload_struct_fields() -> Vec<SirStructField> {
 /// One struct per payload type. The alternative — one struct with `int`, `double` and
 /// `char*` slots — cannot hold a struct at all, which is what ADR 0003 is about.
 fn option_struct_name(payload: &str) -> String {
+    // `[int]` and `int` both mangled to `Option_int`: the brackets are not alphanumeric, so
+    // they were stripped and the two payloads shared one struct. An `Option<[int]>` then read
+    // its payload as a `long long` and the array was lost. Arrays keep a marker of their own.
+    if let Some(inner) = payload
+        .trim()
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    {
+        return format!("Option_array_{}", inner.trim());
+    }
     let mangled: String = payload
         .trim()
         .chars()

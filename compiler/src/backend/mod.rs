@@ -327,6 +327,18 @@ impl CBackend {
             .strip_prefix("Option<")
             .and_then(|rest| rest.strip_suffix('>'))
         {
+            // The same rule as `option_struct_name` in the lowerer, which this duplicates:
+            // `[int]` and `int` both mangled to `Option_int`, so an `Option<[int]>` was
+            // declared as an `Option<int>` and the array payload was read as a `long long`.
+            // Two places mangling one name is the defect this project keeps finding; they
+            // agree today because both handle arrays, and a shared function would be better.
+            if let Some(inner) = payload
+                .trim()
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'))
+            {
+                return format!("Option_array_{}", inner.trim());
+            }
             return format!("Option_{}", Self::mangle_type(payload.trim()));
         }
         if let Some((base, arguments)) = typ.split_once('<') {

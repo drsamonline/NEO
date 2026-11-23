@@ -2226,3 +2226,50 @@ fn main() -> int {
     ];
     assert_eq!(stdout.trim(), expected.join("\n"));
 }
+
+/// `io.deserialize` reads a JSON array into `Option<[T]>`.
+///
+/// This was the last gap in the JSON support, and it needed a name fixed in two places:
+/// `[int]` and `int` both mangled to `Option_int`, so an `Option<[int]>` was declared as an
+/// `Option<int>` and its payload read as a `long long`. `option_struct_name` in the lowerer and
+/// the backend's own mangling both handle arrays now — they duplicate the rule, which is the
+/// defect this project keeps finding, and a shared function would be better than agreement.
+#[test]
+fn io_deserialize_reads_an_array() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "io_deserialize_array",
+        r#"
+use core;
+use io;
+
+fn main() -> int {
+    let numbers: Option<[int]> = deserialize("[1,2,3]");
+    match numbers { Some(v) => { print(array_len(v)); print(v[0]); print(v[2]); }, None => print(0 - 1), }
+    let junk: Option<[int]> = deserialize("nope");
+    match junk { Some(v) => print(array_len(v)), None => print(0 - 1), }
+    let words: Option<[String]> = deserialize("[\"x\",\"y\"]");
+    match words { Some(v) => { print(array_len(v)); print(v[1]); }, None => print(0 - 1), }
+    let floats: Option<[float]> = deserialize("[1.5,2.5]");
+    match floats { Some(v) => print(v[0]), None => print(0.0 - 1.0), }
+    let back: Option<[int]> = deserialize(serialize([7, 8]));
+    match back { Some(v) => print(v[1]), None => print(0 - 1), }
+    return 0;
+}
+"#,
+    );
+    let expected = [
+        "3",   // length
+        "1",   // first element
+        "3",   // last element
+        "-1",  // not an array is None, not an empty array
+        "2",   // string array length
+        "y",   // and its second element
+        "1.5", // float array
+        "8",   // what serialize wrote comes back
+    ];
+    assert_eq!(stdout.trim(), expected.join("\n"));
+}
