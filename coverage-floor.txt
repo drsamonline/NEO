@@ -1,4 +1,4 @@
-67.98
+68.40
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -60,3 +60,6 @@
 # went with them — the file is 18 lines smaller too. A refactor that deletes tested code
 # lowers the ratio without lowering the quality, so the floor comes down with it rather
 # than the number being quietly absorbed by the tolerance.
+# 68.40% (9,301 of 13,598) when the `for`-loop fixes landed. It rose because `range_bounds`
+# gained the branch that unwraps `Typed` — a line the old code never reached — and because
+# three more stdlib tests run real library code in-process.
