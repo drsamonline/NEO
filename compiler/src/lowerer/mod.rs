@@ -1100,6 +1100,26 @@ impl Lowerer {
                 Some(typed("nova_cwd", vec![], "string"))
             }
             "__builtin_chdir" => Some(typed("nova_chdir", lowered(self), "bool")),
+            // Open files. `File.handle` is an `int`, and a `FILE *` does not fit in
+            // one, so the runtime hands back an index into a fixed table: -1 for a
+            // failed open, 1..64 for an open file. These used to fall through to
+            // `nova_unsupported`, which compiled and trapped — every function in
+            // `io.nova` that touches a file was a runtime error waiting to happen.
+            "__builtin_fopen" => Some(typed("nova_file_open", lowered(self), "int")),
+            "__builtin_fclose" => Some(typed("nova_file_close", lowered(self), "int")),
+            "__builtin_fread_line" => Some(typed("nova_file_read_line", lowered(self), "string")),
+            "__builtin_fread_all" => Some(typed("nova_file_read_all", lowered(self), "string")),
+            "__builtin_fwrite" => Some(typed("nova_file_write", lowered(self), "int")),
+            "__builtin_feof" => Some(typed("nova_file_eof", lowered(self), "bool")),
+            "__builtin_fseek" => Some(typed("nova_file_seek", lowered(self), "int")),
+            "__builtin_ftell" => Some(typed("nova_file_tell", lowered(self), "int")),
+            "__builtin_fflush" => Some(typed("nova_file_flush", lowered(self), "int")),
+            "__builtin_fread_bytes" => {
+                Some(typed("nova_file_read_bytes", lowered(self), "[int]"))
+            }
+            "__builtin_fwrite_bytes" => {
+                Some(typed("nova_file_write_bytes", lowered(self), "int"))
+            }
             "__builtin_now" => Some(typed("nova_now_ms", vec![], "int")),
             "__builtin_sleep" => Some(typed("nova_sleep_ms", lowered(self), "void")),
             "__builtin_array_len" => {
@@ -3007,7 +3027,28 @@ impl Lowerer {
     /// `match` becomes a chain of equality tests (ternaries in C). Supported
     /// patterns: literals, `Enum.Variant` paths, and the wildcard arm.
     fn lower_match_chain(&mut self, scrutinee: &Expr, arms: &[MatchArm]) -> SirExpr {
-        let scrutinee_expr = self.lower_expr(scrutinee);
+        let mut scrutinee_expr = self.lower_expr(scrutinee);
+        // The chain reads the scrutinee once per arm — in the tag test and in the
+        // payload binding — and the backend prints the expression tree at every use
+        // site. So `match fopen(path, "w") { .. }` opened the file once for the
+        // binding and again for the tag test: `write_file` truncated its own output
+        // and leaked a descriptor, while returning `true`. Hoisting the scrutinee
+        // into a temporary evaluates it once, which is what the source says.
+        let mut hoisted: Vec<SirStatement> = Vec::new();
+        if !matches!(scrutinee_expr, SirExpr::Var(_) | SirExpr::Literal(_)) {
+            self.temp_counter += 1;
+            let name = format!("__match{}", self.temp_counter);
+            let typ = self.expr_type(scrutinee).or_else(|| match &scrutinee_expr {
+                SirExpr::Typed { typ, .. } => Some(typ.clone()),
+                _ => None,
+            });
+            hoisted.push(SirStatement::Let {
+                name: name.clone(),
+                typ,
+                value: scrutinee_expr,
+            });
+            scrutinee_expr = SirExpr::Var(name);
+        }
         let mut result: Option<SirExpr> = None;
 
         for arm in arms.iter().rev() {
@@ -3178,7 +3219,12 @@ impl Lowerer {
             });
         }
 
-        result.unwrap_or(SirExpr::Literal(SirLiteral::Unit))
+        let value = result.unwrap_or(SirExpr::Literal(SirLiteral::Unit));
+        if hoisted.is_empty() {
+            value
+        } else {
+            SirExpr::Block(hoisted, Some(Box::new(value)))
+        }
     }
 
     fn lower_bin_op(&self, op: &AstBinOp) -> SirBinOp {

@@ -163,6 +163,25 @@ int nova_is_directory(const char *path);
 int nova_rename_file(const char *from, const char *to);
 int nova_copy_file(const char *from, const char *to);
 int nova_remove_file(const char *path);
+
+/* An open file is a `FILE *`, and `File.handle` in the standard library is an
+ * `int`. Rather than widen the language's field to a pointer — which would make
+ * every `File` a machine word wider and leak the C type into NOVA — a handle is an
+ * index into a fixed table: 1..NOVA_MAX_OPEN_FILES are open files and -1 is "not
+ * open", which is what a failed open returns and what `fclose` leaves behind. */
+#define NOVA_MAX_OPEN_FILES 64
+
+long long nova_file_open(const char *path, const char *mode);
+long long nova_file_close(long long handle);
+char *nova_file_read_line(long long handle);
+long long nova_file_write(long long handle, const char *text);
+int nova_file_eof(long long handle);
+long long nova_file_seek(long long handle, long long position);
+long long nova_file_tell(long long handle);
+int nova_file_flush(long long handle);
+NovaArray nova_file_read_bytes(long long handle, long long count);
+char *nova_file_read_all(long long handle);
+long long nova_file_write_bytes(long long handle, NovaArray bytes);
 int nova_mkdir(const char *path);
 int nova_rmdir(const char *path);
 long long nova_now_ms(void);
@@ -555,6 +574,141 @@ int nova_rmdir(const char *path) {
 #else
     return rmdir(path) == 0;
 #endif
+}
+
+/* Open files. A handle is an index into this table, not a pointer: see the header
+ * for why. Slots are reused, so a program that opens and closes in a loop does not
+ * exhaust the table. */
+static FILE *nova_open_files[NOVA_MAX_OPEN_FILES];
+
+static FILE *nova_file_lookup(long long handle) {
+    if (handle < 1 || handle > NOVA_MAX_OPEN_FILES) return NULL;
+    return nova_open_files[handle - 1];
+}
+
+long long nova_file_open(const char *path, const char *mode) {
+    if (path == NULL || mode == NULL) return -1;
+    FILE *file = fopen(path, mode);
+    if (file == NULL) return -1;
+    for (int slot = 0; slot < NOVA_MAX_OPEN_FILES; slot++) {
+        if (nova_open_files[slot] == NULL) {
+            nova_open_files[slot] = file;
+            return (long long)(slot + 1);
+        }
+    }
+    /* Closing the file before failing matters: the caller gets -1 and no way to
+     * reach this descriptor, so leaving it open would leak it silently. */
+    fclose(file);
+    nova_fail("too many open files");
+    return -1;
+}
+
+long long nova_file_close(long long handle) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL) return -1;
+    nova_open_files[handle - 1] = NULL;
+    return fclose(file);
+}
+
+char *nova_file_read_line(long long handle) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL) return nova_strdup("");
+    /* A line without its terminator. 4096 is the buffer, so a longer line arrives
+     * in pieces; the caller can tell by the missing newline, which is the same
+     * contract `fgets` has. */
+    char buffer[4096];
+    if (fgets(buffer, sizeof buffer, file) == NULL) return nova_strdup("");
+    size_t length = strlen(buffer);
+    while (length > 0 && (buffer[length - 1] == '\n' || buffer[length - 1] == '\r')) {
+        buffer[--length] = '\0';
+    }
+    return nova_strdup(buffer);
+}
+
+long long nova_file_write(long long handle, const char *text) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL || text == NULL) return -1;
+    /* The count, not the C return: the standard library compares it with
+     * `strlen(data)` to decide whether the whole string went out. */
+    if (fputs(text, file) < 0) return -1;
+    return (long long)strlen(text);
+}
+
+int nova_file_eof(long long handle) {
+    FILE *file = nova_file_lookup(handle);
+    return file != NULL && feof(file) != 0;
+}
+
+long long nova_file_seek(long long handle, long long position) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL) return -1;
+    return (long long)fseek(file, (long)position, SEEK_SET);
+}
+
+long long nova_file_tell(long long handle) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL) return -1;
+    return (long long)ftell(file);
+}
+
+int nova_file_flush(long long handle) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL) return -1;
+    return fflush(file);
+}
+
+char *nova_file_read_all(long long handle) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL) return nova_strdup("");
+    /* Everything from here to EOF, exactly: a line-at-a-time read cannot express
+     * this, because it cannot tell an empty line from the end of the file. */
+    size_t capacity = 4096;
+    size_t length = 0;
+    char *buffer = (char *)malloc(capacity);
+    if (buffer == NULL) nova_fail("out of memory");
+    size_t got = 0;
+    while ((got = fread(buffer + length, 1, capacity - length - 1, file)) > 0) {
+        length += got;
+        if (length + 1 >= capacity) {
+            capacity *= 2;
+            char *grown = (char *)realloc(buffer, capacity);
+            if (grown == NULL) {
+                free(buffer);
+                nova_fail("out of memory");
+            }
+            buffer = grown;
+        }
+    }
+    buffer[length] = '\0';
+    return buffer;
+}
+
+NovaArray nova_file_read_bytes(long long handle, long long count) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL || count <= 0) return nova_array_from(NULL, 0);
+    unsigned char *buffer = (unsigned char *)malloc((size_t)count);
+    if (buffer == NULL) nova_fail("out of memory");
+    size_t got = fread(buffer, 1, (size_t)count, file);
+    int *items = (int *)malloc((size_t)count * sizeof(int));
+    if (items == NULL) nova_fail("out of memory");
+    for (size_t i = 0; i < got; i++) items[i] = (int)buffer[i];
+    free(buffer);
+    /* `nova_array_from` copies, so the temporary is released here. */
+    NovaArray array = nova_array_from(items, (long long)got);
+    free(items);
+    return array;
+}
+
+long long nova_file_write_bytes(long long handle, NovaArray bytes) {
+    FILE *file = nova_file_lookup(handle);
+    if (file == NULL) return -1;
+    if (bytes.len <= 0) return 0;
+    unsigned char *buffer = (unsigned char *)malloc((size_t)bytes.len);
+    if (buffer == NULL) nova_fail("out of memory");
+    for (long long i = 0; i < bytes.len; i++) buffer[i] = (unsigned char)bytes.data[i];
+    size_t written = fwrite(buffer, 1, (size_t)bytes.len, file);
+    free(buffer);
+    return (long long)written;
 }
 
 long long nova_now_ms(void) {

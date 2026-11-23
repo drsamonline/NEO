@@ -73,18 +73,12 @@ fn append_file(path: String, content: String) -> bool {
 
 /// Read all contents from file
 fn fread_all(file: &mut File) -> String {
-    let mut result: String = "";
-    let buffer_size = 4096;
-    let mut buffer: [char] = [];
-    
-    while !feof(file) {
-        let chunk = fread_line(file);
-        if strlen(chunk) > 0 {
-            result = strcat(result, chunk);
-        }
-    }
-    
-    result
+    // One builtin, not a line loop. The loop could not express this: `fread_line`
+    // returns "" both at the end of the file and on a blank line, so a file with a
+    // blank line was truncated there, and the newlines were dropped from every line
+    // that did survive — `read_file` on "a\nb\n" returned "ab". It was also
+    // quadratic, rebuilding the string once per line.
+    __builtin_fread_all(file.handle)
 }
 
 /// Read a line from file

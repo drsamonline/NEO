@@ -43,6 +43,7 @@ about a decision are about a reading of it that nobody chose.
 | [0007](0007-string-indexing.md) | `s[i]` is a byte, not a codepoint, because `char` is one byte — whatever the spec says. Deciding otherwise means deciding what `char` is first | accepted |
 | [0008](0008-casts.md) | `as` converts. It was being dropped, which made a cast a comment and left three type-driven features reading the wrong type | accepted |
 | [0009](0009-nested-arrays.md) | `[[int]]` is an array of `NovaArray` structs, copied by value so a write through a row reaches the matrix. Only `[int]` inner arrays are represented | accepted |
+| [0010](0010-file-handles.md) | An open file is an index into a fixed table, not a pointer | accepted |
 
 ## Writing one
 
