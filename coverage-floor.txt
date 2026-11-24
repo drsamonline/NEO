@@ -1,4 +1,4 @@
-69.00
+69.05
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -181,3 +181,6 @@
 # 69.00% (10,343 of 14,989) when blocks became scopes. A FALL of 0.07: the `declare` helper is
 # kept but unused (it documents the finding the sweep produced), and the scoping branches are
 # exercised only through programs, not unit tests.
+# 69.05% (10,369 of 15,017) when the `Copy` classification landed. It rose 0.05: the classifier is
+# a pure function over `TypeKind` and every arm is tested, which is what makes step 1 shippable
+# while step 2 waits for `let` to carry a type.
