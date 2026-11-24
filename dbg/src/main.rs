@@ -302,147 +302,19 @@ fn repl_loop(session: &mut session::DebugSession) -> Result<(), DebuggerError> {
             Ok(line) => {
                 let _ = rl.add_history_entry(&line);
                 
-                let parts: Vec<&str> = line.trim().split_whitespace().collect();
-                if parts.is_empty() {
+                if line.trim().is_empty() {
                     continue;
                 }
-                
-                match parts[0] {
-                    "run" | "r" => {
-                        let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
-                        if let Err(e) = session.run(&args) {
-                            eprintln!("Error: {}", e);
-                        }
-                    }
-                    "continue" | "c" => {
-                        if let Err(e) = session.continue_execution() {
-                            eprintln!("Error: {}", e);
-                        }
-                    }
-                    "step" | "s" => {
-                        if let Err(e) = session.step_into() {
-                            eprintln!("Error: {}", e);
-                        }
-                    }
-                    "next" | "n" => {
-                        if let Err(e) = session.step_over() {
-                            eprintln!("Error: {}", e);
-                        }
-                    }
-                    "finish" | "f" => {
-                        if let Err(e) = session.step_out() {
-                            eprintln!("Error: {}", e);
-                        }
-                    }
-                    "break" | "b" => {
-                        if parts.len() < 2 {
-                            println!("Usage: break <location> [condition]");
-                            continue;
-                        }
-                        let location = parts[1].to_string();
-                        let condition = parts.get(2).map(|s| s.to_string());
-                        
-                        match session.set_breakpoint(&location) {
-                            Ok(bp) => {
-                                if let Some(cond) = condition {
-                                    if let Err(e) = session.set_breakpoint_condition(bp, &cond) {
-                                        eprintln!("Warning: Could not set condition: {}", e);
-                                    }
-                                }
-                                println!("Breakpoint {} set at {}", bp, location);
-                            }
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                    }
-                    "delete" | "d" => {
-                        if parts.len() < 2 {
-                            println!("Usage: delete <breakpoint-number>");
-                            continue;
-                        }
-                        if let Ok(num) = parts[1].parse::<u32>() {
-                            if let Err(e) = session.delete_breakpoint(num) {
-                                eprintln!("Error: {}", e);
-                            } else {
-                                println!("Breakpoint {} deleted", num);
-                            }
-                        } else {
-                            eprintln!("Invalid breakpoint number");
-                        }
-                    }
-                    "where" | "w" => {
-                        match session.current_location() {
-                            Ok(loc) => println!("Current location: {}", loc),
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                    }
-                    "backtrace" | "bt" => {
-                        match session.backtrace() {
-                            Ok(frames) => {
-                                for (i, frame) in frames.iter().enumerate() {
-                                    println!("#{}  {}", i, frame);
-                                }
-                            }
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                    }
-                    // NOTE: this match duplicates `commands::parse` and `commands::execute_line`,
-                    // and a command added to those is invisible here — which is how `line` was
-                    // first added and then reported as "Unknown command". The duplication is the
-                    // defect; this arm is the second place it has to exist.
-                    "line" => {
-                        if parts.len() < 2 {
-                            println!("Usage: line <hex-address>");
-                            continue;
-                        }
-                        match session.symbolize(parts[1]) {
-                            Ok(where_) => println!("{}", where_),
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                    }
-                    "print" | "p" => {
-                        if parts.len() < 2 {
-                            println!("Usage: print <expression>");
-                            continue;
-                        }
-                        let expr = parts[1..].join(" ");
-                        match session.evaluate(&expr) {
-                            Ok(value) => println!("{} = {}", expr, value),
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                    }
-                    "list" | "l" => {
-                        let location = parts.get(1).map(|s| s.to_string());
-                        match session.list_source(location.as_deref()) {
-                            Ok(lines) => {
-                                for line in lines {
-                                    println!("{}", line);
-                                }
-                            }
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                    }
-                    "info" | "i" => {
-                        if parts.len() < 2 {
-                            println!("Usage: info <threads|breakpoints|registers|variables>");
-                            continue;
-                        }
-                        let item = parts[1];
-                        match session.get_info(item) {
-                            Ok(info) => println!("{}", info),
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                    }
-                    "quit" | "q" | "exit" => {
-                        let _ = session.detach();
-                        break;
-                    }
-                    "help" | "h" | "?" => {
-                        print_help();
-                    }
-                    "" => {}
-                    cmd => {
-                        eprintln!("Unknown command: {}. Type 'help' for available commands.", cmd);
-                    }
+
+                // One command table, in `commands`, shared with `run_script`. This loop used
+                // to carry its own match over the same names, which meant a command added to
+                // `parse` was invisible here — `line` was written, compiled, tested and still
+                // answered "Unknown command". The duplication was the defect; the arm added to
+                // both places was the symptom.
+                match commands::execute_line(session, line.trim()) {
+                    Ok(commands::LineOutcome::Continue) => {}
+                    Ok(commands::LineOutcome::Quit) => break,
+                    Err(e) => eprintln!("Error: {}", e),
                 }
             }
             Err(rustyline::error::ReadlineError::Interrupted) => {
