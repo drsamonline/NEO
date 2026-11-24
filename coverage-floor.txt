@@ -1,4 +1,4 @@
-69.37
+69.08
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -171,3 +171,7 @@
 # 69.37% (10,304 of 14,854) when `print` began reading memory. It rose 0.09: both branches of the
 # new function are unit-testable — a name refuses and an address needs a process — which is the
 # difference between reading a file and reading another program's memory.
+# 69.08% (10,330 of 14,953) when `break <file:line>` landed. A FALL of 0.29, lowered in the same PR
+# as the rule requires. `resolve_line` is ~90 lines of table scanning whose success path needs a
+# binary with a line table and a matching source name; the refusals are covered, the scan is
+# covered by hand. The same shape as every other feature that reads another program's artefacts.
