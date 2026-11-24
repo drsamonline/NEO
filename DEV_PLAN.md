@@ -506,7 +506,9 @@ downloaded here, compiled a program that `use math;` and printed `4 3 3 1024` wi
   `tests/parity/statics.nova` pins it across all four backends. It is a limitation
   rather than a design: a `RefCell` in a `thread_local!` would be sound, and needs a
   memory model NOVA does not have yet.
-- The package registry is mocked.
+- The package registry is not implemented, and every command that would reach it refuses
+  rather than answering from a mock. `publish` used to return success without uploading
+  anything, which the CLI reported as `✓ Published`.
 - ~~**Four `math` calls segfault, and the emitted C says why.**~~ — fixed: a NOVA
   function whose name belongs to the C library is emitted as `nova_fn_<name>`. The
   original diagnosis follows, because it is what made the fix obvious. `floor`, `ceil`, `round`

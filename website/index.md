@@ -37,6 +37,8 @@ backends when `node` and `wat2wasm` are installed. CI runs it over every
   programs are not stdout-identical.
 - The language server has diagnostics, but go-to-definition is a string search
   and `references` is not implemented.
-- The debugger's REPL and breakpoints are real; stack frames and DWARF are
-  mocked.
-- The package registry is mocked.
+- The debugger's REPL and breakpoints are real; `backtrace`, `list`, `print` and
+  DWARF **refuse** rather than returning invented frames.
+- The package registry is not implemented, and every command that would reach it
+  **refuses** rather than answering from a mock. `publish` in particular does not
+  pretend to succeed.
