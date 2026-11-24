@@ -1,4 +1,4 @@
-69.05
+69.31
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -184,3 +184,6 @@
 # 69.05% (10,369 of 15,017) when the `Copy` classification landed. It rose 0.05: the classifier is
 # a pure function over `TypeKind` and every arm is tested, which is what makes step 1 shippable
 # while step 2 waits for `let` to carry a type.
+# 69.31% (10,459 of 15,091) when `let` began recording types and the move rule began warning. It
+# rose 0.26: inference, the conversion between the two `Type` representations and the rule are all
+# exercised by the corpus, because every program now goes through them.
