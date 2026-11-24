@@ -519,6 +519,82 @@ pub fn resume(pid: u32, single_step: bool) -> Result<Stop, DebuggerError> {
     }
 }
 
+/// The frame pointer of a stopped process, and the two words a stack walk needs.
+///
+/// x86-64 frame layout: `[rbp]` is the caller's `rbp`, `[rbp+8]` is the return address. Walking
+/// that chain is the simplest backtrace there is, and it works only because the compiler was
+/// told to keep a frame pointer (`-fno-omit-frame-pointer`).
+pub fn frame_pointer(pid: u32) -> Result<u64, DebuggerError> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        let registers = read_registers(pid)?;
+        Ok(registers.rbp)
+    }
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    {
+        let _ = pid;
+        Err(DebuggerError::Target(
+            "reading the frame pointer is implemented for x86-64 Linux only".to_string(),
+        ))
+    }
+}
+
+/// One word of a stopped process's memory.
+pub fn read_word(pid: u32, address: u64) -> Result<u64, DebuggerError> {
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: `PTRACE_PEEKTEXT` reads one word from the tracee and returns it; the data
+        // pointer is ignored. `pid` is a process this debugger is tracing, and a failed read is
+        // distinguished from a word that happens to be -1 by `errno`.
+        let word = unsafe {
+            libc::ptrace(
+                libc::PTRACE_PEEKTEXT,
+                pid as libc::pid_t,
+                address as *mut libc::c_void,
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        };
+        if word == -1 {
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() != Some(0) {
+                return Err(DebuggerError::Target(format!(
+                    "cannot read 0x{address:x} of {pid}: {error}"
+                )));
+            }
+        }
+        Ok(word as u64)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (pid, address);
+        Err(DebuggerError::Target(
+            "reading memory is implemented on Linux only".to_string(),
+        ))
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn read_registers(pid: u32) -> Result<libc::user_regs_struct, DebuggerError> {
+    // SAFETY: writes the register block into a live local of exactly the type the kernel
+    // writes; `pid` is a process this debugger is tracing.
+    let mut registers: libc::user_regs_struct = unsafe { std::mem::zeroed() };
+    let read = unsafe {
+        libc::ptrace(
+            libc::PTRACE_GETREGS,
+            pid as libc::pid_t,
+            std::ptr::null_mut::<libc::c_void>(),
+            &mut registers as *mut libc::user_regs_struct as *mut libc::c_void,
+        )
+    };
+    if read == -1 {
+        let error = std::io::Error::last_os_error();
+        return Err(DebuggerError::Target(format!(
+            "cannot read registers of {pid}: {error}"
+        )));
+    }
+    Ok(registers)
+}
+
 /// Move a stopped process's instruction pointer, so a trap can be undone.
 ///
 /// After an `int3` the process is stopped **one byte past** the instruction it should execute
