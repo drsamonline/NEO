@@ -1,4 +1,4 @@
-69.28
+69.37
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -168,3 +168,6 @@
 # with a real stack; a unit test can arrange neither. The refusal is covered, the walk is covered
 # by hand with a transcript in the PR. Every `ptrace` feature has this shape, and the notes in
 # this file are the record of it rather than a series of quiet exceptions.
+# 69.37% (10,304 of 14,854) when `print` began reading memory. It rose 0.09: both branches of the
+# new function are unit-testable — a name refuses and an address needs a process — which is the
+# difference between reading a file and reading another program's memory.
