@@ -170,6 +170,141 @@ pub fn detach(pid: u32) -> Result<(), DebuggerError> {
     }
 }
 
+/// Start a program with tracing enabled, so it stops before its first instruction.
+///
+/// `PTRACE_TRACEME` is called in the child between `fork` and `exec`, which is the only place it
+/// is meaningful; `pre_exec` is the hook for exactly that. The child then stops on the `exec`
+/// with `SIGTRAP`, and this function reaps that stop so the caller gets a process it can read.
+///
+/// Running the program under trace is what makes `step` and `continue` possible at all: a
+/// process nobody traced cannot be stopped inside itself.
+pub fn spawn_traced(path: &str, args: &[String]) -> Result<u32, DebuggerError> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let mut command = std::process::Command::new(path);
+        command.args(args);
+        // SAFETY: `pre_exec` runs in the child after `fork` and before `exec`, where only
+        // async-signal-safe work is permitted. This closure calls `ptrace`, which is
+        // async-signal-safe, and returns an `io::Error` built from `errno` — no allocation, no
+        // locks, no Rust runtime. Returning `Err` aborts the exec and the parent sees a failed
+        // spawn rather than a child that was never traced.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::ptrace(
+                    libc::PTRACE_TRACEME,
+                    0,
+                    std::ptr::null_mut::<libc::c_void>(),
+                    std::ptr::null_mut::<libc::c_void>(),
+                ) == -1
+                {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+
+        let child = command.spawn().map_err(|e| {
+            DebuggerError::Target(format!("cannot start {path}: {e}"))
+        })?;
+        let pid = child.id();
+        // The `exec` stop. Without reaping it, the first `PTRACE_CONT` would race it and the
+        // program would appear to start twice.
+        let mut status: libc::c_int = 0;
+        // SAFETY: writes one `c_int` through a pointer to a live local of that type; `pid` is a
+        // valid `pid_t` for a child this process just created.
+        let waited = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, 0) };
+        if waited == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::Target(format!(
+                "started {path} but could not wait for its first stop: {error}"
+            )));
+        }
+        if !libc::WIFSTOPPED(status) {
+            return Err(DebuggerError::Target(format!(
+                "{path} did not stop on start (status {status}); it may have exited immediately"
+            )));
+        }
+        Ok(pid)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (path, args);
+        Err(DebuggerError::Target(
+            "running under trace is implemented on Linux only".to_string(),
+        ))
+    }
+}
+
+/// Resume a stopped process: to the next stop, or one instruction.
+///
+/// Returns `(stopped, signal, exited_code)`. `stopped` is false when the process ended, and then
+/// `exited_code` is its status — the caller must report that rather than a location.
+pub fn resume(pid: u32, single_step: bool) -> Result<Stop, DebuggerError> {
+    #[cfg(target_os = "linux")]
+    {
+        let request = if single_step {
+            libc::PTRACE_SINGLESTEP
+        } else {
+            libc::PTRACE_CONT
+        };
+        // SAFETY: as in `attach`, both data pointers are ignored by these requests; `pid` is a
+        // process this debugger is tracing.
+        let resumed = unsafe {
+            libc::ptrace(
+                request,
+                pid as libc::pid_t,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        };
+        if resumed == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::Target(format!(
+                "cannot resume {pid}: {error}. Is it still traced?"
+            )));
+        }
+        let mut status: libc::c_int = 0;
+        // SAFETY: as in `attach`, writes one `c_int` through a pointer to a live local.
+        let waited = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, 0) };
+        if waited == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::Target(format!("cannot wait for {pid}: {error}")));
+        }
+        if libc::WIFEXITED(status) {
+            return Ok(Stop::Exited(libc::WEXITSTATUS(status)));
+        }
+        if libc::WIFSIGNALED(status) {
+            return Ok(Stop::Signalled(libc::WTERMSIG(status)));
+        }
+        if libc::WIFSTOPPED(status) {
+            return Ok(Stop::Stopped(libc::WSTOPSIG(status)));
+        }
+        Err(DebuggerError::Target(format!(
+            "unexpected wait status {status} for {pid}"
+        )))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (pid, single_step);
+        Err(DebuggerError::Target(
+            "resuming is implemented on Linux only".to_string(),
+        ))
+    }
+}
+
+/// How a traced process came to rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stop {
+    /// Stopped by a signal; `SIGTRAP` is a breakpoint or a completed single step.
+    Stopped(i32),
+    /// Exited with this code.
+    Exited(i32),
+    /// Killed by this signal.
+    Signalled(i32),
+}
+
 /// The instruction pointer of a stopped process — where it is right now.
 ///
 /// x86-64 only. A stopped process's `rip` is the address of the instruction it will execute

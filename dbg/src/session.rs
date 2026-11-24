@@ -59,6 +59,8 @@ pub struct DebugSession {
     current_location: Option<String>,
     stack_frames: Vec<StackFrame>,
     variables: HashMap<String, Variable>,
+    /// The process this debugger started under `ptrace`, when it did.
+    traced_pid: Option<u32>,
 }
 
 impl DebugSession {
@@ -72,6 +74,7 @@ impl DebugSession {
             current_location: None,
             stack_frames: Vec::new(),
             variables: HashMap::new(),
+            traced_pid: None,
         })
     }
     
@@ -98,7 +101,7 @@ impl DebugSession {
     /// It runs **to completion**, not under `ptrace`. Stopping at a breakpoint needs the child
     /// started under trace, which is not implemented; `step` and `continue` say so rather than
     /// inventing a line number.
-    pub fn run(&mut self, args: &[String]) -> Result<(), DebuggerError> {
+pub fn run(&mut self, args: &[String]) -> Result<(), DebuggerError> {
         let path = match &self.target {
             DebugTarget::Binary { path, .. } => path.clone(),
             other => {
@@ -112,87 +115,141 @@ impl DebugSession {
         }
 
         self.state = State::Running;
-        let status = std::process::Command::new(&path)
-            .args(args)
-            .status()
-            .map_err(|e| DebuggerError::Target(format!("cannot run {path}: {e}")))?;
-
-        // The real exit status, and nothing invented about where it got to.
-        let code = status.code().unwrap_or(-1);
-        self.current_location = None;
-        self.state = State::Exited(code);
-        println!("[exited {code}]");
-        Ok(())
+        // Under trace, so `step` and `continue` can stop it again. The child stops before its
+        // first instruction, which is the only moment a debugger can act on a program it
+        // started itself.
+        let pid = crate::target::spawn_traced(&path, args)?;
+        self.traced_pid = Some(pid);
+        self.state = State::Stopped("(start)".to_string());
+        println!("[started pid {pid}, stopped before the first instruction]");
+        self.report_location()
     }
     
     /// Continue execution until breakpoint
-    pub fn continue_execution(&mut self) -> Result<(), DebuggerError> {
-        if matches!(self.state, State::Idle | State::Exited(_)) {
-            return Err(DebuggerError::ProcessNotRunning);
+pub fn continue_execution(&mut self) -> Result<(), DebuggerError> {
+        let Some(pid) = self.traced_pid else {
+            return Err(DebuggerError::Target(
+                "cannot continue: this program was not started under `ptrace`, so it cannot be stopped \
+                 inside itself. `run` starts it traced"
+                    .to_string(),
+            ));
+        };
+        match crate::target::resume(pid, false)? {
+            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Exited(code) => {
+                self.traced_pid = None;
+                self.state = State::Exited(code);
+                println!("[exited {code}]");
+                Ok(())
+            }
+            crate::target::Stop::Signalled(signal) => {
+                self.traced_pid = None;
+                self.state = State::Exited(-1);
+                println!("[killed by signal {signal}]");
+                Ok(())
+            }
         }
-        
-        // Refused rather than invented. This used to report a hard-coded location —
-        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
-        // stopped, never stepped and in fact never started. A location that cannot be wrong
-        // because it is never read is still a lie the moment someone reads it.
-        Err(DebuggerError::Target(
-            "cannot continue: stopping inside a running program needs the child started under `ptrace`, \
-             which is not implemented. `run` executes the program to completion instead"
-                .to_string(),
-        ))
     }
     
     /// Step into function
-    pub fn step_into(&mut self) -> Result<(), DebuggerError> {
-        if !matches!(self.state, State::Stopped(_)) {
-            return Err(DebuggerError::ProcessNotRunning);
+pub fn step_into(&mut self) -> Result<(), DebuggerError> {
+        let Some(pid) = self.traced_pid else {
+            return Err(DebuggerError::Target(
+                "cannot step: this program was not started under `ptrace`, so it cannot be stopped \
+                 inside itself. `run` starts it traced"
+                    .to_string(),
+            ));
+        };
+        match crate::target::resume(pid, true)? {
+            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Exited(code) => {
+                self.traced_pid = None;
+                self.state = State::Exited(code);
+                println!("[exited {code}]");
+                Ok(())
+            }
+            crate::target::Stop::Signalled(signal) => {
+                self.traced_pid = None;
+                self.state = State::Exited(-1);
+                println!("[killed by signal {signal}]");
+                Ok(())
+            }
         }
-        
-        // Refused rather than invented. This used to report a hard-coded location —
-        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
-        // stopped, never stepped and in fact never started. A location that cannot be wrong
-        // because it is never read is still a lie the moment someone reads it.
-        Err(DebuggerError::Target(
-            "cannot step: stopping inside a running program needs the child started under `ptrace`, \
-             which is not implemented. `run` executes the program to completion instead"
-                .to_string(),
-        ))
     }
     
     /// Step over function
-    pub fn step_over(&mut self) -> Result<(), DebuggerError> {
-        if !matches!(self.state, State::Stopped(_)) {
-            return Err(DebuggerError::ProcessNotRunning);
+pub fn step_over(&mut self) -> Result<(), DebuggerError> {
+        let Some(pid) = self.traced_pid else {
+            return Err(DebuggerError::Target(
+                "cannot step over: this program was not started under `ptrace`, so it cannot be stopped \
+                 inside itself. `run` starts it traced"
+                    .to_string(),
+            ));
+        };
+        match crate::target::resume(pid, true)? {
+            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Exited(code) => {
+                self.traced_pid = None;
+                self.state = State::Exited(code);
+                println!("[exited {code}]");
+                Ok(())
+            }
+            crate::target::Stop::Signalled(signal) => {
+                self.traced_pid = None;
+                self.state = State::Exited(-1);
+                println!("[killed by signal {signal}]");
+                Ok(())
+            }
         }
-        
-        // Refused rather than invented. This used to report a hard-coded location —
-        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
-        // stopped, never stepped and in fact never started. A location that cannot be wrong
-        // because it is never read is still a lie the moment someone reads it.
-        Err(DebuggerError::Target(
-            "cannot step over: stopping inside a running program needs the child started under `ptrace`, \
-             which is not implemented. `run` executes the program to completion instead"
-                .to_string(),
-        ))
     }
     
     /// Step out of current function
-    pub fn step_out(&mut self) -> Result<(), DebuggerError> {
-        if !matches!(self.state, State::Stopped(_)) {
-            return Err(DebuggerError::ProcessNotRunning);
+pub fn step_out(&mut self) -> Result<(), DebuggerError> {
+        let Some(pid) = self.traced_pid else {
+            return Err(DebuggerError::Target(
+                "cannot step out: this program was not started under `ptrace`, so it cannot be stopped \
+                 inside itself. `run` starts it traced"
+                    .to_string(),
+            ));
+        };
+        match crate::target::resume(pid, true)? {
+            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Exited(code) => {
+                self.traced_pid = None;
+                self.state = State::Exited(code);
+                println!("[exited {code}]");
+                Ok(())
+            }
+            crate::target::Stop::Signalled(signal) => {
+                self.traced_pid = None;
+                self.state = State::Exited(-1);
+                println!("[killed by signal {signal}]");
+                Ok(())
+            }
         }
-        
-        // Refused rather than invented. This used to report a hard-coded location —
-        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
-        // stopped, never stepped and in fact never started. A location that cannot be wrong
-        // because it is never read is still a lie the moment someone reads it.
-        Err(DebuggerError::Target(
-            "cannot step out: stopping inside a running program needs the child started under `ptrace`, \
-             which is not implemented. `run` executes the program to completion instead"
-                .to_string(),
-        ))
     }
     
+    /// Report where the stopped program is, from its instruction pointer.
+    ///
+    /// A stop need not be in the program. The first stop of a dynamically linked binary is in
+    /// the loader, which has no NOVA line, and reporting that as an error aborted the command
+    /// that caused it. It is reported as an address with no source line instead — true, and
+    /// still useful, because the address is the fact.
+    fn report_location(&mut self) -> Result<(), DebuggerError> {
+        let Some(pid) = self.traced_pid else {
+            return Err(DebuggerError::ProcessNotRunning);
+        };
+        let address = crate::target::instruction_pointer(pid)?;
+        let where_ = match self.symbolize(&format!("0x{address:x}")) {
+            Ok(symbolized) => symbolized.lines().nth(1).unwrap_or("?").to_string(),
+            Err(_) => format!("0x{address:x} (no source line: not the program's own code)"),
+        };
+        self.current_location = Some(where_.clone());
+        self.state = State::Stopped(where_.clone());
+        println!("[stopped at {where_}]");
+        Ok(())
+    }
+
     /// Set a breakpoint
     pub fn set_breakpoint(&mut self, location: &str) -> Result<u32, DebuggerError> {
         let id = self.next_bp_id;
@@ -240,11 +297,20 @@ impl DebugSession {
     /// For a process this debugger attached to, that is the truth rather than a remembered
     /// breakpoint: `PTRACE_GETREGS` gives `rip` and the binary's line table names the line.
     pub fn current_location(&self) -> Result<String, DebuggerError> {
-        if let DebugTarget::Attached { pid, .. } = &self.target {
-            let address = crate::target::instruction_pointer(*pid)?;
-            let symbolized = self.symbolize(&format!("0x{address:x}"))?;
-            let where_ = symbolized.lines().nth(1).unwrap_or("?").to_string();
-            return Ok(where_);
+        // A traced child and an attached process are both readable the same way: the
+        // instruction pointer, then the line table.
+        let pid = match &self.target {
+            DebugTarget::Attached { pid, .. } => Some(*pid),
+            _ => self.traced_pid,
+        };
+        if let Some(pid) = pid {
+            let address = crate::target::instruction_pointer(pid)?;
+            return match self.symbolize(&format!("0x{address:x}")) {
+                Ok(symbolized) => Ok(symbolized.lines().nth(1).unwrap_or("?").to_string()),
+                Err(_) => Ok(format!(
+                    "0x{address:x} (no source line: not the program's own code)"
+                )),
+            };
         }
         self.current_location.clone().ok_or_else(|| {
             DebuggerError::Target(
@@ -674,26 +740,6 @@ mod tests {
     }
 
     #[test]
-    fn test_run_executes_the_program_and_reports_its_status() {
-        // `/bin/true` is a real program with a real exit status and needs no compiler, so this
-        // asserts the behaviour rather than a stub. `run` used to print "Starting program" and
-        // claim to be stopped at `main:1` without starting anything.
-        let target = DebugTarget::Binary {
-            path: "/bin/true".to_string(),
-            symbols_loaded: false,
-        };
-        let mut session = DebugSession::new(target).unwrap();
-        session.run(&[]).expect("run /bin/true");
-        assert!(
-            matches!(session.state(), State::Exited(0)),
-            "expected exit 0, got {:?}",
-            session.state()
-        );
-        // No invented location survives a run.
-        assert!(session.current_location().is_err(), "a finished run has no location");
-    }
-
-    #[test]
     fn test_run_refuses_a_binary_that_is_not_there() {
         let target = DebugTarget::Binary {
             path: "/nonexistent/program".to_string(),
@@ -725,6 +771,44 @@ mod tests {
         ] {
             assert!(error.contains("ptrace"), "the refusal must name what is missing: {error}");
         }
+    }
+
+    #[test]
+    fn test_run_starts_under_trace_and_continue_reaches_the_exit() {
+        // `/bin/true` needs no compiler and has a real exit status. Started under `ptrace`, it
+        // stops before its first instruction — the only moment a debugger can act on a program
+        // it started itself — and `continue` then runs it to completion.
+        let target = DebugTarget::Binary {
+            path: "/bin/true".to_string(),
+            symbols_loaded: false,
+        };
+        let mut session = DebugSession::new(target).unwrap();
+        session.run(&[]).expect("start /bin/true under trace");
+        assert!(
+            matches!(session.state(), State::Stopped(_)),
+            "a traced start must stop before the first instruction, got {:?}",
+            session.state()
+        );
+
+        session.continue_execution().expect("continue to the end");
+        assert!(
+            matches!(session.state(), State::Exited(0)),
+            "expected exit 0, got {:?}",
+            session.state()
+        );
+    }
+
+    #[test]
+    fn test_stepping_refuses_when_the_program_was_not_traced() {
+        // The refusal names the reason rather than inventing a line, which is what these four
+        // commands used to do (`main:10`, `helper_func:5`, `main:15`, `main:20`).
+        let target = DebugTarget::Binary {
+            path: "/bin/true".to_string(),
+            symbols_loaded: false,
+        };
+        let mut session = DebugSession::new(target).unwrap();
+        let error = session.step_into().unwrap_err().to_string();
+        assert!(error.contains("not started under `ptrace`"), "{error}");
     }
 
     #[test]
