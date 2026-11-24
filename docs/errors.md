@@ -94,6 +94,12 @@ for `#line` — and such warnings are counted, not printed:
 25 warning(s) in imported modules were not shown; they are not your code
 ```
 
+`clone` is the answer the help line points at: `core.clone(s: String) -> String` copies the
+string, so the copy can be passed and the original kept. It does not itself count as a move —
+a clone that moved its argument would make the advice produce the same warning one line later.
+Arrays and structs are not cloneable yet; calling `clone` on one is a type error rather than a
+shallow copy that shares the buffer the rule exists to protect.
+
 One known gap remains: a call inside an assignment (`x = f(y)`) does not mark `y` moved.
 
 ## E0061 — wrong number of arguments
