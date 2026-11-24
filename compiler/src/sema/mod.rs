@@ -143,14 +143,27 @@ impl SemanticAnalyzer {
             inner = wrapped;
         }
         if let nova_common::Expr::Identifier(name) = inner {
-            let non_copy = self
+            // Enforced only where the remedy exists. `clone` covers `String` and nothing else
+            // yet, and a rule that says "clone it" about a value that cannot be cloned is a
+            // trap, not a rule. Measured before enforcing: the shipped example `array_ops.nova`
+            // passes an array it reuses, and there is no way for it to comply.
+            let movable = self
                 .lookup_variable_type(name)
-                .map(|type_| !Self::is_copy(&type_))
+                .map(|type_| Self::is_cloneable(&type_))
                 .unwrap_or(false);
-            if non_copy {
+            if movable {
                 self.moved.insert(name.clone());
             }
         }
+    }
+
+    /// Whether `clone` can copy this type, and therefore whether a move can be undone.
+    ///
+    /// ADR 0017 step 5. A move is only an error where the help line's advice is possible: for a
+    /// `String` today. Arrays, structs and closures are non-`Copy` but not cloneable, so passing
+    /// one is not reported — the rule would be demanding something the language cannot do.
+    fn is_cloneable(type_: &Type) -> bool {
+        matches!(type_, Type::String)
     }
 
     /// Whether a type is copied by assignment, or moved. ADR 0017, step 1.
@@ -695,6 +708,11 @@ impl SemanticAnalyzer {
         }
         if self.symbol_table.lookup(name).is_some() {
             if self.moved.contains(name) {
+                // ADR 0017 step 5 is **not** done. Enforcing this makes the standard library
+                // fail to build: measured, a program that imports `core`, `io` and `text` gets
+                // `semantic analysis failed inside an imported module`. The corpus's own code
+                // trips the rule 3 times; our own library trips it more often than that, and a
+                // rule that rejects the library it ships with is not enforceable yet.
                 let mut diag = Diagnostic::warning(format!(
                     "`{name}` was moved earlier in this function, and is used again here"
                 ))

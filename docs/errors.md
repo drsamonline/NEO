@@ -69,8 +69,12 @@ Causes, in the order they happen:
 
 ## E0010 — value used after being moved
 
-A **warning**, not an error. A value that is not `Copy` was passed to a function and then used
-again.
+A **warning**, not an error. A value that is not `Copy` was passed to a function or assigned, and
+then used again.
+
+It is reported only for a `String`, because that is the only type `clone` can copy. An array,
+struct or closure is also not `Copy`, but passing one is not reported — a rule that says "clone it"
+about a value that cannot be cloned is a trap rather than a rule.
 
 ```text
 prog.nova:10:19: warning [E0010]: `greeting` was moved earlier in this function, and is used again
