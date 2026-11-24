@@ -556,6 +556,25 @@ mod tests {
     }
 
     #[test]
+    fn test_attach_refuses_instead_of_reporting_success() {
+        // `attach` used to check that `/proc/<pid>` existed and then print "Attached to
+        // process N" without calling `ptrace`. A user believed they were debugging a process
+        // that was running free. The refusal must name the process and the missing mechanism.
+        let pid = std::process::id();
+        let error = crate::target::attach(pid).unwrap_err().to_string();
+        assert!(error.contains("not implemented"), "{error}");
+        assert!(error.contains("ptrace"), "the refusal must name what is missing: {error}");
+        assert!(error.contains("Nothing was attached"), "{error}");
+    }
+
+    #[test]
+    fn test_connect_remote_refuses_instead_of_reporting_success() {
+        let error = crate::target::connect_remote("127.0.0.1:1234").unwrap_err().to_string();
+        assert!(error.contains("not implemented"), "{error}");
+        assert!(error.contains("Nothing was connected"), "{error}");
+    }
+
+    #[test]
     fn test_backtrace() {
         let target = DebugTarget::Binary {
             path: "/tmp/test".to_string(),
