@@ -1,4 +1,4 @@
-69.61
+69.62
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -130,3 +130,5 @@
 # and their two tests were covered, and the refusals are four lines each.
 # 69.61% (9,806 of 14,087) when the `#line` directives landed. It rose by 0.12: the span wrapper,
 # the directive writer and the bound check are all exercised by the new test.
+# 69.62% (9,809 of 14,090) when `-g` landed. Three covered lines: the flag, and the message and
+# test that had to change with it.
