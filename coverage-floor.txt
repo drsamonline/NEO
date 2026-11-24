@@ -1,4 +1,4 @@
-69.08
+69.07
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -175,3 +175,6 @@
 # as the rule requires. `resolve_line` is ~90 lines of table scanning whose success path needs a
 # binary with a line table and a matching source name; the refusals are covered, the scan is
 # covered by hand. The same shape as every other feature that reads another program's artefacts.
+# 69.07% (10,344 of 14,977) when duplicate definitions became an error. A FALL of 0.01: the check
+# is covered by a test, but the branch that builds the help text for an imported collision needs a
+# program that imports a name it also defines.
