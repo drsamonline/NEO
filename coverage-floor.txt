@@ -1,4 +1,4 @@
-69.36
+69.17
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -194,3 +194,6 @@
 # 69.36% (10,495 of 15,132) when the rule narrowed to cloneable types and imported errors were
 # filtered. It rose 0.03: the diagnostic filter is exercised by every program that imports the
 # standard library, which is all of them.
+# 69.17% (10,512 of 15,197) when `clone` became a builtin with an array path. A FALL of 0.19: the
+# dispatch has three arms and the corpus exercises two — `[String]` is a compile-time error, so no
+# test program reaches it, and the struct arm does not exist yet.
