@@ -480,6 +480,15 @@ fn compile_to(input: &Path, target: Target) -> String {
         die("semantic analysis failed");
     }
 
+    // A successful analysis can still have warnings, and they used to be dropped here: only a
+    // failed analysis printed anything, so a warning was invisible on exactly the programs it is
+    // about. ADR 0017 step 3 counts these, and a count needs them printed.
+    for diag in analyzer.diagnostics.iter() {
+        if matches!(diag.level, nova_common::DiagnosticLevel::Warning) {
+            emit_diagnostic(&name, diag);
+        }
+    }
+
     let mut lowerer = Lowerer::new();
     let sir = lowerer.lower_program(&program);
     match target {

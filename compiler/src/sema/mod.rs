@@ -115,6 +115,28 @@ impl SemanticAnalyzer {
     }
 
     /// Collect declarations (first pass)
+    /// Whether a type is copied by assignment, or moved. ADR 0017, step 1.
+    ///
+    /// Scalars, references and pointers are `Copy`: assigning one gives the other a value and
+    /// both stay usable. Arrays, tuples containing a non-`Copy`, functions, structs and enums
+    /// are not — they own something, and "copying" them shares it, which is how a program
+    /// changes data it did not mean to.
+    ///
+    /// An unknown or error type counts as `Copy`. A false negative costs a missed warning; a
+    /// false positive costs noise in a warning-only pass, and noise is what teaches people to
+    /// ignore warnings.
+    fn is_copy(type_: &nova_common::Type) -> bool {
+        use nova_common::TypeKind;
+        match &type_.kind {
+            TypeKind::Primitive(_) => true,
+            TypeKind::Reference(_, _) | TypeKind::Pointer(_, _) => true,
+            TypeKind::Tuple(elements) => elements.iter().all(Self::is_copy),
+            TypeKind::Array(_, _) | TypeKind::Function(_, _) => false,
+            TypeKind::Struct(_) | TypeKind::Enum(_) => false,
+            TypeKind::Generic(_) | TypeKind::Error => true,
+        }
+    }
+
     /// Declare a symbol, reporting a duplicate in the same scope.
     ///
     /// `SymbolTable::insert` returns the symbol it replaced, and every call site used to write
@@ -1165,6 +1187,30 @@ fn span_of(expr: &nova_common::Expr) -> Option<Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scalar_is_copy_and_a_string_is_not() {
+        // ADR 0017 step 1. This is the classification the move rule rests on, and it is the only
+        // part of the rule that can be tested before the analyser records types for `let`.
+        use nova_common::{PrimitiveType, Type, TypeKind};
+        let int = Type::new(TypeKind::Primitive(PrimitiveType::I64));
+        let boolean = Type::new(TypeKind::Primitive(PrimitiveType::Bool));
+        let string = Type::new(TypeKind::Struct("String".to_string()));
+        let array = Type::new(TypeKind::Array(std::rc::Rc::new(int.clone()), 0));
+        let pair_of_ints = Type::new(TypeKind::Tuple(vec![int.clone(), boolean.clone()]));
+        let pair_with_string =
+            Type::new(TypeKind::Tuple(vec![int.clone(), string.clone()]));
+
+        assert!(SemanticAnalyzer::is_copy(&int), "a scalar is Copy");
+        assert!(SemanticAnalyzer::is_copy(&boolean), "a bool is Copy");
+        assert!(!SemanticAnalyzer::is_copy(&string), "a String owns a buffer");
+        assert!(!SemanticAnalyzer::is_copy(&array), "an array owns a buffer");
+        assert!(SemanticAnalyzer::is_copy(&pair_of_ints), "a tuple of Copy is Copy");
+        assert!(
+            !SemanticAnalyzer::is_copy(&pair_with_string),
+            "a tuple holding a String is not Copy"
+        );
+    }
 
     #[test]
     fn a_block_is_a_scope() {
