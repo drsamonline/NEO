@@ -14,6 +14,9 @@ clap = { version = "4.4", features = ["derive"] }
 thiserror = "1.0"
 gdbstub = "0.6"
 rustyline = "13.0"
+# `ptrace` and the x86_64 register set. The only crate in the workspace that needs a C-level
+# dependency, and the reason `target.rs` carries `unsafe` blocks with SAFETY comments.
+libc = "0.2"
 
 [[bin]]
 name = "nova-dbg"

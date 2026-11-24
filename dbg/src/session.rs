@@ -202,9 +202,23 @@ impl DebugSession {
     }
     
     /// Get current location
+    /// Where execution is: the stopped process's instruction pointer, symbolized.
+    ///
+    /// For a process this debugger attached to, that is the truth rather than a remembered
+    /// breakpoint: `PTRACE_GETREGS` gives `rip` and the binary's line table names the line.
     pub fn current_location(&self) -> Result<String, DebuggerError> {
+        if let DebugTarget::Attached { pid, .. } = &self.target {
+            let address = crate::target::instruction_pointer(*pid)?;
+            let symbolized = self.symbolize(&format!("0x{address:x}"))?;
+            let where_ = symbolized.lines().nth(1).unwrap_or("?").to_string();
+            return Ok(where_);
+        }
         self.current_location.clone().ok_or_else(|| {
-            DebuggerError::Target("No current location available".to_string())
+            DebuggerError::Target(
+                "no current location: nothing is running or stopped. `run` a program, \
+                 `break` somewhere, or `attach <pid>`"
+                    .to_string(),
+            )
         })
     }
     
@@ -360,8 +374,14 @@ impl DebugSession {
         Ok((file.to_string(), line))
     }
     
-    /// Detach from target
+    /// Detach from target, letting an attached process run again.
     pub fn detach(&mut self) -> Result<(), DebuggerError> {
+        if let DebugTarget::Attached { pid, .. } = &self.target {
+            let pid = *pid;
+            // Best effort: a process that has exited cannot be detached, and that is not a
+            // reason to leave the debugger attached to something else.
+            let _ = crate::target::detach(pid);
+        }
         println!("Detaching from target...");
         self.state = State::Idle;
         Ok(())
@@ -556,14 +576,20 @@ mod tests {
     }
 
     #[test]
-    fn test_attach_refuses_instead_of_reporting_success() {
+    fn test_a_failed_attach_says_nothing_was_attached() {
         // `attach` used to check that `/proc/<pid>` existed and then print "Attached to
-        // process N" without calling `ptrace`. A user believed they were debugging a process
-        // that was running free. The refusal must name the process and the missing mechanism.
-        let pid = std::process::id();
-        let error = crate::target::attach(pid).unwrap_err().to_string();
-        assert!(error.contains("not implemented"), "{error}");
-        assert!(error.contains("ptrace"), "the refusal must name what is missing: {error}");
+        // process N" without calling `ptrace`, so a user believed they were debugging a
+        // process that was running free. It really attaches now; what still matters is that a
+        // failure says so plainly instead of half-succeeding.
+        let missing = 4_000_000u32;
+        let error = crate::target::attach(missing).unwrap_err().to_string();
+        assert!(error.contains("does not exist"), "{error}");
+        assert!(error.contains("Nothing was attached"), "{error}");
+
+        // Tracing yourself is refused by the kernel, and that must be an error too rather than
+        // a session that thinks it is attached to itself.
+        let self_pid = std::process::id();
+        let error = crate::target::attach(self_pid).unwrap_err().to_string();
         assert!(error.contains("Nothing was attached"), "{error}");
     }
 
@@ -572,6 +598,46 @@ mod tests {
         let error = crate::target::connect_remote("127.0.0.1:1234").unwrap_err().to_string();
         assert!(error.contains("not implemented"), "{error}");
         assert!(error.contains("Nothing was connected"), "{error}");
+    }
+
+    #[test]
+    fn test_attach_reads_a_real_child() {
+        // `ptrace` may only be used on a process this one is allowed to trace. A container
+        // commonly sets `yama/ptrace_scope=1`, which permits tracing **children only** — so an
+        // unrelated pid fails with `EPERM`, and a child of ours is the case that proves the
+        // code path rather than the policy.
+        let mut child = match std::process::Command::new("sleep").arg("30").spawn() {
+            Ok(child) => child,
+            Err(_) => {
+                eprintln!("skipping: no `sleep` to trace");
+                return;
+            }
+        };
+        let pid = child.id();
+
+        match crate::target::attach(pid) {
+            Ok(target) => {
+                assert!(matches!(target, DebugTarget::Attached { .. }));
+                // The process is stopped, so its instruction pointer is readable and real.
+                let address = crate::target::instruction_pointer(pid)
+                    .expect("read the instruction pointer of a stopped child");
+                assert!(address > 0, "the instruction pointer must be a real address");
+                crate::target::detach(pid).expect("detach from the child");
+            }
+            Err(e) => {
+                // A sandbox that forbids tracing even a child is a limit, not a defect, and
+                // the message has to say so rather than looking like a bug.
+                let message = e.to_string();
+                assert!(
+                    message.contains("Operation not permitted") || message.contains("cannot attach"),
+                    "unexpected attach failure: {message}"
+                );
+                eprintln!("skipping: this environment forbids tracing a child ({message})");
+            }
+        }
+
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]
