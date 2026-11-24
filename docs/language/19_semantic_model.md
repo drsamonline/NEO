@@ -54,9 +54,12 @@ That is deliberate — the code is for searching, the message is for reading.
 
 This is the part a reader needs, because each gap shows up later in a less helpful place.
 
-- **Duplicate declarations are not detected.** Two functions with one name pass the analyser
-  and fail in the C compiler with a redefinition error — no diagnostic code, no span, no help
-  line. Verified: a file with two `fn dup()` compiles through `sema` and stops at `cc`.
+- **Duplicate function definitions are now detected**, and were not before. `SymbolTable::insert`
+  returns the symbol it replaced and every caller discarded it, so a second `fn find` silently
+  won. It surfaced when a user function named `find` was replaced by the standard library's
+  `find<T>`: the emitted C called the library's signature with the user's arguments. It is now
+  `E0308` with both line numbers and a help line. Duplicate *variables* in one scope are still
+  not checked — only functions.
 - **There is no type table.** Types are strings here as they are in the [SIR](20_sir_intro.md),
   so two spellings of one type are two strings and structural comparison is textual.
 - **Nothing checks mutation or aliasing.** The parser has already discarded the difference

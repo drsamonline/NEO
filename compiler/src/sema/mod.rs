@@ -120,7 +120,25 @@ impl SemanticAnalyzer {
             Item::Function(func) => {
                 // Don't set type yet - function types are complex
                 let symbol = Symbol::new(func.name.clone(), SymbolKind::Function, func.span);
-                let _ = self.symbol_table.insert(symbol);
+                // `insert` returns the symbol it replaced, and every caller used to discard
+                // that: a second `fn find` silently overwrote the first, and a user function
+                // whose name matched a standard-library one was replaced by it — the emitted C
+                // then called the library's signature with the user's arguments. Rejecting is
+                // the only honest answer: two definitions of one name is not a program.
+                if let Err(previous) = self.symbol_table.insert(symbol) {
+                    let mut diag = Diagnostic::error(format!(
+                        "`{}` is defined twice: once here and once at line {}",
+                        func.name, previous.span.start.line
+                    ))
+                    .with_code("E0308")
+                    .with_help(
+                        "rename one of them. A function may not share its name with another \
+                         function, including one it imported from the standard library",
+                    );
+                    diag = diag.with_span(func.span);
+                    self.diagnostics.push(diag);
+                    return;
+                }
                 // Remember the declared return type so `return` can be checked
                 // against it and calls can be typed.
                 self.signatures.insert(
@@ -1122,6 +1140,27 @@ fn span_of(expr: &nova_common::Expr) -> Option<Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_duplicate_function_definition_is_rejected() {
+        // `SymbolTable::insert` returns the symbol it replaced, and every caller discarded it,
+        // so a second definition silently won. Found when a user function named `find` was
+        // replaced by the standard library's `find<T>`: the emitted C called the library's
+        // signature with the user's arguments.
+        let analyzer =
+            analyze("fn twice() -> int { 1 }\nfn twice() -> int { 2 }\nfn main() -> int { twice() }");
+        assert!(
+            !analyzer.diagnostics.is_empty(),
+            "a duplicate definition must be a diagnostic"
+        );
+        let message = analyzer
+            .diagnostics
+            .iter()
+            .map(|d| d.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(message.contains("defined twice"), "{message}");
+    }
 
     fn analyze(source: &str) -> SemanticAnalyzer {
         let mut lexer = crate::Lexer::new(source);
