@@ -62,9 +62,10 @@ NOVA is pre-release and the gaps are deliberate and documented. The short list:
 - **The package registry is not implemented.** Dependencies are recorded in a
   manifest and not built; every command that would reach the registry refuses.
 - **The debugger reads the line table, not a stack.** `line <address>` maps an address to a
-  `.nova` file and line through the binary's `.debug_line` section. `backtrace`, `list` and
-  `print` still refuse, because walking a stack needs a stopped process, which the debugger
-  does not have.
+  `.nova` file and line through the binary's `.debug_line` section, and `list` shows the real
+  source around an address or a `file:line`. `backtrace` and `print` still refuse, because
+  walking a stack and reading variables need a stopped process, which the debugger does not
+  have.
 
 `DEV_PLAN.md` is the authority for this list. Where it and this page disagree,
 `DEV_PLAN.md` is right and this page is stale.
