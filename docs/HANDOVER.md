@@ -7,11 +7,17 @@ is unverified it says so.
 
 | | |
 |---|---|
-| `master` | `f496112` |
-| Tests | **259** passing, 0 failing, 0 ignored |
-| Coverage | 66.32%, ratchet in `coverage-floor.txt` |
 | Release | **v0.7.0** — three platform archives with SHA-256, verified by downloading and running one |
-| ADRs | 6 |
+
+**Numbers are not kept here.** This table used to carry the commit, the test count, the coverage
+figure and the ADR count; all four were stale within a day, because they change on every merge
+and nothing measured them in this file. What is stable lives in `docs/status.json`, which
+`tools/status.py --check` gates:
+
+| Fact | Where |
+|---|---|
+| version, source lines, ADR count, gate list, stdlib size | `docs/status.json` — gated |
+| test and coverage counts | CI, on the commit you are looking at; `coverage-floor.txt` holds the ratchet |
 
 ## What is done
 
@@ -164,13 +170,14 @@ which makes **`text` fully usable for the first time** — 59 of 59.
 The path helpers are done too — `list_dir`, `basename`, `extension`, `parent_dir`,
 `join_path`, `resolve_path` — which takes `io` to 48 of 59 and the library to 236 of 249.
 
-What remains is 12 functions, and the two groups left each need a decision first:
+**Nothing remains.** The three groups that were blocked are all done, and each needed an ADR
+first:
 
-| Group | What it needs |
+| Was blocked | How it was decided |
 |---|---|
-| `serialize`, `deserialize` | a decision: what the wire format is. An ADR before code. |
-| `args` | the emitted `main` is `int main(void)`, so there is no `argc`/`argv` to hand over. Changing it is a decision about every program's entry point. |
-| ~~`stat`~~ | **done.** `Option<FileMetadata>` works, and the runtime still does not build the struct: it answers scalars and NOVA composes. See below. |
+| `serialize`, `deserialize` | the module's own doc comment said "JSON-like", so the format was already chosen; ADR 0014 records it |
+| `args` | the entry point became `int main(int argc, char **argv)`; ADR 0012 |
+| the four stream functions | a `Stream` is a file handle with a label; ADR 0013 |
 
 `resolve_path` joins against `cwd` rather than calling `realpath`, which needs
 `_XOPEN_SOURCE` and a `PATH_MAX` buffer and fails on a path that does not exist — exactly
@@ -189,12 +196,11 @@ scrutinee once per arm, so `write_file` opened its own output a second time and 
 code path), and `fread_all` rebuilt a string line by line, dropping every newline and
 stopping at the first blank line. The second is why `nova_file_read_all` exists.
 
-**2. The standard library is complete.** All 249 functions run and 249 have an assertion
-are asserted in `compiler/tests/stdlib.rs`. **`math` is the first module with an assertion
-for every function it exports — 76 of 76.** **The whole library is complete on both counts** — all 249 functions usable, all 249 tested,
-none blocked. `deserialize` was the last, and it needed two fixes: inference must take `T` from
-the binding (ADR 0015) and `lower_instance` must publish the instantiated return type. Writing the first three tests
-found two live bugs within minutes; the second batch found a third. **No example, parity
+**2. The standard library is complete.** All 249 functions run, and all 249 have an assertion in
+`compiler/tests/stdlib.rs` — none blocked. `deserialize` was the last; it needed two fixes:
+inference must take `T` from the binding (ADR 0015), and `lower_instance` must publish the
+instantiated return type. Writing the first three tests found two live bugs within minutes; the
+second batch found a third. **No example, parity
 program or stdlib function contains a `for` loop at all**, which is how `for i in
 range(0, 4)` came to iterate zero times without anything noticing — a whole construct with
 no coverage. Extending that file is worth more than any of the items below.
@@ -221,7 +227,7 @@ curl -sL https://conda.anaconda.org/conda-forge/noarch/rust-std-x86_64-unknown-l
 
 There is no `cc` in the sandbox, so point the linker at Zig — `pip install ziglang`, then
 `-C linker=<wrapper that execs 'zig cc'>`, or set `CC` for the tests. That is what made a
-259-test suite run locally. What it cannot do: `cargo llvm-cov`, because the instrumented
+whole test suite run locally. What it cannot do: `cargo llvm-cov`, because the instrumented
 link fails on `__llvm_profile_runtime` through Zig's linker. **Coverage stays a CI-only
 measurement**, so run it there and read the number rather than predicting it.
 
