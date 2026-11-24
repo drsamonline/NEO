@@ -58,7 +58,7 @@ Performs:
 
 ---
 
-### 4. SIR - Semantic Intermediate Representation (465 lines) ✅
+### 4. SIR - Semantic Intermediate Representation (489 lines) ✅
 **Location**: `crates/nova-common/src/sir/mod.rs`
 
 Language-agnostic intermediate representation:
@@ -72,7 +72,7 @@ Language-agnostic intermediate representation:
 
 ---
 
-### 5. Lowerer (4,940 lines) ✅
+### 5. Lowerer (4,991 lines) ✅
 **Location**: `compiler/src/lowerer/mod.rs`
 
 Converts AST to SIR:

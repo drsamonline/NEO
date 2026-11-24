@@ -99,6 +99,13 @@ pub enum SirStatement {
     Break,
     /// Continue statement
     Continue,
+    /// A statement and the source span it came from.
+    ///
+    /// Only statements carry a span, not expressions: a line table maps instructions to
+    /// **lines**, and a statement is the unit that has one. Wrapping rather than adding a field
+    /// to all eleven variants keeps every existing match arm working through the inner
+    /// statement, and the C backend reads the span where it emits.
+    Spanned(Box<SirStatement>, Span),
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +229,20 @@ pub enum SirExpr {
     },
 }
 
+impl SirStatement {
+    /// The statement inside any `Spanned` wrappers.
+    ///
+    /// A walker that does not care where a statement came from says `match stmt.peel()`, which
+    /// is why adding `Spanned` did not need an arm in every backend. Only the C backend, which
+    /// emits a line directive, looks at the span itself.
+    pub fn peel(&self) -> &SirStatement {
+        match self {
+            SirStatement::Spanned(inner, _) => inner.peel(),
+            other => other,
+        }
+    }
+}
+
 /// Function names reachable from `main`/`__main`, or `None` when the program
 /// has no entry point. Backends use this to avoid emitting imported-but-unused
 /// helpers that they cannot translate.
@@ -287,6 +308,9 @@ fn collect_callees(stmts: &[SirStatement], calls: &mut Vec<String>) {
                 }
             }
             SirStatement::Block(body) => collect_callees(body, calls),
+            SirStatement::Spanned(inner, _) => {
+                collect_callees(std::slice::from_ref(inner.as_ref()), calls)
+            }
             SirStatement::Return(None) | SirStatement::Break | SirStatement::Continue => {}
         }
     }

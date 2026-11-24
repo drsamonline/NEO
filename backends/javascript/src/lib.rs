@@ -113,7 +113,8 @@ impl JsBackend {
     }
 
     fn generate_statement(&mut self, stmt: &SirStatement) {
-        match stmt {
+        match stmt.peel() {
+            SirStatement::Spanned(inner, _) => self.generate_statement(inner),
             SirStatement::Let { name, typ, value } => {
                 let init = self.expr_to_js(value);
                 self.writeln(&format!("let {} = {};", name, init));
@@ -355,7 +356,8 @@ impl JsBackend {
                 let mut block_code = "(() => {".to_string();
                 for stmt in stmts {
                     // Convert statement to expression form
-                    match stmt {
+                    match stmt.peel() {
+                        SirStatement::Spanned(inner, _) => { let _ = inner; }
                         SirStatement::Let { name, typ, value } => {
                             block_code.push_str(&format!(" let {} = {};", name, self.expr_to_js(value)));
                         }

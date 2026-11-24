@@ -94,7 +94,8 @@ fn reachable_functions(program: &SirProgram) -> Option<HashSet<String>> {
 
 fn collect_calls(stmts: &[SirStatement], calls: &mut Vec<String>) {
     for stmt in stmts {
-        match stmt {
+        match stmt.peel() {
+            SirStatement::Spanned(inner, _) => collect_calls(std::slice::from_ref(inner.as_ref()), calls),
             SirStatement::Let { value, .. }
             | SirStatement::Expr(value)
             | SirStatement::Return(Some(value)) => collect_calls_expr(value, calls),
@@ -228,7 +229,8 @@ fn collect_calls_expr(expr: &SirExpr, calls: &mut Vec<String>) {
 
 fn validate_statements(stmts: &[SirStatement]) -> Result<(), &'static str> {
     for stmt in stmts {
-        match stmt {
+        match stmt.peel() {
+            SirStatement::Spanned(inner, _) => validate_statements(std::slice::from_ref(inner.as_ref()))?,
             SirStatement::Let { value, .. } => validate_expr(value)?,
             SirStatement::Expr(value) | SirStatement::Return(Some(value)) => validate_expr(value)?,
             SirStatement::If {
@@ -712,7 +714,8 @@ impl WasmBackend {
     /// emitting the body. A missing type defaults to `i32`.
     fn collect_locals(&mut self, stmts: &[SirStatement]) {
         for stmt in stmts {
-            match stmt {
+            match stmt.peel() {
+                SirStatement::Spanned(inner, _) => self.collect_locals(std::slice::from_ref(inner.as_ref())),
                 SirStatement::Let { name, typ, value } => {
                     self.add_local(name, self.wasm_type(typ.as_deref()));
                     if typ.as_deref().is_some_and(is_string_type)
@@ -871,7 +874,8 @@ impl WasmBackend {
 
     fn collect_statement_strings(&mut self, stmts: &[SirStatement]) {
         for stmt in stmts {
-            match stmt {
+            match stmt.peel() {
+                SirStatement::Spanned(inner, _) => self.collect_statement_strings(std::slice::from_ref(inner.as_ref())),
                 SirStatement::Let { value, .. } => self.collect_expr_strings(value),
                 SirStatement::If {
                     condition,
@@ -998,7 +1002,8 @@ impl WasmBackend {
     }
 
     fn generate_statement(&mut self, stmt: &SirStatement) {
-        match stmt {
+        match stmt.peel() {
+            SirStatement::Spanned(inner, _) => self.generate_statement(inner),
             SirStatement::Let { name, value, .. } => {
                 self.generate_expr(value);
                 self.store(name);
