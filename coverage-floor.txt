@@ -1,4 +1,4 @@
-69.32
+69.33
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -189,3 +189,5 @@
 # exercised by the corpus, because every program now goes through them.
 # 69.32% (10,475 of 15,111) when `clone` landed. It rose 0.01: the builtin is three lines and the
 # exemption is two, and the standard library's own test suite exercises `clone` through `core`.
+# 69.33% (10,482 of 15,118) when assignment started marking moves. It rose 0.01: the change is two
+# lines, and the corpus does not assign strings, so nothing new is exercised by it.
