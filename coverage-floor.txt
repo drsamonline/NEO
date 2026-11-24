@@ -1,4 +1,4 @@
-69.62
+69.60
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -160,3 +160,6 @@
 # can build neither the binary nor the trace. The refusals are covered; the working path is
 # covered by hand, with a transcript in the PR. This is the same limit as `symbolize`'s happy
 # path, one order of magnitude larger, and the note is the alternative to hiding it.
+# 69.60% (10,270 of 14,755) when PIE load bases landed. A FALL of 0.02, lowered in the same PR as
+# the rule requires. `load_bias` is exercised against a real `/usr/bin/sleep`, but its two error
+# paths — no such mapping, unreadable maps — need a process that has exited mid-read.
