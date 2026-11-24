@@ -105,7 +105,8 @@ library function because what it does depends on the argument's type and NOVA ha
 |---|---|
 | `String` | a fresh buffer with the same bytes |
 | `[int]` | a fresh buffer with the same elements |
-| `[String]`, struct, closure | a compile-time error — a shallow copy would share what the rule protects | It does not itself count as a move —
+| a struct whose fields are all scalars | a field-by-field copy |
+| `[String]`, a struct holding a `String`, a closure | a compile-time error — a shallow copy would share what the rule protects | It does not itself count as a move —
 a clone that moved its argument would make the advice produce the same warning one line later.
 Arrays and structs are not cloneable yet; calling `clone` on one is a type error rather than a
 shallow copy that shares the buffer the rule exists to protect.
