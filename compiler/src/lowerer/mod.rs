@@ -2383,6 +2383,46 @@ impl Lowerer {
                         }
                     }
                 }
+                // `clone` is a compiler builtin rather than a library function, because what it
+                // does depends on the argument's type and NOVA has no overloading: a second
+                // `fn clone` would be rejected as a duplicate definition (which is how the
+                // duplicate check earned its keep). The type is known here and nowhere in the
+                // standard library.
+                if let Expr::Identifier(name) = callee.unspanned() {
+                    if name == "clone" {
+                        if let Some(arg) = args.first() {
+                            let argument_type = self
+                                .expr_type(arg)
+                                .unwrap_or_else(|| "int".to_string());
+                            let bare = argument_type.trim();
+                            let lowered_argument = self.lower_expr(arg);
+                            let (runtime, result_type) = match bare {
+                                "string" => ("nova_strdup", "string"),
+                                "[int]" => ("nova_array_clone", "[int]"),
+                                // A shallow copy of anything else would share the buffer the
+                                // rule exists to protect, so it is refused, not faked.
+                                _ => {
+                                    return SirExpr::Typed {
+                                        expr: Box::new(SirExpr::Call {
+                                            callee: "nova_unsupported".to_string(),
+                                            args: vec![SirExpr::Literal(SirLiteral::String(
+                                                format!("clone of `{bare}`"),
+                                            ))],
+                                        }),
+                                        typ: bare.to_string(),
+                                    }
+                                }
+                            };
+                            return SirExpr::Typed {
+                                expr: Box::new(SirExpr::Call {
+                                    callee: runtime.to_string(),
+                                    args: vec![lowered_argument],
+                                }),
+                                typ: result_type.to_string(),
+                            };
+                        }
+                    }
+                }
                 // The implicit `__builtin_*` functions map onto the runtime shim.
                 if let Expr::Identifier(name) = callee.unspanned() {
                     if name.starts_with("__builtin_") {

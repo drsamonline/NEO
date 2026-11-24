@@ -85,6 +85,15 @@ impl SemanticAnalyzer {
         );
         let _ = self.symbol_table.insert(println_symbol);
         
+        // `clone` is a compiler builtin: what it does depends on the argument's type, which
+        // the library cannot dispatch on. Declared here so a call is not "undefined name".
+        let clone_symbol = Symbol::new(
+            "clone".to_string(),
+            SymbolKind::Function,
+            Span::default(),
+        );
+        let _ = self.symbol_table.insert(clone_symbol);
+
         // Register panic function
         let panic_symbol = Symbol::new(
             "panic".to_string(),
@@ -163,7 +172,7 @@ impl SemanticAnalyzer {
     /// `String` today. Arrays, structs and closures are non-`Copy` but not cloneable, so passing
     /// one is not reported — the rule would be demanding something the language cannot do.
     fn is_cloneable(type_: &Type) -> bool {
-        matches!(type_, Type::String)
+        matches!(type_, Type::String | Type::Array(_))
     }
 
     /// Whether a type is copied by assignment, or moved. ADR 0017, step 1.
@@ -757,6 +766,35 @@ impl SemanticAnalyzer {
         let nova_common::Expr::Identifier(name) = callee.unspanned() else {
             return;
         };
+        // `clone` is a builtin whose answer depends on the argument's type. Checked here, at
+        // compile time, because the alternative is a runtime trap — and a trap on a type that
+        // looks cloneable is worse than a diagnostic saying it is not.
+        if name == "clone" {
+            if let Some(argument) = args.first() {
+                let cloneable = self
+                    .infer_expr_type(argument)
+                    .map(|type_| match &type_ {
+                        Type::String => true,
+                        // A `[int]` copies its buffer; a `[String]` would share the strings.
+                        Type::Array(element) => matches!(element.as_ref(), Type::Int),
+                        _ => false,
+                    })
+                    .unwrap_or(true);
+                if !cloneable {
+                    let mut diag = Diagnostic::error(
+                        "`clone` is implemented for `String` and `[int]` only: copying an array \
+                         of `String` would share the strings rather than copy them",
+                    )
+                    .with_code("E0308")
+                    .with_help("copy the elements yourself, or restructure so the value is not reused");
+                    if let Some(span) = call_span.or(self.current_span) {
+                        diag = diag.with_span(span);
+                    }
+                    self.diagnostics.push(diag);
+                }
+            }
+            return;
+        }
         // Builtins are declared by the compiler with no user-visible signature;
         // checking them against one would only produce false errors.
         if name.starts_with("__builtin_") || name == "Some" {
@@ -1017,6 +1055,14 @@ impl SemanticAnalyzer {
                 }
                 _ => None,
             },
+            // An array literal's type is its first element's. `[]` has no element to ask, and
+            // answers `None` — the lowerer takes the element type from the parameter, and this
+            // is not a second implementation of that.
+            Expr::Array(items) => {
+                let first = items.first()?;
+                let element = self.infer_expr_type(first)?;
+                Some(Type::Array(Box::new(element)))
+            }
             Expr::Tuple(items) => {
                 let types: Option<Vec<Type>> =
                     items.iter().map(|item| self.infer_expr_type(item)).collect();

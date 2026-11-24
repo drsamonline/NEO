@@ -4,16 +4,6 @@
 // This module is automatically imported in all NOVA programs
 
 /// Print a value to stdout
-/// A copy of a `String`, so passing the copy does not give away the original.
-///
-/// ADR 0017: a `String` is not `Copy`, and passing one moves it. This is the answer a warning
-/// about a later use asks for — clone it, or pass it last. Arrays and structs are not cloneable
-/// yet, and calling `clone` on one is a type error rather than a shallow copy that would share
-/// the buffer the rule exists to protect.
-fn clone(value: String) -> String {
-    __builtin_strdup(value)
-}
-
 fn print<T>(value: T) {
     // Implemented via runtime FFI
     __builtin_print(value);

@@ -150,9 +150,14 @@ not enforceable.
 
 So step 5 is **blocked on the standard library complying**, and the order is:
 
-1. clone for arrays and structs — so the advice exists for the types the library actually passes;
-2. fix the library's own sites, counted by running the checker over it with enforcement on;
-3. then enforce.
+1. ~~clone for arrays~~ — **done**: `clone` is now a compiler builtin dispatching on the
+   argument's type (`String` → `nova_strdup`, `[int]` → `nova_array_clone`), and it refuses
+   `[String]` at compile time because a shallow copy of an array of pointers shares exactly what
+   the rule protects. It had to become a builtin: two `fn clone` overloads are a duplicate
+   definition, which the check from #140 correctly rejects;
+2. clone for structs — not done; `clone` refuses them;
+3. fix the library's own sites, counted by running the checker over it with enforcement on;
+4. then enforce.
 
 **A finding worth keeping**: the suppression of imported-module diagnostics had to be extended to
 errors as well, because an error inside `io.nova` would otherwise fail every program that imports

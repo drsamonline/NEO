@@ -75,6 +75,7 @@ long long nova_array_len(NovaArray array);
 long long nova_array_get(NovaArray array, long long index);
 void nova_array_set(NovaArray array, long long index, long long value);
 void nova_array_push(NovaArray *array, long long value);
+NovaArray nova_array_clone(NovaArray source);
 long long nova_array_pop(NovaArray *array);
 
 /* Closures. A closure value pairs a lifted function with its heap environment;
@@ -535,6 +536,30 @@ void nova_array_push(NovaArray *array, long long value) {
     }
     array->data[array->len] = value;
     array->len += 1;
+}
+
+/* A copy of an array: a fresh buffer holding the same elements.
+ *
+ * The element width is `long long`, which is what `NovaArray` stores — so this is a real deep
+ * copy for an array of scalars, and a *shallow* one for an array of `String`, where the elements
+ * are pointers to buffers this does not touch. `clone` therefore refuses `[String]` rather than
+ * handing back an array that shares the strings it was supposed to protect. */
+NovaArray nova_array_clone(NovaArray source) {
+    NovaArray copy;
+    copy.len = source.len;
+    copy.cap = source.len;
+    if (source.len <= 0 || source.data == NULL) {
+        copy.data = NULL;
+        copy.len = 0;
+        copy.cap = 0;
+        return copy;
+    }
+    copy.data = (long long *)malloc((size_t)source.len * sizeof(long long));
+    if (copy.data == NULL) {
+        nova_fail("out of memory");
+    }
+    memcpy(copy.data, source.data, (size_t)source.len * sizeof(long long));
+    return copy;
 }
 
 long long nova_array_pop(NovaArray *array) {
@@ -2003,6 +2028,7 @@ mod tests {
             "nova_array_len",
             "nova_array_from",
             "nova_array_push",
+            "nova_array_clone",
             "nova_array_pop",
             "nova_panic",
             "nova_fail",
