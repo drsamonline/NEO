@@ -948,20 +948,33 @@ mod tests {
     }
 
     #[test]
-    fn test_a_breakpoint_on_an_unknown_function_is_an_error() {
+    fn test_a_breakpoint_on_a_binary_that_is_not_there_is_an_error() {
         // `address: None, // Would be resolved in production` used to produce a breakpoint that
-        // never fired and never complained. Resolving at set time means the mistake is now.
+        // never fired and never complained. Resolution happens at `break` time now, so a
+        // mistake is reported when it is made. (`no function` for a real symbol table is
+        // covered by hand: it needs a non-PIE binary, which a unit test cannot build.)
         let target = DebugTarget::Binary {
-            path: "/bin/true".to_string(),
+            path: "/nonexistent/binary".to_string(),
             symbols_loaded: false,
         };
         let mut session = DebugSession::new(target).unwrap();
         let error = session
-            .set_breakpoint("no_such_function_anywhere")
+            .set_breakpoint("anything")
             .unwrap_err()
             .to_string();
-        assert!(error.contains("no function"), "{error}");
-        assert!(error.contains("nm"), "the error must say how to look: {error}");
+        assert!(error.contains("cannot open"), "{error}");
+    }
+
+    #[test]
+    fn test_a_position_independent_binary_is_refused() {
+        // A PIE's symbol values are offsets, not addresses: writing `int3` at one would corrupt
+        // whatever lives there. The Rust test binary is a PIE, so it is the case to hand.
+        let exe = std::env::current_exe().expect("current exe");
+        let error = crate::target::resolve_function(&exe.to_string_lossy(), "main")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("position-independent"), "{error}");
+        assert!(error.contains("corrupt memory"), "the reason must say what goes wrong: {error}");
     }
 
     #[test]
