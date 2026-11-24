@@ -40,8 +40,8 @@ backends when `node` and `wat2wasm` are installed. CI runs it over every
 - The debugger runs a program under `ptrace`, so `break <function>`, `step`, `continue` and
   `backtrace` really work — every frame and hit reports its `.nova` line; `attach <pid>` stops a
   running process and `where` reports its real source line; `line <address>` maps an address
-  through the line table, and `list` shows the real source. `print` still refuses: it needs
-  variable types, which the compiler does not emit.
+  through the line table, and `list` shows the real source. `print 0xADDRESS` reads memory directly; `print <name>`
+  refuses, because reading a variable needs its type, which the compiler does not emit.
 - The package registry is not implemented, and every command that would reach it
   **refuses** rather than answering from a mock. `publish` in particular does not
   pretend to succeed.

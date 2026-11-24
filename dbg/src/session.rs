@@ -566,14 +566,37 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
     }
     
     /// Evaluate expression
-    pub fn evaluate(&self, _expr: &str) -> Result<String, DebuggerError> {
-        // Refused rather than answered with `<evaluated: expr>`, which looked like a result
-        // with a caveat when it was neither.
-        Err(DebuggerError::Target(
-            "expression evaluation is not implemented: the debugger has no way to read the \
-             target's variables (see DEV_PLAN.md, 'DWARF debugger')"
-                .to_string(),
-        ))
+    /// Read memory at an address, or refuse a name and say why.
+    ///
+    /// Reading a word needs no type information, so `print 0xADDR` works. Reading a *variable*
+    /// does: its value lives at a stack offset the C compiler chose, and the type that says how
+    /// many bytes to read is in `.debug_info`, which nothing here emits. That is a different
+    /// section of DWARF from the line table, and it is the honest boundary of this debugger.
+    pub fn evaluate(&self, expr: &str) -> Result<String, DebuggerError> {
+        let pid = match &self.target {
+            DebugTarget::Attached { pid, .. } => Some(*pid),
+            _ => self.traced_pid,
+        };
+        let trimmed = expr.trim();
+        let digits = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+        if let Ok(address) = u64::from_str_radix(digits, 16) {
+            let Some(pid) = pid else {
+                return Err(DebuggerError::Target(
+                    "cannot read memory: nothing is running or stopped. `run` a program, or \
+                     `attach <pid>`"
+                        .to_string(),
+                ));
+            };
+            let word = crate::target::read_word(pid, address)?;
+            // Both forms, because an address is more useful in hex and a counter in decimal.
+            let signed = word as i64;
+            return Ok(format!("{signed} (0x{word:016x}) at 0x{address:x}"));
+        }
+        Err(DebuggerError::Target(format!(
+            "cannot evaluate `{trimmed}`: reading a variable needs its stack offset and its \
+             type, and this compiler emits neither — only line information. `print 0xADDRESS` \
+             reads memory directly"
+        )))
     }
     
     /// List source code
@@ -1050,6 +1073,25 @@ mod tests {
         assert!(error.contains("position-independent"), "{error}");
         // The refusal must say what to do instead, not only that it cannot.
         assert!(error.contains("Start the program first"), "{error}");
+    }
+
+    #[test]
+    fn test_print_reads_memory_and_refuses_names() {
+        let target = DebugTarget::Binary {
+            path: "/bin/true".to_string(),
+            symbols_loaded: false,
+        };
+        let session = DebugSession::new(target).unwrap();
+
+        // A name needs the variable's stack offset and type. Neither is emitted, so the refusal
+        // must say so rather than guess — and must point at what does work.
+        let error = session.evaluate("counter").unwrap_err().to_string();
+        assert!(error.contains("stack offset"), "{error}");
+        assert!(error.contains("print 0xADDRESS"), "{error}");
+
+        // An address needs a process to read from.
+        let error = session.evaluate("0x1000").unwrap_err().to_string();
+        assert!(error.contains("nothing is running or stopped"), "{error}");
     }
 
     #[test]
