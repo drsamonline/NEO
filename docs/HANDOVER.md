@@ -209,7 +209,30 @@ no coverage. Extending that file is worth more than any of the items below.
 memory, concurrency, attributes, interfaces. Writing them would be inventing a
 specification, which `docs/specs/constitution.md` forbids first.
 
-**4. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works.
+**4. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works, and since the
+refusals landed it says what it cannot do instead of inventing frames.
+
+### What the line-table work actually costs — measured, not estimated
+
+An attempt on 2026-11-24 found the shape, which is worth knowing before starting again:
+
+1. **`SirStatement` carries no span.** `SirFunction` does (`span`), statements do not. A line
+   table maps instructions to lines, and a statement is the unit that has one.
+2. **The cheap way to add it is a wrapper**, not a field on all eleven variants:
+   `SirStatement::Spanned(Box<SirStatement>, Span)`. Every existing match arm keeps working
+   through the inner statement.
+3. **The wrapper ripples through every backend.** Adding the variant produced five
+   non-exhaustive-match errors in `backends/wasm` alone; `javascript`, `rust`, the C backend and
+   `collect_callees` in `nova-common` each need an arm too. That is the whole cost, and it is
+   mechanical rather than hard.
+4. **The payoff is bigger than a DWARF emitter.** With spans on statements the C backend can
+   emit `#line N "program.nova"` before each one, and the host C compiler then generates the
+   `.debug_line` section itself — the debugger reads NOVA line numbers without a DWARF writer.
+   `Span` has no filename, so the source name has to reach the backend: pass it to `generate`
+   rather than adding a field to `SirProgram`, which many tests construct by literal.
+
+The attempt was reverted rather than half-landed: a `Spanned` variant that only some backends
+handle compiles into four different answers to the same question.
 
 ## Working without a Rust toolchain
 
