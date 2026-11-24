@@ -41,7 +41,7 @@ What exists today, and what you should read instead:
 | 09 | [Control flow](09_control_flow.md) | ✅ written |
 | 10 | [Ownership](10_ownership.md) | — |
 | 11 | [Memory](11_memory.md) | ✅ written |
-| 12 | [Errors](12_errors.md) | — |
+| 12 | [Errors](12_errors.md) | ✅ written |
 | 13 | [Concurrency](13_concurrency.md) | — |
 | 14 | [Attributes](14_attributes.md) | — |
 | 15 | [Generics](15_generics.md) | ✅ written |
