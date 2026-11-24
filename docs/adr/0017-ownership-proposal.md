@@ -1,11 +1,13 @@
 # ADR 0017 — what "ownership" would mean, and whether to adopt it now
 
-- **Status:** proposed
+- **Status:** **accepted** (2026-11-24) — option **C** first, then **D**
 - **Date:** 2026-11-24
 - **Related:** [0016](0016-debugger-uses-ptrace.md), [Memory chapter](../language/11_memory.md), [Ownership chapter](../language/10_ownership.md) (a stub)
 
-> **This ADR is proposed, not accepted.** It lays out a decision that belongs to the maintainer.
-> Nothing in it has been implemented, and no chapter describes behaviour it does not have.
+> **Accepted 2026-11-24: option C (move semantics for non-`Copy` types, with an explicit
+> `clone`), then option D (reference counting) as a separate decision.** Steps 1–2 of the plan
+> below — the `Copy` bit and the move rule in warn mode — are in progress. No chapter describes
+> behaviour that is not implemented; chapter 10 stays a stub until step 5.
 
 ## Context
 
@@ -63,10 +65,10 @@ here that fixes leaks without changing what programs mean.
 
 ## Decision
 
-**None taken.** The maintainer decides; this ADR exists so the decision is made once, with the
-options on the table, rather than rediscovered in a pull request comment.
+**Accepted 2026-11-24: C then D, in that order.** Option D is a separate decision and is not
+implied by accepting C.
 
-If a decision is wanted now, the recommended pair is **C then D**, in that order:
+The reasoning, unchanged from the proposal:
 
 - **C first**, because a silent wrong answer (a shared buffer mutated through two names) is worse
   than a leak, and move semantics is the smaller change: it adds a rule, it does not add a
