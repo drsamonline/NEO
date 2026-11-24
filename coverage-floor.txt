@@ -1,4 +1,4 @@
-69.17
+68.91
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -197,3 +197,6 @@
 # 69.17% (10,512 of 15,197) when `clone` became a builtin with an array path. A FALL of 0.19: the
 # dispatch has three arms and the corpus exercises two — `[String]` is a compile-time error, so no
 # test program reaches it, and the struct arm does not exist yet.
+# 68.91% (10,512 of 15,255) when struct cloning landed. A FALL of 0.26: the field-wise branch is
+# 60 lines the corpus never reaches — no example or parity program clones a struct — and the
+# all-Copy check adds a second path. Covered by hand, with a transcript in the PR.
