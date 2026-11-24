@@ -83,27 +83,31 @@ pub fn attach(pid: u32) -> Result<DebugTarget, DebuggerError> {
             ));
         }
         
-        // Try to read process name
+        // The process exists — and that is all this can say. Attaching needs `ptrace`, which
+        // stops the process and lets a debugger read its registers and stack. This function
+        // used to check `/proc` and then print "Attached to process N", so a user believed
+        // they were debugging something that was running free: breakpoints would never fire
+        // and a backtrace would describe a program nobody had stopped. A false success is
+        // worse than a refusal, because it is acted on.
         let comm_path = proc_path.join("comm");
         let process_name = std::fs::read_to_string(&comm_path)
             .unwrap_or_else(|_| "unknown".to_string())
             .trim()
             .to_string();
-        
-        println!("Attached to process {} ({})", pid, process_name);
-        
-        Ok(DebugTarget::Attached { pid, process_name })
+        Err(DebuggerError::AttachFailed(format!(
+            "process {pid} ({process_name}) exists, but attaching is not implemented: it needs \
+             `ptrace` to stop the process and read its registers, which this debugger does not \
+             do. Nothing was attached"
+        )))
     }
     
     #[cfg(windows)]
     {
-        // Windows implementation would use Win32 APIs
-        println!("Attached to process {}", pid);
-        
-        Ok(DebugTarget::Attached {
-            pid,
-            process_name: "unknown".to_string(),
-        })
+        // Windows would need `DebugActiveProcess`. Refused rather than reported as done.
+        Err(DebuggerError::AttachFailed(format!(
+            "process {pid}: attaching is not implemented on Windows in this debugger; \
+             nothing was attached"
+        )))
     }
 }
 
@@ -122,14 +126,13 @@ pub fn connect_remote(address: &str) -> Result<DebugTarget, DebuggerError> {
         DebuggerError::Target("Invalid port number".to_string())
     })?;
     
-    // In production, this would establish a TCP connection
-    println!("Connected to remote target {}:{}", host, port);
-    
-    Ok(DebugTarget::Remote {
-        host,
-        port,
-        connected: true,
-    })
+    // No socket is opened here. This used to print "Connected to remote target host:port" and
+    // return `connected: true`, so the debugger reported a connection that did not exist and
+    // then had no way to use one.
+    Err(DebuggerError::Target(format!(
+        "cannot connect to {host}:{port}: the remote GDB stub protocol is not implemented. \
+         Nothing was connected"
+    )))
 }
 
 /// Get process memory map (platform-specific)
