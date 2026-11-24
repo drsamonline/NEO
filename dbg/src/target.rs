@@ -375,6 +375,114 @@ pub fn load_bias(pid: u32, binary: &str) -> Result<u64, DebuggerError> {
     })
 }
 
+/// The address of a source line, from the binary's line table.
+///
+/// `addr2line` goes address → line; this goes the other way by **scanning** the addresses the
+/// line table covers, which is how `gdb` resolves a `file:line` breakpoint too. The scan is one
+/// subprocess, not one per address: `addr2line` takes a list.
+///
+/// `readelf --debug-dump=decodedline` lists the addresses but reports the *compilation unit's*
+/// file for every row, so a `#line`-remapped name never appears there — measured: a binary whose
+/// `addr2line` answers `/tmp/nv/fn.nova:3` has zero `.nova` rows in `decodedline`. The addresses
+/// are still right, so they are the input and `addr2line` is the judge.
+pub fn resolve_line(
+    binary: &str,
+    file: &str,
+    line: usize,
+    pid: Option<u32>,
+) -> Result<u64, DebuggerError> {
+    let bias = match elf_type(binary)? {
+        3 => match pid {
+            Some(pid) => load_bias(pid, binary)?,
+            None => {
+                return Err(DebuggerError::Target(format!(
+                    "{binary} is position-independent, so a line resolves to an offset. Start \
+                     the program first — `run`, then `break` — and the base can be read from \
+                     /proc/<pid>/maps"
+                )))
+            }
+        },
+        _ => 0,
+    };
+
+    let dump = std::process::Command::new("readelf")
+        .arg("--debug-dump=decodedline")
+        .arg(binary)
+        .output()
+        .map_err(|e| DebuggerError::Target(format!("cannot run readelf: {e} (install binutils)")))?;
+    if !dump.status.success() {
+        return Err(DebuggerError::Target(format!(
+            "readelf could not read {binary}: {}",
+            String::from_utf8_lossy(&dump.stderr).trim()
+        )));
+    }
+
+    // Every address the line table covers, in order and without repeats.
+    let text = String::from_utf8_lossy(&dump.stdout);
+    let mut addresses: Vec<u64> = Vec::new();
+    for row in text.lines() {
+        let mut fields = row.split_whitespace();
+        let (Some(_name), Some(_number), Some(address)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        if !address.starts_with("0x") {
+            continue;
+        }
+        if let Ok(value) = u64::from_str_radix(&address[2..], 16) {
+            if addresses.last() != Some(&value) {
+                addresses.push(value);
+            }
+        }
+    }
+    if addresses.is_empty() {
+        return Err(DebuggerError::Target(format!(
+            "{binary} has no line table: it may have been built without `-g`"
+        )));
+    }
+
+    let mut command = std::process::Command::new("addr2line");
+    command.arg("-e").arg(binary).arg("-f").arg("-C");
+    for address in &addresses {
+        command.arg(format!("0x{address:x}"));
+    }
+    let resolved = command
+        .output()
+        .map_err(|e| DebuggerError::Target(format!("cannot run addr2line: {e}")))?;
+    let resolved = String::from_utf8_lossy(&resolved.stdout);
+    let mut lines = resolved.lines();
+
+    let wanted = std::path::Path::new(file)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| file.to_string());
+    for address in &addresses {
+        // Two lines per address: the function, then `file:line`.
+        let _function = lines.next();
+        let Some(location) = lines.next() else {
+            break;
+        };
+        let Some((found_file, found_line)) = location.rsplit_once(':') else {
+            continue;
+        };
+        if found_line.parse::<usize>() != Ok(line) {
+            continue;
+        }
+        let found_name = std::path::Path::new(found_file)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| found_file.to_string());
+        if found_name == wanted {
+            return Ok(address + bias);
+        }
+    }
+    Err(DebuggerError::Target(format!(
+        "no code for {file}:{line} in {binary}. The line may be a comment, a blank line, or \
+         outside the program; `list` shows what is there"
+    )))
+}
+
 /// Write an `int3` at `address`, returning the byte that was there.
 ///
 /// A breakpoint on x86-64 is the one-byte trap instruction `0xCC`. The original byte must be

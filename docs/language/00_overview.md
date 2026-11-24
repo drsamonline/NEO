@@ -62,8 +62,8 @@ NOVA is pre-release and the gaps are deliberate and documented. The short list:
 - **The package registry is not implemented.** Dependencies are recorded in a
   manifest and not built; every command that would reach the registry refuses.
 - **The debugger runs, breaks, steps, inspects and walks the stack.** `run` starts the program
-  under `ptrace`; `break <function>` resolves the symbol and writes an `int3`, and a hit reports
-  the `.nova` line; `step` and `continue` move it; `backtrace` follows the frame-pointer chain;
+  under `ptrace`; `break <function>` resolves the symbol and `break <file:line>` scans the line table, and
+  either writes an `int3` that reports the `.nova` line when it fires; `step` and `continue` move it; `backtrace` follows the frame-pointer chain;
   `attach <pid>` stops a running process (ADR 0016); `where` symbolizes the real instruction
   pointer; `line <address>` maps any address to a `.nova` file and line; `list` shows the real
   source. `print 0xADDRESS` reads memory; `print <name>` refuses, because a variable needs its stack
