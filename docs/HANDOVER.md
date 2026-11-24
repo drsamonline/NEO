@@ -212,6 +212,34 @@ specification, which `docs/specs/constitution.md` forbids first.
 **4. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works, and since the
 refusals landed it says what it cannot do instead of inventing frames.
 
+### Why `print <name>` is blocked here, and what would unblock it
+
+`print 0xADDRESS` reads memory. `print counter` refuses, and the reason is not that nobody has
+written the parser:
+
+- a variable's value lives at a stack offset, and the type that says how many bytes to read is in
+  `.debug_info` — a different DWARF section from the `.debug_line` this debugger reads;
+- **the C compiler decides whether that information exists at all.** Measured on 2026-11-24: a
+  two-line C program compiled with this sandbox's `CC` (a `zig cc` wrapper) produces **3**
+  `DW_AT_location` entries, none of them the program's own local, and a NOVA build's `counter`
+  appears as a `DW_TAG_variable` with a name, a type and a line — and **no location**.
+
+So `print <name>` cannot be implemented against this toolchain, and a version written here could
+not be verified. It is not unimplemented; it is unverifiable in this environment.
+
+**What would unblock it**, in order of cost:
+
+1. **gcc or clang as `CC`.** Both emit local variable locations with `-g` at `-O0`. CI has them;
+   the sandbox does not. A build under gcc would make the DWARF present, and then the work is a
+   parser, not a compiler change.
+2. **A DWARF location parser** for the common `DW_OP_fbreg <offset>` form: read `rbp`, add the
+   offset, read the number of bytes the type says.
+3. **Type resolution** for anything that is not a scalar: the `DW_AT_type` chain says `long long`
+   or a struct, and a struct needs its members walked.
+
+The first is a decision about the build environment; the second and third are a project the size
+of the line-table work, which took two attempts.
+
 ### What the line-table work actually costs — measured, not estimated
 
 An attempt on 2026-11-24 found the shape, which is worth knowing before starting again:
