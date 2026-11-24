@@ -30,6 +30,8 @@ pub enum Command {
     Where,
     /// `backtrace` / `bt` - show call stack
     Backtrace,
+    /// `line <address>` - which source line an address is, from the line table
+    Line { address: String },
     /// `print <expr>` / `p <expr>`
     Print { expr: String },
     /// `list [location]` / `l`
@@ -93,6 +95,15 @@ pub fn parse(line: &str) -> Result<Command, DebuggerError> {
         }
         "where" | "w" => Command::Where,
         "backtrace" | "bt" => Command::Backtrace,
+        "line" => {
+            let address = rest
+                .first()
+                .ok_or_else(|| {
+                    DebuggerError::InvalidCommand("usage: line <hex-address>".to_string())
+                })?
+                .to_string();
+            Command::Line { address }
+        }
         "print" | "p" => {
             if rest.is_empty() {
                 return Err(DebuggerError::InvalidCommand(
@@ -158,6 +169,9 @@ pub fn execute_line(session: &mut DebugSession, line: &str) -> Result<LineOutcom
                 println!("#{}  {}", i, frame);
             }
         }
+        Command::Line { address } => {
+            println!("{}", session.symbolize(&address)?);
+        }
         Command::Print { expr } => {
             println!("{} = {}", expr, session.evaluate(&expr)?);
         }
@@ -207,6 +221,7 @@ pub fn print_help() {
 
   where (w)        - Show current location
   backtrace (bt)   - Show call stack
+  line <address>   - Which source line a hex address is, from the line table
   print (p)        - Print variable/expression value
   list (l)         - List source code
 

@@ -208,6 +208,65 @@ impl DebugSession {
         })
     }
     
+    /// Where an address is: `function\nfile:line`, from the binary's line table.
+    ///
+    /// This is the primitive a backtrace is built from. It works because the compiler emits
+    /// `#line` and the build passes `-g`, so the `.debug_line` section names the `.nova`
+    /// source — `addr2line` reads it, and this repository does not need a DWARF parser.
+    ///
+    /// It refuses rather than guessing: an address that maps to nothing, or a target that is
+    /// not a local binary, is an error naming which.
+    pub fn symbolize(&self, address: &str) -> Result<String, DebuggerError> {
+        let path = match &self.target {
+            DebugTarget::Binary { path, .. } => path.clone(),
+            DebugTarget::Attached { pid, .. } => {
+                return Err(DebuggerError::Target(format!(
+                    "cannot symbolize: attached to pid {pid}, and reading another process's \
+                     line table is not implemented"
+                )))
+            }
+            DebugTarget::Remote { .. } => {
+                return Err(DebuggerError::Target(
+                    "cannot symbolize: a remote target has no local binary to read".to_string(),
+                ))
+            }
+        };
+        let trimmed = address.trim();
+        let digits = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+        if u64::from_str_radix(digits, 16).is_err() {
+            return Err(DebuggerError::InvalidCommand(format!(
+                "`{address}` is not a hexadecimal address"
+            )));
+        }
+        let output = std::process::Command::new("addr2line")
+            .arg("-e")
+            .arg(&path)
+            .arg("-f")
+            .arg("-C")
+            .arg(digits)
+            .output()
+            .map_err(|e| {
+                DebuggerError::Target(format!("could not run addr2line: {e} (install binutils)"))
+            })?;
+        if !output.status.success() {
+            return Err(DebuggerError::Target(format!(
+                "addr2line failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut lines = text.lines();
+        let function = lines.next().unwrap_or("??").trim().to_string();
+        let location = lines.next().unwrap_or("??:0").trim().to_string();
+        if function == "??" && location.starts_with("??") {
+            return Err(DebuggerError::Target(format!(
+                "no line-table entry for {address}: the binary may have been built without \
+                 debug info"
+            )));
+        }
+        Ok(format!("{function}\n{location}"))
+    }
+
     /// Get backtrace
     pub fn backtrace(&self) -> Result<Vec<StackFrame>, DebuggerError> {
         // Refused rather than invented. This returned three fabricated frames — a function
@@ -354,6 +413,20 @@ mod tests {
         assert!(info.contains("No breakpoints"));
     }
     
+    #[test]
+    fn test_symbolize_validates_the_address() {
+        let target = DebugTarget::Binary {
+            path: "/tmp/test".to_string(),
+            symbols_loaded: false,
+        };
+        let session = DebugSession::new(target).unwrap();
+
+        // A non-hexadecimal address is rejected before `addr2line` is consulted, so this
+        // asserts the parsing rather than the machine.
+        let error = session.symbolize("not-an-address").unwrap_err().to_string();
+        assert!(error.contains("not a hexadecimal address"), "{error}");
+    }
+
     #[test]
     fn test_backtrace() {
         let target = DebugTarget::Binary {
