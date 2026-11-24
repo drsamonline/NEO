@@ -59,7 +59,11 @@ This is the part a reader needs, because each gap shows up later in a less helpf
   won. It surfaced when a user function named `find` was replaced by the standard library's
   `find<T>`: the emitted C called the library's signature with the user's arguments. It is now
   `E0308` with both line numbers and a help line. Duplicate *variables* in one scope are still
-  not checked — only functions.
+  not checked — only functions, because the analyser synthesises some symbols with no source
+  span and declaring those twice is legitimate.
+- **A block is a scope.** It was not: block statements were checked in the enclosing scope, so a
+  `let` inside one `while` body leaked into the next. The standard library declares `let line`
+  in two consecutive loops, which is legal and was invisible until duplicates were reported.
 - **There is no type table.** Types are strings here as they are in the [SIR](20_sir_intro.md),
   so two spellings of one type are two strings and structural comparison is textual.
 - **Nothing checks mutation or aliasing.** The parser has already discarded the difference
