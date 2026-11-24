@@ -37,10 +37,10 @@ backends when `node` and `wat2wasm` are installed. CI runs it over every
   programs are not stdout-identical.
 - The language server has diagnostics, but go-to-definition is a string search
   and `references` is not implemented.
-- The debugger's REPL and breakpoints are real; `attach <pid>` stops a process with `ptrace`
-  and `where` reports its real source line, `line <address>` maps an address through the
-  binary's line table, and `list` shows the real source. `backtrace` and `print` still refuse
-  rather than inventing frames.
+- The debugger runs a program and reports its real exit status; `attach <pid>` stops a process
+  with `ptrace` and `where` reports its real source line; `line <address>` maps an address
+  through the line table, and `list` shows the real source. `step`, `continue`, `backtrace` and
+  `print` refuse rather than inventing a location.
 - The package registry is not implemented, and every command that would reach it
   **refuses** rather than answering from a mock. `publish` in particular does not
   pretend to succeed.
