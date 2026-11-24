@@ -1,4 +1,4 @@
-69.07
+69.00
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -178,3 +178,6 @@
 # 69.07% (10,344 of 14,977) when duplicate definitions became an error. A FALL of 0.01: the check
 # is covered by a test, but the branch that builds the help text for an imported collision needs a
 # program that imports a name it also defines.
+# 69.00% (10,343 of 14,989) when blocks became scopes. A FALL of 0.07: the `declare` helper is
+# kept but unused (it documents the finding the sweep produced), and the scoping branches are
+# exercised only through programs, not unit tests.
