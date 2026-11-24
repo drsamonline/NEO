@@ -1,4 +1,4 @@
-69.59
+69.99
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -137,3 +137,6 @@
 # which a unit test cannot build; the four refusal branches are covered, the success path is
 # covered by running the debugger by hand. This is the honest limit of testing a function whose
 # input is another program's output.
+# 69.99% (9,873 of 14,107) when the duplicate command table was removed. It rose 0.40 without a
+# single new test: 139 uncovered lines in the REPL's private match are gone. Deleting duplicated
+# code is the cheapest coverage there is, and the only kind that improves the design as it pays.
