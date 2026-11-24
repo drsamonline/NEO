@@ -59,10 +59,10 @@ NOVA is pre-release and the gaps are deliberate and documented. The short list:
   written out.
 - **No `async`/`await` in the language.** The runtime crate has futures and
   channels; the language does not expose them.
-- **The package registry is mocked.** Dependencies are recorded in a manifest and
-  not built.
+- **The package registry is not implemented.** Dependencies are recorded in a
+  manifest and not built; every command that would reach the registry refuses.
 - **The debugger does not read DWARF yet.** Breakpoints and the REPL are real;
-  stack frames and source lines are not.
+  `backtrace`, `list` and `print` refuse rather than inventing frames.
 
 `DEV_PLAN.md` is the authority for this list. Where it and this page disagree,
 `DEV_PLAN.md` is right and this page is stale.
