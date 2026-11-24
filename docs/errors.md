@@ -72,9 +72,9 @@ Causes, in the order they happen:
 A **warning**, not an error. A value that is not `Copy` was passed to a function or assigned, and
 then used again.
 
-It is reported only for a `String`, because that is the only type `clone` can copy. An array,
-struct or closure is also not `Copy`, but passing one is not reported — a rule that says "clone it"
-about a value that cannot be cloned is a trap rather than a rule.
+It is reported only for a type `clone` can copy: `String` and `[int]`. A `[String]`, a struct or a
+closure is also not `Copy`, but passing one is not reported — a rule that says "clone it" about a
+value that cannot be cloned is a trap rather than a rule.
 
 ```text
 prog.nova:10:19: warning [E0010]: `greeting` was moved earlier in this function, and is used again
@@ -98,8 +98,14 @@ for `#line` — and such warnings are counted, not printed:
 25 warning(s) in imported modules were not shown; they are not your code
 ```
 
-`clone` is the answer the help line points at: `core.clone(s: String) -> String` copies the
-string, so the copy can be passed and the original kept. It does not itself count as a move —
+`clone` is the answer the help line points at, and it is a **compiler builtin** rather than a
+library function because what it does depends on the argument's type and NOVA has no overloading:
+
+| Argument | Result |
+|---|---|
+| `String` | a fresh buffer with the same bytes |
+| `[int]` | a fresh buffer with the same elements |
+| `[String]`, struct, closure | a compile-time error — a shallow copy would share what the rule protects | It does not itself count as a move —
 a clone that moved its argument would make the advice produce the same warning one line later.
 Arrays and structs are not cloneable yet; calling `clone` on one is a type error rather than a
 shallow copy that shares the buffer the rule exists to protect.
