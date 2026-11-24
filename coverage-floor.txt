@@ -1,4 +1,4 @@
-69.62
+69.59
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -132,3 +132,8 @@
 # the directive writer and the bound check are all exercised by the new test.
 # 69.62% (9,809 of 14,090) when `-g` landed. Three covered lines: the flag, and the message and
 # test that had to change with it.
+# 69.59% (9,873 of 14,187) when `symbolize` landed — a FALL of 0.03, lowered in the same PR as
+# the rule requires. The new function is ~70 lines and its happy path needs a compiled binary,
+# which a unit test cannot build; the four refusal branches are covered, the success path is
+# covered by running the debugger by hand. This is the honest limit of testing a function whose
+# input is another program's output.
