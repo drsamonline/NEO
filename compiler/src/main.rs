@@ -615,6 +615,11 @@ fn build(input: &Path, output: Option<&Path>) -> PathBuf {
 
     let cc = env::var("CC").unwrap_or_else(|_| "cc".to_string());
     let mut link = Command::new(&cc);
+    // `-g` is what turns the `#line` directives in the generated C into a `.debug_line`
+    // section. Without it those directives are inert and the debugger has nothing to read,
+    // so a NOVA build produces debug info by default — the cost is binary size, and the
+    // alternative is a debugger that cannot work on any program the compiler produced.
+    link.arg("-g");
     link.arg(&c_path).arg(&runtime_c).arg("-o").arg(&binary);
     // The runtime shim calls `sqrt`, `sin` and friends, which live in libm on every
     // Unix. macOS folds them into libSystem and ignores `-lm`; MSVC has no `-lm` and

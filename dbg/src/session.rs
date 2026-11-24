@@ -215,8 +215,10 @@ impl DebugSession {
         // they were the program's stack. A user debugging a real fault would have been given
         // a fiction that looked exactly like an answer.
         Err(DebuggerError::Target(
-            "backtrace is not available: the emitted binary carries no line tables, so there \
-             are no frames to walk (see DEV_PLAN.md, 'DWARF debugger')"
+            "backtrace is not available: the debugger does not read the binary's line table \
+             yet. Compiled programs do carry one — the C backend emits `#line` and the build \
+             passes `-g` — so the missing half is here, not in the compiler \
+             (see DEV_PLAN.md, 'DWARF debugger')"
                 .to_string(),
         ))
     }
@@ -364,8 +366,8 @@ mod tests {
         // is how a mock becomes a contract. It now asserts the refusal.
         let error = session.backtrace().unwrap_err().to_string();
         assert!(
-            error.contains("no line tables"),
-            "the refusal must say why: {error}"
+            error.contains("does not read the binary's line table"),
+            "the refusal must say where the gap is: {error}"
         );
     }
 }
