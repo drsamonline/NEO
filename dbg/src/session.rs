@@ -294,15 +294,70 @@ impl DebugSession {
     }
     
     /// List source code
-    pub fn list_source(&self, _location: Option<&str>) -> Result<Vec<String>, DebuggerError> {
-        // Refused rather than invented. The fabricated listing was not even NOVA — it used
-        // `var`, which this language does not have — so it could not have come from any
-        // program the user was debugging.
-        Err(DebuggerError::Target(
-            "source listing is not available: the debugger does not read the program's \
-             source (see DEV_PLAN.md, 'DWARF debugger')"
-                .to_string(),
-        ))
+    /// Source lines around a location, `file:line` or a hexadecimal address.
+    ///
+    /// It reads the real file. The fabricated listing this replaced was not even NOVA — it used
+    /// `var`, which this language does not have — so it could not have come from any program a
+    /// user was debugging.
+    ///
+    /// An address is resolved through the line table, the same way `line` resolves it, so the
+    /// two commands cannot disagree about where an address is. With no location at all it
+    /// refuses: "the current line" needs a stopped process, and there is not one.
+    pub fn list_source(&self, location: Option<&str>) -> Result<Vec<String>, DebuggerError> {
+        let Some(location) = location else {
+            return Err(DebuggerError::Target(
+                "no current location: the debugger has no stopped process, so there is no \
+                 line to be at. Give one: `list <address>` or `list <file:line>`"
+                    .to_string(),
+            ));
+        };
+        let (file, line) = self.resolve_location(location)?;
+        let text = std::fs::read_to_string(&file).map_err(|e| {
+            DebuggerError::Target(format!("cannot read {file}: {e}"))
+        })?;
+        let lines: Vec<&str> = text.lines().collect();
+        if line == 0 || line > lines.len() {
+            return Err(DebuggerError::Target(format!(
+                "{file} has {} lines, so line {line} is not in it",
+                lines.len()
+            )));
+        }
+        // Five either side, numbered, with the current line marked so a listing is readable
+        // without counting.
+        let start = line.saturating_sub(5).max(1);
+        let end = (line + 5).min(lines.len());
+        Ok((start..=end)
+            .map(|n| {
+                let marker = if n == line { ">" } else { " " };
+                format!("{marker}{n:>4}  {}", lines[n - 1])
+            })
+            .collect())
+    }
+
+    /// `file:line` or a hexadecimal address, resolved to a file and a line.
+    fn resolve_location(&self, location: &str) -> Result<(String, usize), DebuggerError> {
+        let trimmed = location.trim();
+        let digits = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+        if u64::from_str_radix(digits, 16).is_ok() {
+            let symbolized = self.symbolize(trimmed)?;
+            let where_ = symbolized.lines().nth(1).unwrap_or("");
+            let (file, line) = where_.rsplit_once(':').ok_or_else(|| {
+                DebuggerError::Target(format!("`{where_}` is not a file:line"))
+            })?;
+            let line: usize = line.parse().map_err(|_| {
+                DebuggerError::Target(format!("`{where_}` is not a file:line"))
+            })?;
+            return Ok((file.to_string(), line));
+        }
+        let (file, line) = trimmed.rsplit_once(':').ok_or_else(|| {
+            DebuggerError::InvalidCommand(format!(
+                "`{location}` is neither an address nor a file:line"
+            ))
+        })?;
+        let line: usize = line.parse().map_err(|_| {
+            DebuggerError::InvalidCommand(format!("`{location}` has no line number after the colon"))
+        })?;
+        Ok((file.to_string(), line))
     }
     
     /// Detach from target
@@ -462,6 +517,42 @@ mod tests {
             message.contains("addr2line") || message.contains("no line-table entry"),
             "{message}"
         );
+    }
+
+    #[test]
+    fn test_list_reads_the_real_file() {
+        let path = std::env::temp_dir().join("nova_dbg_list_test.nova");
+        std::fs::write(&path, "use core;\n\nfn main() -> int {\n    print(1);\n    return 0;\n}\n")
+            .unwrap();
+        let target = DebugTarget::Binary {
+            path: "/tmp/test".to_string(),
+            symbols_loaded: false,
+        };
+        let session = DebugSession::new(target).unwrap();
+
+        let listing = session
+            .list_source(Some(&format!("{}:4", path.display())))
+            .expect("list a real file");
+        assert!(listing.iter().any(|l| l.starts_with('>') && l.contains("print(1)")), "{listing:?}");
+        // Numbered, so a reader can see where they are without counting.
+        assert!(listing[0].trim_start().starts_with(|c: char| c.is_ascii_digit()), "{listing:?}");
+
+        let error = session.list_source(None).unwrap_err().to_string();
+        assert!(error.contains("no stopped process"), "{error}");
+
+        let error = session
+            .list_source(Some("/definitely/not/here.nova:1"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("cannot read"), "{error}");
+
+        let error = session
+            .list_source(Some(&format!("{}:9999", path.display())))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("is not in it"), "{error}");
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
