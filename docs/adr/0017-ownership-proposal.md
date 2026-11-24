@@ -165,6 +165,37 @@ So step 5 is **blocked on the standard library complying**, and the order is:
 errors as well, because an error inside `io.nova` would otherwise fail every program that imports
 the standard library. That is now done, and it is what made the second measurement visible at all.
 
+## The enforcement measurement — 2026-11-24
+
+Run with `E0010` temporarily raised to an error and a probe program importing all four modules.
+
+| Where | `E0010` |
+|---|---|
+| `examples/` + `tests/parity/` (own code) | 3 |
+| **the standard library** | **214** |
+
+**214 is not a number you fix with 214 `clone` calls.** It says something about the rule: NOVA
+strings are shared pointers, so passing one does not invalidate the caller's variable — the
+callee gets the same pointer. The rule says "passing moves it", which is what a language with
+real move semantics means, and is not what this language does at runtime.
+
+So step 5 is not merely expensive, it is **wrong as specified**: enforcing it would make every
+function that reuses a `String` parameter clone it, allocating and copying on a hot path, to
+protect against a mutation that the runtime does not permit anyway (there is no `free`, and
+strings are immutable in practice).
+
+**What this means for the decision:** the honest options are
+
+1. **keep the warning, never enforce** — it still catches the case that is real today, a value
+   used after being given away by assignment, at the cost of noise on every pass-then-use;
+2. **narrow the rule to assignment only** — `other = greeting` really does look like giving a
+   value away, and the corpus trips that zero times;
+3. **implement real move semantics at runtime** — the callee takes ownership, which is a change
+   to the calling convention, not to the checker.
+
+Option 2 is the one this measurement argues for, and it is the opposite of what the ADR proposed
+when the rule was designed.
+
 ## What the sweep would touch — measured, 2026-11-24
 
 The cost of option C is not the number of functions but the number of **call sites** that pass a

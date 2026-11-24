@@ -212,6 +212,29 @@ specification, which `docs/specs/constitution.md` forbids first.
 **4. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works, and since the
 refusals landed it says what it cannot do instead of inventing frames.
 
+### A namespace collision the ownership work exposed
+
+`io.nova` defines `log(level: LogLevel, message: String)` and `math.nova` defines
+`log(x: float) -> float`. Imported modules are merged into one symbol table, so a program with
+both —
+
+```nova
+use math;
+use io;
+```
+
+— fails to build: `math.nova`'s own internal `log(x)` calls are checked against **io's** two-argument
+`log`, and the analyser reports `E0061 function `log` takes 2 arguments, but 1 was given`. Measured
+2026-11-24; `use math;` alone builds, `use math; use io;` does not.
+
+This is a name-resolution bug, not an ownership one: `use` merges every declaration into one flat
+namespace and the last definition of a name wins. It surfaced while counting move warnings, and it
+is more serious than the thing being measured — a user cannot import two standard-library modules
+that happen to share a function name.
+
+The fix is either module-qualified resolution (a language change) or unique names in the library
+(a one-line rename that leaves the language's scoping unchanged). Neither is done.
+
 ### Why `print <name>` is blocked here, and what would unblock it
 
 `print 0xADDRESS` reads memory. `print counter` refuses, and the reason is not that nobody has
