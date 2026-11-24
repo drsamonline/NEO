@@ -599,6 +599,57 @@ fn emitted_c_carries_line_directives() {
     assert!(named > 0, "no `#line` directives were emitted:\n{c}");
 }
 
+/// A compiled binary carries a `.debug_line` table naming the NOVA source.
+///
+/// This is the other half of `#line`: the directive is inert unless the build passes `-g`, so
+/// the two together are what give a debugger NOVA line numbers without this repository writing
+/// a DWARF emitter. Asserted by reading the binary, because the claim is about the binary.
+#[test]
+fn a_compiled_binary_names_the_nova_source_in_its_line_table() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    if Command::new("readelf").arg("--version").output().is_err() {
+        eprintln!("skipping: no readelf to read the line table with");
+        return;
+    }
+    let dir = scratch("debug_line");
+    let file = dir.join("debug_program.nova");
+    let binary = dir.join("debug_program");
+    fs::write(
+        &file,
+        "use core;\n\nfn main() -> int {\n    print(41 + 1);\n    return 0;\n}\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&file)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
+
+    let table = Command::new("readelf")
+        .arg("--debug-dump=decodedline")
+        .arg(&binary)
+        .output()
+        .expect("run readelf");
+    let dumped = String::from_utf8_lossy(&table.stdout);
+    assert!(
+        dumped.contains("debug_program.nova"),
+        "the binary's line table must name the NOVA source, not only the generated C"
+    );
+
+    // And the program still behaves.
+    let run = Command::new(&binary).output().expect("run built binary");
+    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), "42");
+}
+
 /// `break` and `continue` inside an `if` inside a loop.
 ///
 /// `break;` parses as `Statement::Expr(Expr::Break)`, and the *expression* form wraps it in

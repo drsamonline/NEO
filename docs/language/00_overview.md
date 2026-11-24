@@ -62,7 +62,9 @@ NOVA is pre-release and the gaps are deliberate and documented. The short list:
 - **The package registry is not implemented.** Dependencies are recorded in a
   manifest and not built; every command that would reach the registry refuses.
 - **The debugger does not read DWARF yet.** Breakpoints and the REPL are real;
-  `backtrace`, `list` and `print` refuse rather than inventing frames.
+  `backtrace`, `list` and `print` refuse rather than inventing frames. Compiled programs **do**
+  carry a `.debug_line` table naming the `.nova` source — the C backend emits `#line` and the
+  build passes `-g` — so the missing half is in the debugger.
 
 `DEV_PLAN.md` is the authority for this list. Where it and this page disagree,
 `DEV_PLAN.md` is right and this page is stale.
