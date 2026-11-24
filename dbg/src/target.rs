@@ -243,6 +243,21 @@ pub fn spawn_traced(path: &str, args: &[String]) -> Result<u32, DebuggerError> {
 /// function is resolved with `nm`. NOVA mangles its own functions as `nova_fn_<name>` (see the
 /// naming note in the lowerer), and `main` stays `main`, so both spellings are tried.
 pub fn resolve_function(binary: &str, name: &str) -> Result<u64, DebuggerError> {
+    // A position-independent executable loads at an address the loader chooses, so a symbol
+    // value from `nm` is an offset and not an address. Writing `int3` at an offset would
+    // corrupt whatever happens to live there — so this refuses rather than guessing a base.
+    // NOVA's own builds are non-PIE (`ELF ... executable`), which is why the simple case works.
+    match elf_type(binary)? {
+        3 => {
+            return Err(DebuggerError::Target(format!(
+                "{binary} is position-independent: its symbol addresses are offsets, not \
+                 addresses. Resolving them needs the load base from /proc/<pid>/maps, which is \
+                 not implemented — and writing a breakpoint at an offset would corrupt memory"
+            )))
+        }
+        _ => {}
+    }
+
     let output = std::process::Command::new("nm")
         .arg(binary)
         .output()
@@ -278,6 +293,26 @@ pub fn resolve_function(binary: &str, name: &str) -> Result<u64, DebuggerError> 
         "no function `{name}` in {binary}: tried `{name}` and `nova_fn_{name}`. `nm {binary}` \
          lists what is there"
     )))
+}
+
+/// The ELF `e_type`: 2 is `ET_EXEC` (fixed addresses), 3 is `ET_DYN` (position-independent).
+fn elf_type(path: &str) -> Result<u16, DebuggerError> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| DebuggerError::Target(format!("cannot open {path}: {e}")))?;
+    let mut header = [0u8; 18];
+    file.read_exact(&mut header)
+        .map_err(|e| DebuggerError::Target(format!("cannot read {path}: {e}")))?;
+    if &header[0..4] != b"\x7fELF" {
+        return Err(DebuggerError::Target(format!("{path} is not an ELF file")));
+    }
+    // `e_type` is a 16-bit field at offset 16, in the file's own endianness.
+    let little = header[5] == 1;
+    Ok(if little {
+        u16::from_le_bytes([header[16], header[17]])
+    } else {
+        u16::from_be_bytes([header[16], header[17]])
+    })
 }
 
 /// Write an `int3` at `address`, returning the byte that was there.
