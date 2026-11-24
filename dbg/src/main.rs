@@ -385,6 +385,20 @@ fn repl_loop(session: &mut session::DebugSession) -> Result<(), DebuggerError> {
                             Err(e) => eprintln!("Error: {}", e),
                         }
                     }
+                    // NOTE: this match duplicates `commands::parse` and `commands::execute_line`,
+                    // and a command added to those is invisible here — which is how `line` was
+                    // first added and then reported as "Unknown command". The duplication is the
+                    // defect; this arm is the second place it has to exist.
+                    "line" => {
+                        if parts.len() < 2 {
+                            println!("Usage: line <hex-address>");
+                            continue;
+                        }
+                        match session.symbolize(parts[1]) {
+                            Ok(where_) => println!("{}", where_),
+                            Err(e) => eprintln!("Error: {}", e),
+                        }
+                    }
                     "print" | "p" => {
                         if parts.len() < 2 {
                             println!("Usage: print <expression>");
@@ -462,6 +476,7 @@ fn print_help() {
   
   where (w)        - Show current location
   backtrace (bt)   - Show call stack
+  line <address>   - Which source line a hex address is, from the line table
   print (p)        - Print variable/expression value
   list (l)         - List source code
   
