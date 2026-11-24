@@ -37,7 +37,7 @@ against each other in CI by `tools/error-code-check.py`.
 |---|---|
 | lexer | none — lexical errors carry a message and a span |
 | parser | none — parse errors carry a message and a span |
-| semantic analysis | **E0002**, **E0061**, **E0308** |
+| semantic analysis | **E0002**, **E0010**, **E0061**, **E0308** |
 | backends | none — an unsupported feature is rejected with a sentence, not a code |
 
 The codes are attached in `compiler/src/sema/mod.rs` with
@@ -66,6 +66,26 @@ Causes, in the order they happen:
   merged — NOVA resolves across a file, so this is usually the `use` line.
 
 ---
+
+## E0010 — value used after being moved
+
+A **warning**, not an error. A value that is not `Copy` was passed to a function and then used
+again.
+
+```text
+prog.nova:10:19: warning [E0010]: `greeting` was moved when it was passed to a function,
+and is used again here
+  help: clone it before passing it, or pass it last
+```
+
+`int`, `float`, `bool`, `char` and references are copied when passed. `String`, arrays, structs
+and closures are not: they own a buffer, so passing one shares it, and a later use is a second
+name for the same memory.
+
+It warns rather than rejects because the rule is new (ADR 0017): the number of places it fires is
+being counted before anything is enforced. Two known gaps in this first version — a call inside an
+assignment (`x = f(y)`) does not mark `y` moved, and warnings from imported modules are repeated
+for every program that imports them.
 
 ## E0061 — wrong number of arguments
 

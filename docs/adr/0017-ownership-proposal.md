@@ -87,7 +87,21 @@ scalars, references and pointers are `Copy`; arrays, functions, structs and enum
 is `Copy` when all its elements are; an unknown type counts as `Copy`, because a missed warning is
 cheaper than noise that teaches people to ignore warnings.
 
-**Step 2 is blocked, and the blocker is worth recording.** The rule is "passing a non-`Copy` value
+**Step 2 is done, in warn mode.** `let` now records the type of its initialiser — from an
+annotation, a literal, a name already in scope, an array's first element, or a declared return
+type — in **both** the symbol and the analyser's type environment, which are separate and were the
+reason the first attempt changed nothing. A call that passes a non-`Copy` name marks it moved, and
+a later use emits `E0010` as a **warning**.
+
+Measured on 2026-11-24, over `examples/` and `tests/parity/`: **28 warnings**. But **26 of those
+come from the standard library itself**, re-reported for every program that imports it. The
+corpus's own code produces 2. That is the finding that matters for step 3: the count is small, and
+the noise is structural — a user cannot act on a warning about `arr` inside `io.nova`.
+
+Two gaps in this first version, both recorded in `docs/errors.md`: a call inside an assignment
+(`x = f(y)`) does not mark `y` moved, and imported-module warnings are not suppressed.
+
+**The original blocker, kept because it explains the design:** The rule is "passing a non-`Copy` value
 moves it", which needs each binding's type. `check_statement` declares every `let` with
 `Symbol::new(name, Variable, span)` — **no type** — so `symbol.typ` is `None` for every binding and
 the classification can never say "non-`Copy`". Measured: a program that passes a `String` and then
