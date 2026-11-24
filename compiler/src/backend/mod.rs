@@ -238,6 +238,13 @@ impl CBackend {
             .filter(|param| Self::is_string_type(&param.typ))
             .map(|param| param.name.clone())
             .collect();
+        // The function's own line, before its signature. A breakpoint on a function resolves to
+        // its entry address, which is in the prologue — before any statement's `#line`. A
+        // directive after the opening brace is too late: the prologue would still belong to the
+        // generated C, so `break add` reported `fn.c:378` instead of `fn.nova:3`.
+        self.last_line = None;
+        self.write_line_directive(&func.span);
+
         if Self::is_entry(&func.name) {
             // C requires `int main`, whatever NOVA declared. The value the NOVA
             // program returns (if any) is returned from here.

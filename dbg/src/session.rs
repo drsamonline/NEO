@@ -26,6 +26,8 @@ pub struct Breakpoint {
     pub id: u32,
     pub location: String,
     pub address: Option<u64>,
+    /// The byte the `int3` replaced, so the program can be put back exactly as compiled.
+    pub original_byte: Option<u8>,
     pub enabled: bool,
     pub condition: Option<String>,
     pub hit_count: u32,
@@ -61,6 +63,9 @@ pub struct DebugSession {
     variables: HashMap<String, Variable>,
     /// The process this debugger started under `ptrace`, when it did.
     traced_pid: Option<u32>,
+    /// A breakpoint whose `int3` is currently removed, so the next resume must step over it and
+    /// put it back. Without this the program would trap on the same address forever.
+    pending_reinsert: Option<u32>,
 }
 
 impl DebugSession {
@@ -75,6 +80,7 @@ impl DebugSession {
             stack_frames: Vec::new(),
             variables: HashMap::new(),
             traced_pid: None,
+            pending_reinsert: None,
         })
     }
     
@@ -120,6 +126,15 @@ pub fn run(&mut self, args: &[String]) -> Result<(), DebuggerError> {
         // started itself.
         let pid = crate::target::spawn_traced(&path, args)?;
         self.traced_pid = Some(pid);
+
+        // Breakpoints set before the program started have an address but no `int3`, because
+        // there was no process to write to. This is where they become real.
+        for bp in self.breakpoints.values_mut() {
+            if let (Some(address), None) = (bp.address, bp.original_byte) {
+                bp.original_byte = Some(crate::target::insert_breakpoint(pid, address)?);
+            }
+        }
+
         self.state = State::Stopped("(start)".to_string());
         println!("[started pid {pid}, stopped before the first instruction]");
         self.report_location()
@@ -134,8 +149,16 @@ pub fn continue_execution(&mut self) -> Result<(), DebuggerError> {
                     .to_string(),
             ));
         };
+        // A breakpoint hit on the previous stop must be stepped over before running on, or the
+        // `int3` traps again immediately.
+        self.step_over_pending_breakpoint()?;
         match crate::target::resume(pid, false)? {
-            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Stopped(_) => {
+                if self.handle_breakpoint_hit()? {
+                    return Ok(());
+                }
+                self.report_location()
+            }
             crate::target::Stop::Exited(code) => {
                 self.traced_pid = None;
                 self.state = State::Exited(code);
@@ -161,7 +184,12 @@ pub fn step_into(&mut self) -> Result<(), DebuggerError> {
             ));
         };
         match crate::target::resume(pid, true)? {
-            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Stopped(_) => {
+                if self.handle_breakpoint_hit()? {
+                    return Ok(());
+                }
+                self.report_location()
+            }
             crate::target::Stop::Exited(code) => {
                 self.traced_pid = None;
                 self.state = State::Exited(code);
@@ -187,7 +215,12 @@ pub fn step_over(&mut self) -> Result<(), DebuggerError> {
             ));
         };
         match crate::target::resume(pid, true)? {
-            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Stopped(_) => {
+                if self.handle_breakpoint_hit()? {
+                    return Ok(());
+                }
+                self.report_location()
+            }
             crate::target::Stop::Exited(code) => {
                 self.traced_pid = None;
                 self.state = State::Exited(code);
@@ -213,7 +246,12 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
             ));
         };
         match crate::target::resume(pid, true)? {
-            crate::target::Stop::Stopped(_) => self.report_location(),
+            crate::target::Stop::Stopped(_) => {
+                if self.handle_breakpoint_hit()? {
+                    return Ok(());
+                }
+                self.report_location()
+            }
             crate::target::Stop::Exited(code) => {
                 self.traced_pid = None;
                 self.state = State::Exited(code);
@@ -229,6 +267,68 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
         }
     }
     
+    /// Report a breakpoint hit if the stop was one, and make the program runnable again.
+    ///
+    /// An `int3` stops the process **one byte past** the instruction, so `rip - 1` is what
+    /// identifies the breakpoint. The byte is restored and `rip` moved back at once: leaving
+    /// `0xCC` in place would trap again the moment the program resumed, and a debugger that
+    /// cannot get past its own breakpoint is worse than one with none.
+    fn handle_breakpoint_hit(&mut self) -> Result<bool, DebuggerError> {
+        let Some(pid) = self.traced_pid else {
+            return Ok(false);
+        };
+        let address = crate::target::instruction_pointer(pid)?;
+        let Some(hit) = address.checked_sub(1) else {
+            return Ok(false);
+        };
+        let Some(id) = self
+            .breakpoints
+            .iter()
+            .find(|(_, bp)| bp.enabled && bp.address == Some(hit))
+            .map(|(id, _)| *id)
+        else {
+            return Ok(false);
+        };
+
+        let (location, original) = {
+            let bp = self.breakpoints.get_mut(&id).expect("just found");
+            bp.hit_count += 1;
+            (bp.location.clone(), bp.original_byte)
+        };
+        if let Some(original) = original {
+            crate::target::remove_breakpoint(pid, hit, original)?;
+        }
+        crate::target::set_instruction_pointer(pid, hit)?;
+        self.pending_reinsert = Some(id);
+        // The name the user gave, and where that actually is: a breakpoint on `main` should say
+        // which line of which file, not only repeat the word back.
+        let where_ = match self.symbolize(&format!("0x{hit:x}")) {
+            Ok(symbolized) => symbolized.lines().nth(1).unwrap_or("?").to_string(),
+            Err(_) => format!("0x{hit:x}"),
+        };
+        self.current_location = Some(where_.clone());
+        self.state = State::Stopped(where_.clone());
+        println!("[breakpoint {id} hit at {location}: {where_}]");
+        Ok(true)
+    }
+
+    /// Step over a breakpoint that was just hit and put its `int3` back.
+    fn step_over_pending_breakpoint(&mut self) -> Result<(), DebuggerError> {
+        let (Some(pid), Some(id)) = (self.traced_pid, self.pending_reinsert) else {
+            return Ok(());
+        };
+        // One instruction, with the original byte restored, so the program executes what it was
+        // compiled to execute.
+        crate::target::resume(pid, true)?;
+        if let Some(bp) = self.breakpoints.get_mut(&id) {
+            if let Some(address) = bp.address {
+                bp.original_byte = Some(crate::target::insert_breakpoint(pid, address)?);
+            }
+        }
+        self.pending_reinsert = None;
+        Ok(())
+    }
+
     /// Report where the stopped program is, from its instruction pointer.
     ///
     /// A stop need not be in the program. The first stop of a dynamically linked binary is in
@@ -253,18 +353,39 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
     /// Set a breakpoint
     pub fn set_breakpoint(&mut self, location: &str) -> Result<u32, DebuggerError> {
         let id = self.next_bp_id;
+
+        // A breakpoint is a fact about an address. Resolving it here means an unresolvable name
+        // is an error now, not a breakpoint that silently never fires — which is what
+        // `address: None, // Would be resolved in production` produced.
+        let binary = match &self.target {
+            DebugTarget::Binary { path, .. } => path.clone(),
+            other => {
+                return Err(DebuggerError::Target(format!(
+                    "cannot resolve `{location}`: the target is {other:?}, not a local binary"
+                )))
+            }
+        };
+        let address = crate::target::resolve_function(&binary, location)?;
+
+        // With a traced process, the `int3` goes in now. Without one, the address is recorded
+        // and the program is not running yet, so there is nothing to patch.
+        let original_byte = match self.traced_pid {
+            Some(pid) => Some(crate::target::insert_breakpoint(pid, address)?),
+            None => None,
+        };
+
         self.next_bp_id += 1;
-        
         let bp = Breakpoint {
             id,
             location: location.to_string(),
-            address: None, // Would be resolved in production
+            address: Some(address),
+            original_byte,
             enabled: true,
             condition: None,
             hit_count: 0,
         };
-        
         self.breakpoints.insert(id, bp);
+        println!("Breakpoint {id} at {location} (0x{address:x})");
         Ok(id)
     }
     
@@ -569,10 +690,25 @@ mod tests {
             symbols_loaded: false,
         };
         let mut session = DebugSession::new(target).unwrap();
-        
-        // Add breakpoint
-        let bp_id = session.set_breakpoint("main:10").unwrap();
-        assert_eq!(bp_id, 1);
+
+        // A breakpoint is now resolved to an address when it is set, so this test inserts one
+        // directly: the management being tested (conditions, listing, deletion) is about the
+        // table, and resolution has its own test. `/tmp/test` does not exist, so resolving
+        // would fail — correctly.
+        session.breakpoints.insert(
+            1,
+            Breakpoint {
+                id: 1,
+                location: "main:10".to_string(),
+                address: Some(0x1000),
+                original_byte: None,
+                enabled: true,
+                condition: None,
+                hit_count: 0,
+            },
+        );
+        session.next_bp_id = 2;
+        let bp_id = 1u32;
         
         // Set condition
         session.set_breakpoint_condition(bp_id, "x > 5").unwrap();
@@ -809,6 +945,23 @@ mod tests {
         let mut session = DebugSession::new(target).unwrap();
         let error = session.step_into().unwrap_err().to_string();
         assert!(error.contains("not started under `ptrace`"), "{error}");
+    }
+
+    #[test]
+    fn test_a_breakpoint_on_an_unknown_function_is_an_error() {
+        // `address: None, // Would be resolved in production` used to produce a breakpoint that
+        // never fired and never complained. Resolving at set time means the mistake is now.
+        let target = DebugTarget::Binary {
+            path: "/bin/true".to_string(),
+            symbols_loaded: false,
+        };
+        let mut session = DebugSession::new(target).unwrap();
+        let error = session
+            .set_breakpoint("no_such_function_anywhere")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("no function"), "{error}");
+        assert!(error.contains("nm"), "the error must say how to look: {error}");
     }
 
     #[test]
