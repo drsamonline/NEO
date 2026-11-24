@@ -428,6 +428,43 @@ mod tests {
     }
 
     #[test]
+    fn test_symbolize_refuses_where_it_cannot_answer() {
+        // Four refusals, each naming its own reason. These are the branches that decide
+        // whether a user gets an answer or a guess, so each is asserted by hand rather than
+        // trusted to a happy path.
+
+        let attached = DebugSession::new(DebugTarget::Attached {
+            pid: 4242,
+            process_name: "prog".to_string(),
+        })
+        .unwrap();
+        let message = attached.symbolize("0x1000").unwrap_err().to_string();
+        assert!(message.contains("another process"), "{message}");
+
+        let remote = DebugSession::new(DebugTarget::Remote {
+            host: "127.0.0.1".to_string(),
+            port: 1234,
+            connected: false,
+        })
+        .unwrap();
+        let message = remote.symbolize("0x1000").unwrap_err().to_string();
+        assert!(message.contains("no local binary"), "{message}");
+
+        // A binary that is not there: `addr2line` either fails or answers `??`, and both are
+        // reported rather than passed off as a location.
+        let missing = DebugSession::new(DebugTarget::Binary {
+            path: "/nonexistent/nova-binary".to_string(),
+            symbols_loaded: false,
+        })
+        .unwrap();
+        let message = missing.symbolize("0x1000").unwrap_err().to_string();
+        assert!(
+            message.contains("addr2line") || message.contains("no line-table entry"),
+            "{message}"
+        );
+    }
+
+    #[test]
     fn test_backtrace() {
         let target = DebugTarget::Binary {
             path: "/tmp/test".to_string(),
