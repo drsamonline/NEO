@@ -1,4 +1,4 @@
-69.49
+69.61
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -128,3 +128,5 @@
 # in code than fiction, and the ratchet records that.
 # 69.49% (9,739 of 14,014) when the registry started refusing. It rose: the three mock functions
 # and their two tests were covered, and the refusals are four lines each.
+# 69.61% (9,806 of 14,087) when the `#line` directives landed. It rose by 0.12: the span wrapper,
+# the directive writer and the bound check are all exercised by the new test.
