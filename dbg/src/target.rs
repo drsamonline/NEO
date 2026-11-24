@@ -237,6 +237,136 @@ pub fn spawn_traced(path: &str, args: &[String]) -> Result<u32, DebuggerError> {
     }
 }
 
+/// The address of a function in a binary, from its symbol table.
+///
+/// `addr2line` maps an address to a line and cannot go the other way, so a breakpoint on a
+/// function is resolved with `nm`. NOVA mangles its own functions as `nova_fn_<name>` (see the
+/// naming note in the lowerer), and `main` stays `main`, so both spellings are tried.
+pub fn resolve_function(binary: &str, name: &str) -> Result<u64, DebuggerError> {
+    let output = std::process::Command::new("nm")
+        .arg(binary)
+        .output()
+        .map_err(|e| {
+            DebuggerError::Target(format!("cannot run nm: {e} (install binutils)"))
+        })?;
+    if !output.status.success() {
+        return Err(DebuggerError::Target(format!(
+            "nm could not read {binary}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    let wanted = [name.to_string(), format!("nova_fn_{name}")];
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        // "0000000001026330 T main"
+        let mut parts = line.split_whitespace();
+        let (Some(address), Some(kind), Some(symbol)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        // `T`/`t` are text symbols; anything else is not code we can break on.
+        if !kind.eq_ignore_ascii_case("t") {
+            continue;
+        }
+        if wanted.iter().any(|w| w == symbol) {
+            return u64::from_str_radix(address, 16).map_err(|_| {
+                DebuggerError::Target(format!("unreadable symbol address `{address}` for {symbol}"))
+            });
+        }
+    }
+    Err(DebuggerError::Target(format!(
+        "no function `{name}` in {binary}: tried `{name}` and `nova_fn_{name}`. `nm {binary}` \
+         lists what is there"
+    )))
+}
+
+/// Write an `int3` at `address`, returning the byte that was there.
+///
+/// A breakpoint on x86-64 is the one-byte trap instruction `0xCC`. The original byte must be
+/// kept, because leaving `int3` behind changes the program: the next execution of that
+/// instruction would trap again, forever.
+pub fn insert_breakpoint(pid: u32, address: u64) -> Result<u8, DebuggerError> {
+    #[cfg(target_os = "linux")]
+    {
+        let word = peek_word(pid, address)?;
+        let original = (word & 0xff) as u8;
+        let patched = (word & !0xff) | libc::c_long::from(libc::c_uchar::from(0xccu8));
+        poke_word(pid, address, patched)?;
+        Ok(original)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (pid, address);
+        Err(DebuggerError::Target(
+            "breakpoints are implemented on Linux only".to_string(),
+        ))
+    }
+}
+
+/// Put the original byte back, so the program runs as it was compiled.
+pub fn remove_breakpoint(pid: u32, address: u64, original: u8) -> Result<(), DebuggerError> {
+    #[cfg(target_os = "linux")]
+    {
+        let word = peek_word(pid, address)?;
+        let restored = (word & !0xff) | libc::c_long::from(original);
+        poke_word(pid, address, restored)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (pid, address, original);
+        Err(DebuggerError::Target(
+            "breakpoints are implemented on Linux only".to_string(),
+        ))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn peek_word(pid: u32, address: u64) -> Result<libc::c_long, DebuggerError> {
+    // SAFETY: `PTRACE_PEEKTEXT` reads one word from the tracee's address space and returns it as
+    // the `ptrace` return value; the data pointer is ignored. `pid` is a process this debugger
+    // is tracing. A word that cannot be read is reported through `errno`, not silently as -1.
+    let word = unsafe {
+        libc::ptrace(
+            libc::PTRACE_PEEKTEXT,
+            pid as libc::pid_t,
+            address as *mut libc::c_void,
+            std::ptr::null_mut::<libc::c_void>(),
+        )
+    };
+    if word == -1 {
+        let error = std::io::Error::last_os_error();
+        // `-1` is also a legitimate word, so `errno` is what distinguishes them.
+        if error.raw_os_error() != Some(0) {
+            return Err(DebuggerError::Target(format!(
+                "cannot read memory at 0x{address:x} of {pid}: {error}"
+            )));
+        }
+    }
+    Ok(word)
+}
+
+#[cfg(target_os = "linux")]
+fn poke_word(pid: u32, address: u64, word: libc::c_long) -> Result<(), DebuggerError> {
+    // SAFETY: `PTRACE_POKETEXT` writes the word given as `data` at `address` in the tracee;
+    // `address` came from that tracee's own symbol table and `pid` is a process this debugger
+    // is tracing.
+    let written = unsafe {
+        libc::ptrace(
+            libc::PTRACE_POKETEXT,
+            pid as libc::pid_t,
+            address as *mut libc::c_void,
+            word as *mut libc::c_void,
+        )
+    };
+    if written == -1 {
+        let error = std::io::Error::last_os_error();
+        return Err(DebuggerError::Target(format!(
+            "cannot write memory at 0x{address:x} of {pid}: {error}"
+        )));
+    }
+    Ok(())
+}
+
 /// Resume a stopped process: to the next stop, or one instruction.
 ///
 /// Returns `(stopped, signal, exited_code)`. `stopped` is false when the process ended, and then
@@ -290,6 +420,52 @@ pub fn resume(pid: u32, single_step: bool) -> Result<Stop, DebuggerError> {
         let _ = (pid, single_step);
         Err(DebuggerError::Target(
             "resuming is implemented on Linux only".to_string(),
+        ))
+    }
+}
+
+/// Move a stopped process's instruction pointer, so a trap can be undone.
+///
+/// After an `int3` the process is stopped **one byte past** the instruction it should execute
+/// next. Putting `rip` back is what makes the breakpoint invisible to the program.
+pub fn set_instruction_pointer(pid: u32, address: u64) -> Result<(), DebuggerError> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        // SAFETY: reads the register block into a live local, modifies one field, and writes it
+        // back through a pointer of the same type. `pid` is a process this debugger traces.
+        let mut registers: libc::user_regs_struct = unsafe { std::mem::zeroed() };
+        let read = unsafe {
+            libc::ptrace(
+                libc::PTRACE_GETREGS,
+                pid as libc::pid_t,
+                std::ptr::null_mut::<libc::c_void>(),
+                &mut registers as *mut libc::user_regs_struct as *mut libc::c_void,
+            )
+        };
+        if read == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::Target(format!("cannot read registers of {pid}: {error}")));
+        }
+        registers.rip = address;
+        let written = unsafe {
+            libc::ptrace(
+                libc::PTRACE_SETREGS,
+                pid as libc::pid_t,
+                std::ptr::null_mut::<libc::c_void>(),
+                &registers as *const libc::user_regs_struct as *mut libc::c_void,
+            )
+        };
+        if written == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::Target(format!("cannot write registers of {pid}: {error}")));
+        }
+        Ok(())
+    }
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    {
+        let _ = (pid, address);
+        Err(DebuggerError::Target(
+            "moving the instruction pointer is implemented for x86-64 Linux only".to_string(),
         ))
     }
 }
