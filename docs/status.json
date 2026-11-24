@@ -2,7 +2,7 @@
   "version": "0.7.0",
   "loc": {
     "compiler_src": 14222,
-    "workspace": 32726
+    "workspace": 32813
   },
   "adrs": 16,
   "gates": [

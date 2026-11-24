@@ -40,7 +40,7 @@ the code and a CI run, and the run is named where it matters.
 | Standard library | ⚠️ 4 modules, **211 of 249 functions usable** — the other 38 call a builtin the compiler does not implement; `core`, `io` and `math` compile, and **`math`'s float-array functions return wrong answers** (ADR 0006) | `stdlib/README.md`, `tools/stdlib-check.py` |
 | Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry **refuses** rather than mocking; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
-| Debugger | ⚠️ REPL/breakpoints real; **`attach` uses `ptrace`** (ADR 0016), `where` reads the real `rip`, `line` symbolizes and `list` reads the source; `backtrace` and `print` still refuse — both need the stack, not just the instruction pointer | `dbg` tests |
+| Debugger | ⚠️ `run` executes the real program, `attach` uses `ptrace` (ADR 0016), `where` reads the real `rip`, `line` symbolizes, `list` reads the source; **`step`/`continue`/`backtrace`/`print` refuse** — they need the child started under trace | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
 | Language spec | ❌ 8 of 25 chapters written — overview, lexical grammar, keywords, literals, types, functions, modules, control flow | `docs/language/README.md` |
 | **Test suite** | **199 passing, 0 failing, 0 ignored** | CI run 44117607709, the branch merged as #21 |

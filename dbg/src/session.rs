@@ -88,18 +88,40 @@ impl DebugSession {
     }
     
     /// Run the program
+    /// Run the program.
+    ///
+    /// It really runs it: the binary is spawned, its output goes to this terminal, and the exit
+    /// status reported is the one the process gave. This used to print "Starting program" and
+    /// then claim to be stopped at `main:1` — a location it had invented, in a process that was
+    /// never started. Every execution command below inherited that fiction.
+    ///
+    /// It runs **to completion**, not under `ptrace`. Stopping at a breakpoint needs the child
+    /// started under trace, which is not implemented; `step` and `continue` say so rather than
+    /// inventing a line number.
     pub fn run(&mut self, args: &[String]) -> Result<(), DebuggerError> {
-        if !matches!(self.target, DebugTarget::Binary { .. }) && !self.target.is_running() {
-            return Err(DebuggerError::ProcessNotRunning);
+        let path = match &self.target {
+            DebugTarget::Binary { path, .. } => path.clone(),
+            other => {
+                return Err(DebuggerError::Target(format!(
+                    "cannot run: the target is {other:?}, not a local binary"
+                )))
+            }
+        };
+        if !std::path::Path::new(&path).exists() {
+            return Err(DebuggerError::Target(format!("cannot run: {path} does not exist")));
         }
-        
-        println!("Starting program with args: {:?}", args);
+
         self.state = State::Running;
-        
-        // In production, this would spawn the process and wait for stop
-        self.current_location = Some("main:1".to_string());
-        self.state = State::Stopped(self.current_location.clone().unwrap());
-        
+        let status = std::process::Command::new(&path)
+            .args(args)
+            .status()
+            .map_err(|e| DebuggerError::Target(format!("cannot run {path}: {e}")))?;
+
+        // The real exit status, and nothing invented about where it got to.
+        let code = status.code().unwrap_or(-1);
+        self.current_location = None;
+        self.state = State::Exited(code);
+        println!("[exited {code}]");
         Ok(())
     }
     
@@ -109,15 +131,15 @@ impl DebugSession {
             return Err(DebuggerError::ProcessNotRunning);
         }
         
-        println!("Continuing execution...");
-        self.state = State::Running;
-        
-        // Simulate hitting a breakpoint
-        // In production, this would wait for the target to stop
-        self.current_location = Some("main:10".to_string());
-        self.state = State::Stopped(self.current_location.clone().unwrap());
-        
-        Ok(())
+        // Refused rather than invented. This used to report a hard-coded location —
+        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
+        // stopped, never stepped and in fact never started. A location that cannot be wrong
+        // because it is never read is still a lie the moment someone reads it.
+        Err(DebuggerError::Target(
+            "cannot continue: stopping inside a running program needs the child started under `ptrace`, \
+             which is not implemented. `run` executes the program to completion instead"
+                .to_string(),
+        ))
     }
     
     /// Step into function
@@ -126,12 +148,15 @@ impl DebugSession {
             return Err(DebuggerError::ProcessNotRunning);
         }
         
-        println!("Stepping into...");
-        // In production, send step command to target
-        self.current_location = Some("helper_func:5".to_string());
-        self.state = State::Stopped(self.current_location.clone().unwrap());
-        
-        Ok(())
+        // Refused rather than invented. This used to report a hard-coded location —
+        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
+        // stopped, never stepped and in fact never started. A location that cannot be wrong
+        // because it is never read is still a lie the moment someone reads it.
+        Err(DebuggerError::Target(
+            "cannot step: stopping inside a running program needs the child started under `ptrace`, \
+             which is not implemented. `run` executes the program to completion instead"
+                .to_string(),
+        ))
     }
     
     /// Step over function
@@ -140,11 +165,15 @@ impl DebugSession {
             return Err(DebuggerError::ProcessNotRunning);
         }
         
-        println!("Stepping over...");
-        self.current_location = Some("main:15".to_string());
-        self.state = State::Stopped(self.current_location.clone().unwrap());
-        
-        Ok(())
+        // Refused rather than invented. This used to report a hard-coded location —
+        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
+        // stopped, never stepped and in fact never started. A location that cannot be wrong
+        // because it is never read is still a lie the moment someone reads it.
+        Err(DebuggerError::Target(
+            "cannot step over: stopping inside a running program needs the child started under `ptrace`, \
+             which is not implemented. `run` executes the program to completion instead"
+                .to_string(),
+        ))
     }
     
     /// Step out of current function
@@ -153,11 +182,15 @@ impl DebugSession {
             return Err(DebuggerError::ProcessNotRunning);
         }
         
-        println!("Stepping out...");
-        self.current_location = Some("main:20".to_string());
-        self.state = State::Stopped(self.current_location.clone().unwrap());
-        
-        Ok(())
+        // Refused rather than invented. This used to report a hard-coded location —
+        // `main:10`, `helper_func:5`, `main:15`, `main:20` — for a process that was never
+        // stopped, never stepped and in fact never started. A location that cannot be wrong
+        // because it is never read is still a lie the moment someone reads it.
+        Err(DebuggerError::Target(
+            "cannot step out: stopping inside a running program needs the child started under `ptrace`, \
+             which is not implemented. `run` executes the program to completion instead"
+                .to_string(),
+        ))
     }
     
     /// Set a breakpoint
@@ -638,6 +671,60 @@ mod tests {
 
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    #[test]
+    fn test_run_executes_the_program_and_reports_its_status() {
+        // `/bin/true` is a real program with a real exit status and needs no compiler, so this
+        // asserts the behaviour rather than a stub. `run` used to print "Starting program" and
+        // claim to be stopped at `main:1` without starting anything.
+        let target = DebugTarget::Binary {
+            path: "/bin/true".to_string(),
+            symbols_loaded: false,
+        };
+        let mut session = DebugSession::new(target).unwrap();
+        session.run(&[]).expect("run /bin/true");
+        assert!(
+            matches!(session.state(), State::Exited(0)),
+            "expected exit 0, got {:?}",
+            session.state()
+        );
+        // No invented location survives a run.
+        assert!(session.current_location().is_err(), "a finished run has no location");
+    }
+
+    #[test]
+    fn test_run_refuses_a_binary_that_is_not_there() {
+        let target = DebugTarget::Binary {
+            path: "/nonexistent/program".to_string(),
+            symbols_loaded: false,
+        };
+        let mut session = DebugSession::new(target).unwrap();
+        let error = session.run(&[]).unwrap_err().to_string();
+        assert!(error.contains("does not exist"), "{error}");
+    }
+
+    #[test]
+    fn test_stepping_refuses_instead_of_inventing_a_location() {
+        // These four used to answer `main:10`, `helper_func:5`, `main:15`, `main:20` — fixed
+        // strings for a process that was never stopped. A location that is never read is still
+        // a lie the moment someone reads it.
+        let target = DebugTarget::Binary {
+            path: "/bin/true".to_string(),
+            symbols_loaded: false,
+        };
+        let mut session = DebugSession::new(target).unwrap();
+        // Put the session in the state the guards expect, so the refusal is what answers.
+        session.state = State::Stopped("somewhere".to_string());
+
+        for error in [
+            session.step_into().unwrap_err().to_string(),
+            session.step_over().unwrap_err().to_string(),
+            session.step_out().unwrap_err().to_string(),
+            session.continue_execution().unwrap_err().to_string(),
+        ] {
+            assert!(error.contains("ptrace"), "the refusal must name what is missing: {error}");
+        }
     }
 
     #[test]
