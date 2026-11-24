@@ -1,4 +1,4 @@
-70.64
+70.36
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -149,3 +149,8 @@
 # 70.64% (10,129 of 14,339) when `run` started executing real programs and the four invented
 # locations became refusals. It rose 0.41: the fabricated branches were never covered either,
 # because no test could reach a line number that only existed in the source of the debugger.
+# 70.36% (10,179 of 14,466) when `run` began tracing. A FALL of 0.28, lowered in the same PR as
+# the rule requires. `spawn_traced` and `resume` are ~130 lines whose error branches need a
+# process that fails to stop, is killed by a signal, or refuses to be traced — the kind of
+# condition a unit test cannot arrange without root. The paths that decide the answer are
+# covered; the paths that report a broken kernel are not, and are not pretended to be.
