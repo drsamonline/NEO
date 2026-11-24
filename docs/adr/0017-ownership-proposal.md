@@ -103,6 +103,13 @@ with no span, so they could not be attributed and were all shown. Falling back t
 expression's span brought the count to **3 shown, 25 suppressed**, which is the number the
 suppression was written for.
 
+**Step 4 is done.** `core.clone(s: String) -> String` copies the string through
+`__builtin_strdup`, which the runtime already had and nothing could reach. Passing to `clone` does
+not count as a move: a clone that consumed its argument would make the advice produce the same
+warning one line later, which is how a rule gets turned off. Arrays and structs are not cloneable
+yet — calling `clone` on one is a type error rather than a shallow copy that shares the buffer the
+rule exists to protect.
+
 One gap remains, recorded in `docs/errors.md`: a call inside an assignment (`x = f(y)`) does not
 mark `y` moved.
 

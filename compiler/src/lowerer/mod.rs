@@ -1143,6 +1143,10 @@ impl Lowerer {
                 };
                 Some(typed(callee, lowered(self), "string"))
             }
+            // `nova_strdup` already existed and was reachable only from the runtime's own
+            // code. It is what `clone` needs: a fresh buffer holding the same bytes, so the
+            // copy and the original are two values (ADR 0017, step 4).
+            "__builtin_strdup" => Some(typed("nova_strdup", lowered(self), "string")),
             "__builtin_strlen" => Some(typed("nova_strlen", lowered(self), "int")),
             "__builtin_strcmp" => Some(typed("nova_strcmp", lowered(self), "int")),
             "__builtin_strcat" => Some(typed("nova_strcat", lowered(self), "string")),

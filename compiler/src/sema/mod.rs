@@ -122,7 +122,15 @@ impl SemanticAnalyzer {
     ///
     /// Called from both call paths: the parser wraps every expression in `Spanned`, so a call
     /// reaches the wrapped branch and would otherwise never see this.
-    fn mark_moved_arguments(&mut self, args: &[nova_common::Expr]) {
+    fn mark_moved_arguments(&mut self, callee: &nova_common::Expr, args: &[nova_common::Expr]) {
+        // `clone` exists to *not* consume: it takes a value and answers a copy. Marking its
+        // argument moved would make the answer to every move warning produce the same warning
+        // at the next line, which is how a rule becomes something people turn off.
+        if let nova_common::Expr::Identifier(name) = callee.unspanned() {
+            if name == "clone" {
+                return;
+            }
+        }
         for arg in args {
             let mut inner = arg;
             while let nova_common::Expr::Spanned(wrapped, _) = inner {
@@ -504,7 +512,7 @@ impl SemanticAnalyzer {
                     }
                     self.current_span = outer;
                     self.check_call_arguments(func, args, Some(*span));
-                    self.mark_moved_arguments(args);
+                    self.mark_moved_arguments(func, args);
                 } else {
                     let outer = self.current_span.replace(*span);
                     self.check_expr(inner);
@@ -530,7 +538,7 @@ impl SemanticAnalyzer {
                     self.check_expr(arg);
                 }
                 self.check_call_arguments(func, args, None);
-                self.mark_moved_arguments(args);
+                self.mark_moved_arguments(func, args);
             }
             nova_common::Expr::Field(object, _field) => {
                 self.check_expr(object);
