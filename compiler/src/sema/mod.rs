@@ -33,6 +33,8 @@ struct FunctionSig {
 pub struct SemanticAnalyzer {
     pub diagnostics: Diagnostics,
     pub symbol_table: nova_common::SymbolTable,
+    /// Names given away in the function being checked (ADR 0017, step 2).
+    moved: std::collections::HashSet<String>,
     /// Declared functions, used to type call results and check arguments.
     signatures: HashMap<String, FunctionSig>,
     /// Stack of enclosing functions during body checking.
@@ -51,6 +53,7 @@ impl SemanticAnalyzer {
         let mut analyzer = Self {
             diagnostics: Diagnostics::new(),
             symbol_table: nova_common::SymbolTable::new(),
+            moved: std::collections::HashSet::new(),
             signatures: HashMap::new(),
             return_context: Vec::new(),
             type_scopes: Vec::new(),
@@ -115,25 +118,86 @@ impl SemanticAnalyzer {
     }
 
     /// Collect declarations (first pass)
+    /// Record the arguments a call gives away (ADR 0017, step 2).
+    ///
+    /// Called from both call paths: the parser wraps every expression in `Spanned`, so a call
+    /// reaches the wrapped branch and would otherwise never see this.
+    fn mark_moved_arguments(&mut self, args: &[nova_common::Expr]) {
+        for arg in args {
+            let mut inner = arg;
+            while let nova_common::Expr::Spanned(wrapped, _) = inner {
+                inner = wrapped;
+            }
+            if let nova_common::Expr::Identifier(name) = inner {
+                let non_copy = self
+                    .lookup_variable_type(name)
+                    .map(|type_| !Self::is_copy(&type_))
+                    .unwrap_or(false);
+                if non_copy {
+                    self.moved.insert(name.clone());
+                }
+            }
+        }
+    }
+
     /// Whether a type is copied by assignment, or moved. ADR 0017, step 1.
     ///
     /// Scalars, references and pointers are `Copy`: assigning one gives the other a value and
-    /// both stay usable. Arrays, tuples containing a non-`Copy`, functions, structs and enums
-    /// are not — they own something, and "copying" them shares it, which is how a program
-    /// changes data it did not mean to.
+    /// both stay usable. Arrays, functions, structs and enums are not — they own something, and
+    /// "copying" them shares it, which is how a program changes data it did not mean to.
     ///
     /// An unknown or error type counts as `Copy`. A false negative costs a missed warning; a
     /// false positive costs noise in a warning-only pass, and noise is what teaches people to
     /// ignore warnings.
-    fn is_copy(type_: &nova_common::Type) -> bool {
-        use nova_common::TypeKind;
-        match &type_.kind {
-            TypeKind::Primitive(_) => true,
-            TypeKind::Reference(_, _) | TypeKind::Pointer(_, _) => true,
-            TypeKind::Tuple(elements) => elements.iter().all(Self::is_copy),
-            TypeKind::Array(_, _) | TypeKind::Function(_, _) => false,
-            TypeKind::Struct(_) | TypeKind::Enum(_) => false,
-            TypeKind::Generic(_) | TypeKind::Error => true,
+    fn is_copy(type_: &Type) -> bool {
+        match type_ {
+            Type::Int | Type::Float | Type::Bool | Type::Char | Type::Unit | Type::Never => true,
+            // A `String` owns a heap buffer: copying it shares the pointer.
+            Type::String => false,
+            Type::Ref { .. } | Type::Ptr { .. } => true,
+            Type::Tuple(elements) => elements.iter().all(Self::is_copy),
+            Type::Array(_) | Type::Slice(_) | Type::Function { .. } => false,
+            Type::Struct(_) | Type::Enum(_) => false,
+            Type::Module | Type::Range | Type::Unknown | Type::Error => true,
+        }
+    }
+
+    /// The analyser's `Type` as the one a `Symbol` stores.
+    ///
+    /// There are two type representations in this compiler — the analyser's enum and
+    /// `nova_common::Type` with its `TypeKind` — and `Symbol::typ` holds the second. Without this
+    /// conversion a binding could not record what inference worked out.
+    fn to_common(type_: &Type) -> nova_common::Type {
+        use nova_common::{PrimitiveType, Type as Common, TypeKind};
+        match type_ {
+            Type::Int => Common::new(TypeKind::Primitive(PrimitiveType::I64)),
+            Type::Float => Common::new(TypeKind::Primitive(PrimitiveType::F64)),
+            Type::Bool => Common::new(TypeKind::Primitive(PrimitiveType::Bool)),
+            Type::Char => Common::new(TypeKind::Primitive(PrimitiveType::Char)),
+            Type::Unit => Common::new(TypeKind::Primitive(PrimitiveType::Unit)),
+            Type::Never => Common::new(TypeKind::Primitive(PrimitiveType::Never)),
+            Type::String => Common::new(TypeKind::Struct("String".to_string())),
+            Type::Array(inner) | Type::Slice(inner) => {
+                Common::new(TypeKind::Array(std::rc::Rc::new(Self::to_common(inner)), 0))
+            }
+            Type::Tuple(elements) => {
+                Common::new(TypeKind::Tuple(elements.iter().map(Self::to_common).collect()))
+            }
+            Type::Function { params, return_type } => Common::new(TypeKind::Function(
+                params.iter().map(Self::to_common).collect(),
+                std::rc::Rc::new(Self::to_common(return_type)),
+            )),
+            Type::Ref { mutable, target } | Type::Ptr { mutable, target } => {
+                Common::new(TypeKind::Pointer(
+                    std::rc::Rc::new(Self::to_common(target)),
+                    *mutable,
+                ))
+            }
+            Type::Struct(name) => Common::new(TypeKind::Struct(name.clone())),
+            Type::Enum(name) => Common::new(TypeKind::Enum(name.clone())),
+            Type::Module | Type::Range | Type::Unknown | Type::Error => {
+                Common::new(TypeKind::Error)
+            }
         }
     }
 
@@ -262,6 +326,7 @@ impl SemanticAnalyzer {
 
     /// Check function body
     fn check_function(&mut self, func: &Function) {
+        self.moved.clear();
         self.symbol_table.enter_scope(); // Function scope
         
         // Add parameters to symbol table
@@ -346,11 +411,35 @@ impl SemanticAnalyzer {
                 // Add every name the pattern binds to the symbol table.
                 let mut names = Vec::new();
                 collect_pattern_names(&let_stmt.pattern, &mut names);
+                // The declared type if there is one, otherwise the initialiser's. Without this
+                // every binding had `typ: None`, and any rule about a binding's type — the move
+                // rule of ADR 0017 first among them — could never fire.
+                let binding_type = match &let_stmt.typ {
+                    Some(annotation) => {
+                        Some(type_from_name(&crate::lowerer::type_display(annotation)))
+                    }
+                    None => let_stmt
+                        .init
+                        .as_ref()
+                        .and_then(|init_expr| self.infer_expr_type(init_expr)),
+                };
                 for ident_name in &names {
-                    let symbol = Symbol::new(ident_name.clone(), SymbolKind::Variable, let_stmt.span);
+                    let mut symbol =
+                        Symbol::new(ident_name.clone(), SymbolKind::Variable, let_stmt.span);
+                    symbol.typ = binding_type.as_ref().map(Self::to_common);
+                    symbol.is_mut = let_stmt.is_mut;
                     let _ = self.symbol_table.insert(symbol);
                 }
-                
+                // The analyser keeps a second, type-only environment and `lookup_variable_type`
+                // reads *that* — so recording the type on the symbol alone changed nothing.
+                if let Some(typ) = binding_type.clone() {
+                    if let Some(scope) = self.type_scopes.last_mut() {
+                        for ident_name in &names {
+                            scope.insert(ident_name.clone(), typ.clone());
+                        }
+                    }
+                }
+
                 // Check initialization expression
                 if let Some(init_expr) = &let_stmt.init {
                     self.check_expr(init_expr);
@@ -415,6 +504,7 @@ impl SemanticAnalyzer {
                     }
                     self.current_span = outer;
                     self.check_call_arguments(func, args, Some(*span));
+                    self.mark_moved_arguments(args);
                 } else {
                     let outer = self.current_span.replace(*span);
                     self.check_expr(inner);
@@ -440,6 +530,7 @@ impl SemanticAnalyzer {
                     self.check_expr(arg);
                 }
                 self.check_call_arguments(func, args, None);
+                self.mark_moved_arguments(args);
             }
             nova_common::Expr::Field(object, _field) => {
                 self.check_expr(object);
@@ -586,6 +677,17 @@ impl SemanticAnalyzer {
             return;
         }
         if self.symbol_table.lookup(name).is_some() {
+            if self.moved.contains(name) {
+                let mut diag = Diagnostic::warning(format!(
+                    "`{name}` was moved when it was passed to a function, and is used again here"
+                ))
+                .with_code("E0010")
+                .with_help("clone it before passing it, or pass it last");
+                if let Some(span) = span {
+                    diag = diag.with_span(span);
+                }
+                self.diagnostics.push(diag);
+            }
             return;
         }
 
@@ -1190,16 +1292,17 @@ mod tests {
 
     #[test]
     fn a_scalar_is_copy_and_a_string_is_not() {
-        // ADR 0017 step 1. This is the classification the move rule rests on, and it is the only
-        // part of the rule that can be tested before the analyser records types for `let`.
-        use nova_common::{PrimitiveType, Type, TypeKind};
-        let int = Type::new(TypeKind::Primitive(PrimitiveType::I64));
-        let boolean = Type::new(TypeKind::Primitive(PrimitiveType::Bool));
-        let string = Type::new(TypeKind::Struct("String".to_string()));
-        let array = Type::new(TypeKind::Array(std::rc::Rc::new(int.clone()), 0));
-        let pair_of_ints = Type::new(TypeKind::Tuple(vec![int.clone(), boolean.clone()]));
-        let pair_with_string =
-            Type::new(TypeKind::Tuple(vec![int.clone(), string.clone()]));
+        // ADR 0017 step 1: the classification the move rule rests on.
+        let int = Type::Int;
+        let boolean = Type::Bool;
+        let string = Type::String;
+        let array = Type::Array(Box::new(Type::Int));
+        let pair_of_ints = Type::Tuple(vec![Type::Int, Type::Bool]);
+        let pair_with_string = Type::Tuple(vec![Type::Int, Type::String]);
+        let reference = Type::Ref {
+            mutable: true,
+            target: Box::new(Type::String),
+        };
 
         assert!(SemanticAnalyzer::is_copy(&int), "a scalar is Copy");
         assert!(SemanticAnalyzer::is_copy(&boolean), "a bool is Copy");
@@ -1209,6 +1312,10 @@ mod tests {
         assert!(
             !SemanticAnalyzer::is_copy(&pair_with_string),
             "a tuple holding a String is not Copy"
+        );
+        assert!(
+            SemanticAnalyzer::is_copy(&reference),
+            "a reference is Copy even when it points at a String"
         );
     }
 

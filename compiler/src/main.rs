@@ -272,6 +272,15 @@ fn emit_diagnostic(file: &str, diag: &Diagnostic) {
 /// not emit, or omit one it does.
 const ERROR_CODES: &[(&str, &str, &str)] = &[
     (
+        "E0010",
+        "value used after being moved",
+        "A value that is not `Copy` was passed to a function and then used again.\n\n\
+         `int`, `float`, `bool`, `char` and references are copied when they are passed;\n\
+         `String`, arrays, structs and closures are not — they own a buffer, and passing\n\
+         one gives it away. This is a warning while the rule is new (ADR 0017): the\n\
+         number of places it fires is being counted before it is enforced.",
+    ),
+    (
         "E0002",
         "undefined name",
         "A name was used that nothing has declared in scope.\n\n\
