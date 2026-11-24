@@ -365,7 +365,20 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
                 )))
             }
         };
-        let address = crate::target::resolve_function_in(&binary, location, self.traced_pid)?;
+        // `file:line` and `function` are both locations; which one this is depends on whether
+        // the part after the last colon is a number. A function name can contain a colon in no
+        // NOVA program, and a path always does.
+        let address = match location.rsplit_once(':') {
+            Some((file, line)) if line.parse::<usize>().is_ok() => {
+                crate::target::resolve_line(
+                    &binary,
+                    file,
+                    line.parse().expect("checked"),
+                    self.traced_pid,
+                )?
+            }
+            _ => crate::target::resolve_function_in(&binary, location, self.traced_pid)?,
+        };
 
         // With a traced process, the `int3` goes in now. Without one, the address is recorded
         // and the program is not running yet, so there is nothing to patch.
@@ -1073,6 +1086,25 @@ mod tests {
         assert!(error.contains("position-independent"), "{error}");
         // The refusal must say what to do instead, not only that it cannot.
         assert!(error.contains("Start the program first"), "{error}");
+    }
+
+    #[test]
+    fn test_a_breakpoint_location_is_a_line_or_a_function() {
+        // `file:line` and `function` are both locations; which one this is depends on whether
+        // the part after the last colon is a number. A path always has a colon, so the test is
+        // the suffix rather than the presence.
+        let target = DebugTarget::Binary {
+            path: "/nonexistent/binary".to_string(),
+            symbols_loaded: false,
+        };
+        let mut session = DebugSession::new(target).unwrap();
+
+        // Both forms reach resolution, and both report the missing binary rather than a
+        // breakpoint that would never fire.
+        for location in ["prog.nova:12", "some_function"] {
+            let error = session.set_breakpoint(location).unwrap_err().to_string();
+            assert!(error.contains("cannot open"), "{location}: {error}");
+        }
     }
 
     #[test]

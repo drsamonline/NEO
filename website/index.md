@@ -37,7 +37,7 @@ backends when `node` and `wat2wasm` are installed. CI runs it over every
   programs are not stdout-identical.
 - The language server has diagnostics, but go-to-definition is a string search
   and `references` is not implemented.
-- The debugger runs a program under `ptrace`, so `break <function>`, `step`, `continue` and
+- The debugger runs a program under `ptrace`, so `break <function>`, `break <file:line>`, `step`, `continue` and
   `backtrace` really work — every frame and hit reports its `.nova` line; `attach <pid>` stops a
   running process and `where` reports its real source line; `line <address>` maps an address
   through the line table, and `list` shows the real source. `print 0xADDRESS` reads memory directly; `print <name>`
