@@ -134,6 +134,30 @@ diagnostics loop ran only inside `if analyzer.analyze(..).is_err()`. Any warning
 emitted on a working program was invisible. Fixed — and it is the reason the measurement above
 could be made at all.
 
+## Step 5 attempted, and not taken — measured, 2026-11-24
+
+Enforcing the rule was a one-line change and it failed on evidence, in two stages.
+
+**First: the shipped example `array_ops.nova` stopped compiling**, with three move warnings about an
+array it passes and reuses. Arrays are not cloneable, so the advice was impossible to follow. The
+rule now applies only where `clone` exists — `String` today — and the corpus's own code trips it
+**0** times.
+
+**Second: the standard library stopped compiling.** With `E0010` as an error, a program that
+imports `core`, `io` and `text` failed with "semantic analysis failed inside an imported module" —
+our own library violates the rule in places, and a rule that rejects the library it ships with is
+not enforceable.
+
+So step 5 is **blocked on the standard library complying**, and the order is:
+
+1. clone for arrays and structs — so the advice exists for the types the library actually passes;
+2. fix the library's own sites, counted by running the checker over it with enforcement on;
+3. then enforce.
+
+**A finding worth keeping**: the suppression of imported-module diagnostics had to be extended to
+errors as well, because an error inside `io.nova` would otherwise fail every program that imports
+the standard library. That is now done, and it is what made the second measurement visible at all.
+
 ## What the sweep would touch — measured, 2026-11-24
 
 The cost of option C is not the number of functions but the number of **call sites** that pass a

@@ -479,39 +479,56 @@ fn compile_to(input: &Path, target: Target) -> String {
     };
 
     let mut analyzer = SemanticAnalyzer::new();
-    if analyzer.analyze(&program).is_err() {
+    let analyzed = analyzer.analyze(&program);
+
+    // **Only the program's own diagnostics.** An imported module is merged into the same tree, so
+    // its spans run past the end of the file the user named — measured: a 12-line program
+    // produced a diagnostic at line 543, which is `text.nova`. A user cannot act on a message
+    // about code they did not write, and 26 of the corpus's 28 move warnings were exactly that.
+    //
+    // The bound is the same one the C backend uses for `#line`: a line past the end of the named
+    // file is not from that file. It applies to **errors as well as warnings**, because ADR 0017
+    // made `E0010` an error and an error inside `io.nova` would otherwise fail every program that
+    // imports the standard library.
+    let own_lines = std::fs::read_to_string(&name)
+        .map(|text| text.lines().count())
+        .unwrap_or(0);
+    let from_own_file = |diag: &nova_common::Diagnostic| match &diag.span {
+        Some(span) => own_lines == 0 || span.start.line <= own_lines,
+        None => true,
+    };
+
+    let own_errors: Vec<&nova_common::Diagnostic> = analyzer
+        .diagnostics
+        .iter()
+        .filter(|diag| {
+            matches!(diag.level, nova_common::DiagnosticLevel::Error) && from_own_file(diag)
+        })
+        .collect();
+    if analyzed.is_err() && !own_errors.is_empty() {
         if !json_diagnostics() {
             eprintln!("{name}: semantic errors:");
         }
-        for diag in analyzer.diagnostics.iter() {
+        for diag in &own_errors {
             emit_diagnostic(&name, diag);
         }
         die("semantic analysis failed");
     }
+    if analyzed.is_err() {
+        // Every error came from an imported module. That is this repository's own code being
+        // wrong, not the user's program, and failing their build for it would be indefensible.
+        die("semantic analysis failed inside an imported module — please report this");
+    }
 
     // A successful analysis can still have warnings, and they used to be dropped here: only a
     // failed analysis printed anything, so a warning was invisible on exactly the programs it is
-    // about. ADR 0017 step 3 counts these, and a count needs them printed.
-    //
-    // **Only the program's own.** An imported module is merged into the same tree, so its spans
-    // run past the end of the file the user named — measured: a 12-line program produced a
-    // warning at line 543, which is `text.nova`. A user cannot act on a warning about code they
-    // did not write, and 26 of the corpus's 28 move warnings were exactly that. The bound is the
-    // same one the C backend uses for `#line`: a line past the end of the named file is not from
-    // that file.
-    let own_lines = std::fs::read_to_string(&name)
-        .map(|text| text.lines().count())
-        .unwrap_or(0);
+    // about.
     let mut suppressed = 0usize;
     for diag in analyzer.diagnostics.iter() {
         if !matches!(diag.level, nova_common::DiagnosticLevel::Warning) {
             continue;
         }
-        let from_own_file = match &diag.span {
-            Some(span) => own_lines == 0 || span.start.line <= own_lines,
-            None => true,
-        };
-        if from_own_file {
+        if from_own_file(diag) {
             emit_diagnostic(&name, diag);
         } else {
             suppressed += 1;
