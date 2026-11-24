@@ -26,7 +26,7 @@ Everything written down, and where to start.
 | [`compiler.md`](compiler.md) | The compiler's stages, one paragraph each |
 | [`architecture.md`](architecture.md) | The design at a systems level |
 | [`language.md`](language.md) | The language's shape, and a pointer to the chapters |
-| [`language/README.md`](language/README.md) | The specification's status: 5 of 25 chapters written, and why the rest are stubs |
+| [`language/README.md`](language/README.md) | The specification's status: 18 of 25 chapters written, and why the rest are stubs |
 | [`language/00_overview.md`](language/00_overview.md) | What NOVA is, and how a program becomes a binary |
 | [`language/01_lexical_grammar.md`](language/01_lexical_grammar.md) | Comments, identifiers, numbers, strings, escapes — derived from the lexer |
 | [`language/03_keywords.md`](language/03_keywords.md) | The 25 reserved words, read out of `token.rs` |
