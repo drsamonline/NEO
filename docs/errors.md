@@ -83,9 +83,18 @@ and closures are not: they own a buffer, so passing one shares it, and a later u
 name for the same memory.
 
 It warns rather than rejects because the rule is new (ADR 0017): the number of places it fires is
-being counted before anything is enforced. Two known gaps in this first version — a call inside an
-assignment (`x = f(y)`) does not mark `y` moved, and warnings from imported modules are repeated
-for every program that imports them.
+being counted before anything is enforced.
+
+**Only your own code is reported.** An imported module is merged into the same tree, so a warning
+inside `io.nova` would be repeated for every program that imports it, and you cannot act on it. A
+line past the end of the file you named is not from that file — the same bound the C backend uses
+for `#line` — and such warnings are counted, not printed:
+
+```text
+25 warning(s) in imported modules were not shown; they are not your code
+```
+
+One known gap remains: a call inside an assignment (`x = f(y)`) does not mark `y` moved.
 
 ## E0061 — wrong number of arguments
 

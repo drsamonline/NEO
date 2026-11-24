@@ -492,10 +492,35 @@ fn compile_to(input: &Path, target: Target) -> String {
     // A successful analysis can still have warnings, and they used to be dropped here: only a
     // failed analysis printed anything, so a warning was invisible on exactly the programs it is
     // about. ADR 0017 step 3 counts these, and a count needs them printed.
+    //
+    // **Only the program's own.** An imported module is merged into the same tree, so its spans
+    // run past the end of the file the user named — measured: a 12-line program produced a
+    // warning at line 543, which is `text.nova`. A user cannot act on a warning about code they
+    // did not write, and 26 of the corpus's 28 move warnings were exactly that. The bound is the
+    // same one the C backend uses for `#line`: a line past the end of the named file is not from
+    // that file.
+    let own_lines = std::fs::read_to_string(&name)
+        .map(|text| text.lines().count())
+        .unwrap_or(0);
+    let mut suppressed = 0usize;
     for diag in analyzer.diagnostics.iter() {
-        if matches!(diag.level, nova_common::DiagnosticLevel::Warning) {
-            emit_diagnostic(&name, diag);
+        if !matches!(diag.level, nova_common::DiagnosticLevel::Warning) {
+            continue;
         }
+        let from_own_file = match &diag.span {
+            Some(span) => own_lines == 0 || span.start.line <= own_lines,
+            None => true,
+        };
+        if from_own_file {
+            emit_diagnostic(&name, diag);
+        } else {
+            suppressed += 1;
+        }
+    }
+    if suppressed > 0 && !json_diagnostics() {
+        eprintln!(
+            "{suppressed} warning(s) in imported modules were not shown; they are not your code"
+        );
     }
 
     let mut lowerer = Lowerer::new();
