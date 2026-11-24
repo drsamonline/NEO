@@ -115,6 +115,31 @@ impl SemanticAnalyzer {
     }
 
     /// Collect declarations (first pass)
+    /// Declare a symbol, reporting a duplicate in the same scope.
+    ///
+    /// `SymbolTable::insert` returns the symbol it replaced, and every call site used to write
+    /// `let _ =` and drop it — so the second declaration silently won and the first was gone.
+    /// The function case showed what that costs: a user `fn find` was replaced by the standard
+    /// library's `find<T>` and the emitted C called the wrong signature. Variables had the same
+    /// hole, one declaration form at a time.
+    ///
+    /// Shadowing across scopes is still allowed: `insert` looks only at the current scope, so a
+    /// name may be reused inside an inner block.
+    fn declare(&mut self, symbol: Symbol) {
+        let span = symbol.span;
+        let name = symbol.name.clone();
+        if let Err(previous) = self.symbol_table.insert(symbol) {
+            let mut diag = Diagnostic::error(format!(
+                "`{name}` is declared twice in this scope: once here and once at line {}",
+                previous.span.start.line
+            ))
+            .with_code("E0308")
+            .with_help("rename one of them, or move one into an inner block");
+            diag = diag.with_span(span);
+            self.diagnostics.push(diag);
+        }
+    }
+
     fn collect_declaration(&mut self, item: &Item) {
         match item {
             Item::Function(func) => {
@@ -259,15 +284,25 @@ impl SemanticAnalyzer {
     }
 
     /// Check a block statement
+    /// Check a block in its own scope.
+    ///
+    /// A block is a scope: two `while` loops in one function may each declare `let line`, and a
+    /// name declared inside a block is not visible after it. This used to check the statements
+    /// in the *enclosing* scope, so the first loop's `line` leaked into the second — invisible
+    /// while duplicate declarations were discarded, and a false positive the moment they were
+    /// reported. It was also a real resolution bug: a block's local could shadow a function's
+    /// variable for the rest of the function.
     fn check_block(&mut self, block: &nova_common::Block) {
+        self.symbol_table.enter_scope();
         for stmt in &block.statements {
             self.check_statement(stmt);
         }
-        
+
         // Check final expression (tail expr)
         if let Some(expr) = &block.final_expr {
             self.check_expr(expr);
         }
+        if let Some(_) = self.symbol_table.exit_scope() {}
     }
 
     /// Check a statement
@@ -457,13 +492,9 @@ impl SemanticAnalyzer {
             }
             nova_common::Expr::For(pattern, iterable, body) => {
                 self.check_expr(iterable);
-                // Add loop variable to scope
-                if let nova_common::Pattern::Identifier(ident_name) = pattern {
-                    let symbol = Symbol::new(ident_name.clone(), SymbolKind::Variable, nova_common::Span::default());
-                    let _ = self.symbol_table.insert(symbol);
-                }
-                
-                // Enter a new scope for the loop variable
+                // Enter the loop's scope *first*: the loop variable belongs to the loop, and
+                // declaring it outside put one `j` per loop into the function's scope, so a
+                // second loop collided with the first.
                 self.symbol_table.enter_scope();
                 
                 // Add loop variable(s) to symbol table
@@ -863,16 +894,10 @@ impl SemanticAnalyzer {
         
         // Check each method in the impl block
         for method in &impl_block.methods {
-            // Add 'self' parameter to scope for instance methods
-            if !method.params.is_empty() && method.params[0].name == "self" {
-                // Create a symbol for self with the type being implemented
-                let self_symbol = Symbol::new(
-                    "self".to_string(),
-                    SymbolKind::Variable,
-                    method.params[0].span,
-                );
-                let _ = self.symbol_table.insert(self_symbol);
-            }
+            // `self` is a parameter, and `check_function` declares every parameter inside the
+            // method's own scope. Declaring it here as well put one `self` per method into the
+            // *impl block's* scope, so a second method collided with the first — invisible
+            // while duplicates were discarded, and a false positive the moment they were not.
             
             // Check the method body
             self.check_function(method);
@@ -1140,6 +1165,21 @@ fn span_of(expr: &nova_common::Expr) -> Option<Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_block_is_a_scope() {
+        // Two loops in one function may each declare `line`: a block is a scope. This used to
+        // check block statements in the *enclosing* scope, so the first loop's `line` leaked
+        // into the second. Found because the standard library does exactly this.
+        let analyzer = analyze(
+            "fn f() -> int {\n             let mut i = 0;\n             while i < 2 { let line = i; i = i + 1; }\n             while i < 4 { let line = i; i = i + 1; }\n             0\n             }\n             fn main() -> int { f() }",
+        );
+        assert!(
+            analyzer.diagnostics.is_empty(),
+            "each loop body is its own scope: {:?}",
+            analyzer.diagnostics.iter().map(|d| d.message.clone()).collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn a_duplicate_function_definition_is_rejected() {
