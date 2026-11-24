@@ -110,8 +110,13 @@ warning one line later, which is how a rule gets turned off. Arrays and structs 
 yet — calling `clone` on one is a type error rather than a shallow copy that shares the buffer the
 rule exists to protect.
 
-One gap remains, recorded in `docs/errors.md`: a call inside an assignment (`x = f(y)`) does not
-mark `y` moved.
+**The assignment gap is closed.** `x = f(y)` and `other = greeting` now mark the value moved,
+the same way a call argument does — so the rule is as wide as its own description. Re-measured
+after closing it: still **3 shown, 25 suppressed** over the corpus, because the corpus assigns
+strings nowhere.
+
+Nothing in the rule is knowingly narrower than its statement now, which is the condition step 5
+was waiting for.
 
 **The original blocker, kept because it explains the design:** The rule is "passing a non-`Copy` value
 moves it", which needs each binding's type. `check_statement` declares every `let` with

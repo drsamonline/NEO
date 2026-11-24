@@ -73,8 +73,8 @@ A **warning**, not an error. A value that is not `Copy` was passed to a function
 again.
 
 ```text
-prog.nova:10:19: warning [E0010]: `greeting` was moved when it was passed to a function,
-and is used again here
+prog.nova:10:19: warning [E0010]: `greeting` was moved earlier in this function, and is used again
+here
   help: clone it before passing it, or pass it last
 ```
 
@@ -100,7 +100,9 @@ a clone that moved its argument would make the advice produce the same warning o
 Arrays and structs are not cloneable yet; calling `clone` on one is a type error rather than a
 shallow copy that shares the buffer the rule exists to protect.
 
-One known gap remains: a call inside an assignment (`x = f(y)`) does not mark `y` moved.
+**Assignment moves too.** `other = greeting` gives `greeting` away, exactly as passing it does.
+The gap this section used to record — `x = f(y)` moving nothing — is closed: the value of an
+assignment is marked the same way a call argument is.
 
 ## E0061 — wrong number of arguments
 
