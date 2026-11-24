@@ -1,4 +1,4 @@
-70.23
+70.64
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -146,3 +146,6 @@
 # 70.23% (9,975 of 14,203) when `attach` and `connect_remote` started refusing. Two tests cover the
 # refusals, and the success paths they replaced were never covered anyway — dead code that
 # pretended to work is invisible to a coverage report too.
+# 70.64% (10,129 of 14,339) when `run` started executing real programs and the four invented
+# locations became refusals. It rose 0.41: the fabricated branches were never covered either,
+# because no test could reach a line number that only existed in the source of the debugger.
