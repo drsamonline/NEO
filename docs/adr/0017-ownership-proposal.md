@@ -80,6 +80,29 @@ The reasoning, unchanged from the proposal:
 parity programs are the specification's test of what NOVA means, and both options require
 rewriting them.
 
+## Progress — 2026-11-24
+
+**Step 1 is done and tested.** `SemanticAnalyzer::is_copy` classifies a `nova_common::Type`:
+scalars, references and pointers are `Copy`; arrays, functions, structs and enums are not; a tuple
+is `Copy` when all its elements are; an unknown type counts as `Copy`, because a missed warning is
+cheaper than noise that teaches people to ignore warnings.
+
+**Step 2 is blocked, and the blocker is worth recording.** The rule is "passing a non-`Copy` value
+moves it", which needs each binding's type. `check_statement` declares every `let` with
+`Symbol::new(name, Variable, span)` — **no type** — so `symbol.typ` is `None` for every binding and
+the classification can never say "non-`Copy`". Measured: a program that passes a `String` and then
+prints it produced no warning, and instrumentation showed the lookup returning `None`.
+
+So step 2 needs a smaller prerequisite first: **`let` must record the type of its initialiser.**
+That is inference, which this analyser does not do — types are strings here, and the lowerer does
+its own inference later. Until it lands, a move warning would be dead code that never fires, which
+is worse than no warning.
+
+**A real bug fell out of trying.** Warnings were never printed on a successful analysis: the
+diagnostics loop ran only inside `if analyzer.analyze(..).is_err()`. Any warning this compiler ever
+emitted on a working program was invisible. Fixed — and it is the reason the measurement above
+could be made at all.
+
 ## What the sweep would touch — measured, 2026-11-24
 
 The cost of option C is not the number of functions but the number of **call sites** that pass a
