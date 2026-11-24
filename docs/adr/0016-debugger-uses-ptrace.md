@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-11-24
-- **Related:** [0013](0013-file-handles-are-handles.md), [DEV_PLAN](../../DEV_PLAN.md), `dbg/src/target.rs`
+- **Related:** [0013](0013-streams-are-file-handles.md), [DEV_PLAN](../../DEV_PLAN.md), `dbg/src/target.rs`
 
 ## Context
 

@@ -49,6 +49,7 @@ about a decision are about a reading of it that nobody chose.
 | [0013](0013-streams-are-file-handles.md) | A `Stream` is a file handle with a label; no separate runtime | accepted |
 | [0014](0014-serialize-is-json.md) | `serialize` writes JSON, and rejects types it cannot write honestly | accepted |
 | [0015](0015-generic-return-type-inference.md) | A generic used only in its return type takes `T` from the binding | accepted |
+| [0016](0016-debugger-uses-ptrace.md) | The debugger attaches with `ptrace`, and `unsafe` lives in one file | accepted |
 
 ## Writing one
 
