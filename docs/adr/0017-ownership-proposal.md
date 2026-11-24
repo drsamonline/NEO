@@ -155,7 +155,9 @@ So step 5 is **blocked on the standard library complying**, and the order is:
    `[String]` at compile time because a shallow copy of an array of pointers shares exactly what
    the rule protects. It had to become a builtin: two `fn clone` overloads are a duplicate
    definition, which the check from #140 correctly rejects;
-2. clone for structs — not done; `clone` refuses them;
+2. ~~clone for structs~~ — **done** for a struct whose fields are all scalars, field by field.
+   A struct holding a `String` is refused: copying it would share the string, which is the
+   distinction that made `[String]` refuse in the first place;
 3. fix the library's own sites, counted by running the checker over it with enforcement on;
 4. then enforce.
 

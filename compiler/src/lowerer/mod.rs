@@ -2396,6 +2396,58 @@ impl Lowerer {
                                 .unwrap_or_else(|| "int".to_string());
                             let bare = argument_type.trim();
                             let lowered_argument = self.lower_expr(arg);
+                            // A struct is cloned field by field, and only when every field is
+                            // `Copy`: a copy of a struct holding a `String` would share the
+                            // string, which is the thing this exists to prevent.
+                            if let Some(fields) = self.struct_field_order.get(bare).cloned() {
+                                let field_types = self
+                                    .struct_types
+                                    .get(bare)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                let all_copy = fields.iter().all(|field| {
+                                    field_types
+                                        .get(field)
+                                        .map(|typ| {
+                                            let typ = typ.trim();
+                                            !(typ == "string"
+                                                || typ.starts_with('[')
+                                                || typ.starts_with("fn("))
+                                        })
+                                        .unwrap_or(false)
+                                });
+                                if all_copy {
+                                    let cloned_fields = fields
+                                        .iter()
+                                        .map(|field| {
+                                            (
+                                                field.clone(),
+                                                SirExpr::FieldAccess {
+                                                    object: Box::new(lowered_argument.clone()),
+                                                    field: field.clone(),
+                                                    struct_type: bare.to_string(),
+                                                },
+                                            )
+                                        })
+                                        .collect();
+                                    return SirExpr::Typed {
+                                        expr: Box::new(SirExpr::StructLiteral {
+                                            name: bare.to_string(),
+                                            fields: cloned_fields,
+                                        }),
+                                        typ: bare.to_string(),
+                                    };
+                                }
+                                return SirExpr::Typed {
+                                    expr: Box::new(SirExpr::Call {
+                                        callee: "nova_unsupported".to_string(),
+                                        args: vec![SirExpr::Literal(SirLiteral::String(format!(
+                                            "clone of `{bare}` (a field is not Copy)"
+                                        )))],
+                                    }),
+                                    typ: bare.to_string(),
+                                };
+                            }
                             let (runtime, result_type) = match bare {
                                 "string" => ("nova_strdup", "string"),
                                 "[int]" => ("nova_array_clone", "[int]"),

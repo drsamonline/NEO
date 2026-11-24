@@ -38,14 +38,14 @@ Recursive descent parser building AST:
 
 ---
 
-### 3. Semantic Analyzer (2,086 lines) ✅
+### 3. Semantic Analyzer (2,097 lines) ✅
 **Location**: `compiler/src/sema/`
 
 Type checking and name resolution:
 - **checker.rs** (176 lines): Type system enforcement
 - **resolver.rs** (130 lines): Name/scope resolution
 - **types.rs** (99 lines): Type definitions
-- **mod.rs** (1,681 lines): Main analyzer logic
+- **mod.rs** (1,692 lines): Main analyzer logic
 
 Performs:
 - Symbol table construction
@@ -72,7 +72,7 @@ Language-agnostic intermediate representation:
 
 ---
 
-### 5. Lowerer (5,035 lines) ✅
+### 5. Lowerer (5,087 lines) ✅
 **Location**: `compiler/src/lowerer/mod.rs`
 
 Converts AST to SIR:

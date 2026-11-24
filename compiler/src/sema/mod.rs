@@ -777,16 +777,27 @@ impl SemanticAnalyzer {
                         Type::String => true,
                         // A `[int]` copies its buffer; a `[String]` would share the strings.
                         Type::Array(element) => matches!(element.as_ref(), Type::Int),
+                        // A struct copies field by field, and only when every field is `Copy`:
+                        // a copy of a struct holding a `String` would share the string.
+                        Type::Struct(name) => self
+                            .struct_fields
+                            .get(name)
+                            .map(|fields| fields.values().all(Self::is_copy))
+                            .unwrap_or(false),
                         _ => false,
                     })
                     .unwrap_or(true);
                 if !cloneable {
                     let mut diag = Diagnostic::error(
-                        "`clone` is implemented for `String` and `[int]` only: copying an array \
-                         of `String` would share the strings rather than copy them",
+                        "`clone` cannot copy this type: a copy would share what the move rule \
+                         protects",
                     )
                     .with_code("E0308")
-                    .with_help("copy the elements yourself, or restructure so the value is not reused");
+                    .with_help(
+                        "`clone` copies a `String`, a `[int]`, and a struct whose fields are all \
+                         scalars. Anything holding a `String`, an array or a closure would share \
+                         it — copy the parts yourself, or restructure so the value is not reused",
+                    );
                     if let Some(span) = call_span.or(self.current_span) {
                         diag = diag.with_span(span);
                     }
