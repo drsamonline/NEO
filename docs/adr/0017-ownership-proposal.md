@@ -78,6 +78,41 @@ If a decision is wanted now, the recommended pair is **C then D**, in that order
 parity programs are the specification's test of what NOVA means, and both options require
 rewriting them.
 
+## What the sweep would touch — measured, 2026-11-24
+
+The cost of option C is not the number of functions but the number of **call sites** that pass a
+value and then reuse it. The surface is measurable:
+
+| Module | Functions | taking a `String` | taking an array |
+|---|---|---|---|
+| `core` | 55 | 12 | 16 |
+| `io` | 59 | 41 | 6 |
+| `math` | 76 | 0 | 7 |
+| `text` | 59 | 59 | 3 |
+| **total** | 249 | **112** | **32** |
+
+**The number that matters cannot be counted from the source.** A call site is a problem only when
+the caller uses the value again afterwards, and deciding that is the checker's job. Any estimate
+of "how many places will break" made by reading is a guess, and this repository has spent a
+session replacing those with measurements.
+
+That gives the plan its shape: **build the check before enforcing it.**
+
+## Implementation plan, if C is accepted
+
+1. **A `Copy` bit per type.** Scalars are `Copy`; `String`, arrays, structs and closures are not.
+   It belongs in the type representation, next to the arity and the element type.
+2. **The rule, in warn mode.** Assigning or passing a non-`Copy` value marks it moved; using it
+   afterwards is a diagnostic. Emitted as a warning first, with a code, so the sweep is countable
+   rather than estimated.
+3. **Measure.** Run it over `stdlib/`, `examples/` and `tests/parity/`. The count of warnings is
+   the real cost, and it is the number to put in this ADR before anyone commits to step 4.
+4. **A `clone` builtin**, so every warning has an answer that is not "restructure".
+5. **Enforce**, and write chapter 10 against what the checker does — not before.
+
+Steps 1–2 are the whole risk. If the warning count from step 3 is large, the honest outcome is to
+stop at step 3 and record the number here, which is a better result than a half-enforced rule.
+
 ## Consequences
 
 **If C is adopted:** chapter 10 can be written and chapter 11 rewritten — the leak story stays,
