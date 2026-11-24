@@ -243,20 +243,35 @@ pub fn spawn_traced(path: &str, args: &[String]) -> Result<u32, DebuggerError> {
 /// function is resolved with `nm`. NOVA mangles its own functions as `nova_fn_<name>` (see the
 /// naming note in the lowerer), and `main` stays `main`, so both spellings are tried.
 pub fn resolve_function(binary: &str, name: &str) -> Result<u64, DebuggerError> {
+    resolve_function_in(binary, name, None)
+}
+
+/// As `resolve_function`, with the load base applied for a position-independent binary.
+pub fn resolve_function_in(
+    binary: &str,
+    name: &str,
+    pid: Option<u32>,
+) -> Result<u64, DebuggerError> {
     // A position-independent executable loads at an address the loader chooses, so a symbol
     // value from `nm` is an offset and not an address. Writing `int3` at an offset would
     // corrupt whatever happens to live there — so this refuses rather than guessing a base.
     // NOVA's own builds are non-PIE (`ELF ... executable`), which is why the simple case works.
-    match elf_type(binary)? {
-        3 => {
-            return Err(DebuggerError::Target(format!(
-                "{binary} is position-independent: its symbol addresses are offsets, not \
-                 addresses. Resolving them needs the load base from /proc/<pid>/maps, which is \
-                 not implemented — and writing a breakpoint at an offset would corrupt memory"
-            )))
-        }
-        _ => {}
-    }
+    // A PIE's symbols are offsets from a load base the kernel chose, so the base has to be
+    // added — and it can only be read from a running process. Without a process there is no
+    // base, and writing at an offset would corrupt whatever lives there.
+    let bias = match elf_type(binary)? {
+        3 => match pid {
+            Some(pid) => load_bias(pid, binary)?,
+            None => {
+                return Err(DebuggerError::Target(format!(
+                    "{binary} is position-independent, so its symbols are offsets from a load \
+                     base the kernel chooses. Start the program first — `run`, then `break` — \
+                     and the base can be read from /proc/<pid>/maps"
+                )))
+            }
+        },
+        _ => 0,
+    };
 
     let output = std::process::Command::new("nm")
         .arg(binary)
@@ -284,9 +299,10 @@ pub fn resolve_function(binary: &str, name: &str) -> Result<u64, DebuggerError> 
             continue;
         }
         if wanted.iter().any(|w| w == symbol) {
-            return u64::from_str_radix(address, 16).map_err(|_| {
+            let offset = u64::from_str_radix(address, 16).map_err(|_| {
                 DebuggerError::Target(format!("unreadable symbol address `{address}` for {symbol}"))
-            });
+            })?;
+            return Ok(offset + bias);
         }
     }
     Err(DebuggerError::Target(format!(
@@ -312,6 +328,50 @@ fn elf_type(path: &str) -> Result<u16, DebuggerError> {
         u16::from_le_bytes([header[16], header[17]])
     } else {
         u16::from_be_bytes([header[16], header[17]])
+    })
+}
+
+/// Where a position-independent binary was actually loaded.
+///
+/// A PIE's symbol values are offsets from the load base the kernel chose. `/proc/<pid>/maps`
+/// gives the mappings; the one whose file offset is 0 is the base. Without this, a symbol value
+/// is an offset and writing a breakpoint there corrupts whatever happens to live at it.
+pub fn load_bias(pid: u32, binary: &str) -> Result<u64, DebuggerError> {
+    let maps = std::fs::read_to_string(format!("/proc/{pid}/maps")).map_err(|e| {
+        DebuggerError::Target(format!("cannot read /proc/{pid}/maps: {e}"))
+    })?;
+    let canonical = std::fs::canonicalize(binary)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| binary.to_string());
+    let mut lowest: Option<u64> = None;
+    for line in maps.lines() {
+        // "5615e8776000-5615e8778000 r--p 00000000 00:2a 1714   /usr/bin/head"
+        let mut fields = line.split_whitespace();
+        let (Some(range), Some(_perms), Some(offset)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        let Some(path) = line.split_whitespace().nth(5) else {
+            continue;
+        };
+        if path != canonical && path != binary {
+            continue;
+        }
+        if offset != "00000000" {
+            continue;
+        }
+        let Some((start, _end)) = range.split_once('-') else {
+            continue;
+        };
+        if let Ok(start) = u64::from_str_radix(start, 16) {
+            lowest = Some(lowest.map_or(start, |current: u64| current.min(start)));
+        }
+    }
+    lowest.ok_or_else(|| {
+        DebuggerError::Target(format!(
+            "{binary} is not mapped in process {pid}: it may have exited, or the path differs"
+        ))
     })
 }
 
