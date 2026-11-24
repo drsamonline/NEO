@@ -6,6 +6,7 @@
   },
   "adrs": 15,
   "gates": [
+    "architecture",
     "diagnostic",
     "docs",
     "error-code",

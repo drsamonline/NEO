@@ -10,7 +10,7 @@ Source Code → Lexer → Parser → AST → Semantic Analyzer → SIR → Lower
 
 ## Compilation Pipeline
 
-### 1. Lexer (340 lines) ✅
+### 1. Lexer (371 lines) ✅
 **Location**: `compiler/src/lexer/mod.rs`
 
 Transforms source code into tokens:
@@ -24,7 +24,7 @@ Transforms source code into tokens:
 
 ---
 
-### 2. Parser (1,506 lines) ✅
+### 2. Parser (1,510 lines) ✅
 **Location**: `compiler/src/parser/mod.rs`
 
 Recursive descent parser building AST:
@@ -38,14 +38,14 @@ Recursive descent parser building AST:
 
 ---
 
-### 3. Semantic Analyzer (1,707 lines) ✅
+### 3. Semantic Analyzer (1,766 lines) ✅
 **Location**: `compiler/src/sema/`
 
 Type checking and name resolution:
 - **checker.rs** (176 lines): Type system enforcement
 - **resolver.rs** (130 lines): Name/scope resolution
 - **types.rs** (99 lines): Type definitions
-- **mod.rs** (1,302 lines): Main analyzer logic
+- **mod.rs** (1,361 lines): Main analyzer logic
 
 Performs:
 - Symbol table construction
@@ -59,7 +59,7 @@ Performs:
 ---
 
 ### 4. SIR - Semantic Intermediate Representation (465 lines) ✅
-**Location**: `compiler/src/sir/mod.rs`
+**Location**: `crates/nova-common/src/sir/mod.rs`
 
 Language-agnostic intermediate representation:
 - Control flow instructions
@@ -72,7 +72,7 @@ Language-agnostic intermediate representation:
 
 ---
 
-### 5. Lowerer (3,190 lines) ✅
+### 5. Lowerer (4,940 lines) ✅
 **Location**: `compiler/src/lowerer/mod.rs`
 
 Converts AST to SIR:

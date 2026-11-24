@@ -68,6 +68,11 @@ jobs:
       # which is what makes an empty module worse than a missing one.
       - name: Every declared module has items
         run: python3 tools/module-check.py
+      # Rule 4: numbers come from a command. ARCHITECTURE.md's line counts were typed by hand
+      # and drifted — the Lowerer was 55% out — and one section pointed at a path that had
+      # moved. Both are checked now.
+      - name: ARCHITECTURE.md matches the repository
+        run: python3 tools/architecture-check.py
       # `docs/status.json` is what other repositories read instead of copying our
       # numbers into their prose. Checking it here is what stops it drifting.
       - name: The published status matches the repository
