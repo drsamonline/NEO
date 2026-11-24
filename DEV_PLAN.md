@@ -40,7 +40,7 @@ the code and a CI run, and the run is named where it matters.
 | Standard library | ⚠️ 4 modules, **211 of 249 functions usable** — the other 38 call a builtin the compiler does not implement; `core`, `io` and `math` compile, and **`math`'s float-array functions return wrong answers** (ADR 0006) | `stdlib/README.md`, `tools/stdlib-check.py` |
 | Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry **refuses** rather than mocking; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
-| Debugger | ⚠️ **`run` traces, `break <function>` inserts a real `int3` and reports the `.nova` line**, `step`/`continue` move it (ADR 0016); non-PIE binaries only; `backtrace` and `print` refuse — they need the stack and variables | `dbg` tests |
+| Debugger | ⚠️ **`run` traces, `break <function>` inserts a real `int3` and reports the `.nova` line**, `step`/`continue` move it (ADR 0016); PIE binaries need the program started first, for the load base; `backtrace` and `print` refuse — they need the stack and variables | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
 | Language spec | ❌ 8 of 25 chapters written — overview, lexical grammar, keywords, literals, types, functions, modules, control flow | `docs/language/README.md` |
 | **Test suite** | **199 passing, 0 failing, 0 ignored** | CI run 44117607709, the branch merged as #21 |

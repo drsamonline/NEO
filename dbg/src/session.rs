@@ -365,7 +365,7 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
                 )))
             }
         };
-        let address = crate::target::resolve_function(&binary, location)?;
+        let address = crate::target::resolve_function_in(&binary, location, self.traced_pid)?;
 
         // With a traced process, the `int3` goes in now. Without one, the address is recorded
         // and the program is not running yet, so there is nothing to patch.
@@ -966,6 +966,31 @@ mod tests {
     }
 
     #[test]
+    fn test_the_load_bias_of_a_running_position_independent_binary() {
+        // `/usr/bin/sleep` is a PIE on every distribution that ships it, so its mappings show
+        // the base the kernel chose. The bias must be a real mapped address, and it must be
+        // where the binary's own first mapping starts.
+        let mut child = match std::process::Command::new("sleep").arg("30").spawn() {
+            Ok(child) => child,
+            Err(_) => {
+                eprintln!("skipping: no `sleep` to inspect");
+                return;
+            }
+        };
+        let pid = child.id();
+        match crate::target::load_bias(pid, "/usr/bin/sleep") {
+            Ok(bias) => {
+                assert!(bias > 0, "a loaded binary has a non-zero base: {bias:#x}");
+                // The base is a mapped address, so it is page-aligned.
+                assert_eq!(bias % 4096, 0, "a mapping start is page-aligned: {bias:#x}");
+            }
+            Err(e) => eprintln!("skipping: cannot read maps here ({e})"),
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
     fn test_a_position_independent_binary_is_refused() {
         // A PIE's symbol values are offsets, not addresses: writing `int3` at one would corrupt
         // whatever lives there. The Rust test binary is a PIE, so it is the case to hand.
@@ -974,7 +999,8 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("position-independent"), "{error}");
-        assert!(error.contains("corrupt memory"), "the reason must say what goes wrong: {error}");
+        // The refusal must say what to do instead, not only that it cannot.
+        assert!(error.contains("Start the program first"), "{error}");
     }
 
     #[test]
