@@ -31,6 +31,18 @@ pub struct CBackend {
     /// Written at the top of `main`, in declaration order, so the file-scope
     /// declaration stays a valid zero-initialised tentative definition.
     deferred_global_inits: Vec<String>,
+    /// The NOVA source file this program came from, for `#line`. `None` when the
+    /// caller did not say, in which case no directives are emitted — a directive
+    /// naming the wrong file is worse than none.
+    source_name: Option<String>,
+    /// How many lines the named source has. A statement lowered from an imported module
+    /// carries a line from *that* file, and attributing it to the main one would send a
+    /// debugger to a line that does not exist — measured: a 12-line program emitted
+    /// `#line 387`. Anything past the end is not from this file.
+    source_lines: usize,
+    /// The line the last `#line` directive named, so consecutive statements on one
+    /// line emit one directive instead of one each.
+    last_line: Option<usize>,
 }
 
 impl CBackend {
@@ -44,11 +56,29 @@ impl CBackend {
             hoisted: RefCell::new(Vec::new()),
             block_counter: Rc::new(Cell::new(0)),
             deferred_global_inits: Vec::new(),
+            source_name: None,
+            source_lines: 0,
+            last_line: None,
         }
     }
 
     /// Generate C code from a SIR program
     pub fn generate(&mut self, program: &SirProgram) -> String {
+        self.generate_with_source(program, None)
+    }
+
+    /// Generate with the source file named, so statements carry `#line` directives.
+    ///
+    /// The host C compiler turns those into a `.debug_line` section, which is what lets a
+    /// debugger show NOVA line numbers without this repository writing a DWARF emitter.
+    pub fn generate_with_source(
+        &mut self,
+        program: &SirProgram,
+        source: Option<(&str, usize)>,
+    ) -> String {
+        self.source_name = source.map(|(name, _)| name.to_string());
+        self.source_lines = source.map(|(_, lines)| lines).unwrap_or(0);
+        self.last_line = None;
         self.output.clear();
         self.deferred_global_inits.clear();
         self.struct_names = program.structs.iter().map(|s| s.name.clone()).collect();
@@ -623,10 +653,38 @@ impl CBackend {
         self.hoisted.replace(saved_hoisted);
     }
 
+    /// Emit `#line N "source"` when the line changes.
+    ///
+    /// The host C compiler reads these and writes a `.debug_line` section, so a debugger shows
+    /// NOVA lines without this repository parsing or emitting DWARF. Only the line matters: a
+    /// line table maps instructions to lines, and columns are not used by any debugger here.
+    fn write_line_directive(&mut self, span: &nova_common::Span) {
+        let Some(source) = self.source_name.clone() else {
+            return;
+        };
+        let line = span.start.line;
+        // A zero line means the span was never filled in. `#line 0` is not valid and a
+        // debugger would report it as a location, so it is skipped rather than emitted.
+        if line == 0 || line > self.source_lines || self.last_line == Some(line) {
+            return;
+        }
+        self.last_line = Some(line);
+        // Escaped because a Windows path would otherwise end the string early.
+        let escaped = source.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = writeln!(self.output, "#line {line} \"{escaped}\"");
+    }
+
     fn write_statement_inner(&mut self, stmt: &SirStatement, indent: usize) {
         let indent_str = "    ".repeat(indent);
         
         match stmt {
+            // The only place a span is read. A walker that does not care says
+            // `stmt.peel()`; the C backend wants the line, because `#line` is what makes the
+            // host compiler write a line table for this statement.
+            SirStatement::Spanned(inner, span) => {
+                self.write_line_directive(span);
+                self.write_statement_inner(inner, indent);
+            }
             SirStatement::Let { name, typ, value } => {
                 let typ_str = typ
                     .as_ref()

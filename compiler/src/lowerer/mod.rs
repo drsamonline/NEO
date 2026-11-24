@@ -2068,11 +2068,36 @@ impl Lowerer {
         statements
     }
 
+    /// The source span of a statement, for the `#line` directive.
+    ///
+    /// `Statement` itself carries no span; each of its three shapes does.
+    fn statement_span(stmt: &Statement) -> Option<nova_common::Span> {
+        use nova_common::ast::AstNode;
+        match stmt {
+            Statement::Let(let_stmt) => Some(let_stmt.span.clone()),
+            Statement::Expr(expr) => Some(expr.span()),
+            Statement::Item(item) => Some(item.span()),
+        }
+    }
+
     fn lower_block(&mut self, block: &nova_common::Block) -> Vec<SirStatement> {
         self.push_scope();
         let mut stmts = Vec::new();
         for stmt in &block.statements {
-            stmts.extend(self.lower_statement(stmt));
+            // Each lowered statement carries the span of the source statement it came from,
+            // which is what the C backend turns into a `#line` directive. Wrapping here, at
+            // the place a block's statements are lowered, leaves the other hundred
+            // construction sites unchanged.
+            let span = Self::statement_span(stmt);
+            let lowered = self.lower_statement(stmt);
+            match span {
+                Some(span) => stmts.extend(
+                    lowered
+                        .into_iter()
+                        .map(|sir| SirStatement::Spanned(Box::new(sir), span.clone())),
+                ),
+                None => stmts.extend(lowered),
+            }
         }
         if let Some(final_expr) = &block.final_expr {
             // Handle control flow in final expression
@@ -2852,7 +2877,20 @@ impl Lowerer {
     fn lower_block_as_expr(&mut self, block: &nova_common::Block) -> SirExpr {
         let mut stmts = Vec::new();
         for stmt in &block.statements {
-            stmts.extend(self.lower_statement(stmt));
+            // Each lowered statement carries the span of the source statement it came from,
+            // which is what the C backend turns into a `#line` directive. Wrapping here, at
+            // the place a block's statements are lowered, leaves the other hundred
+            // construction sites unchanged.
+            let span = Self::statement_span(stmt);
+            let lowered = self.lower_statement(stmt);
+            match span {
+                Some(span) => stmts.extend(
+                    lowered
+                        .into_iter()
+                        .map(|sir| SirStatement::Spanned(Box::new(sir), span.clone())),
+                ),
+                None => stmts.extend(lowered),
+            }
         }
         let final_expr = block.final_expr.as_ref().map(|e| Box::new(self.lower_expr(e)));
         SirExpr::Block(stmts, final_expr)
@@ -4207,7 +4245,20 @@ mod tests {
         assert!(!diagnostics.has_errors(), "unexpected lexer errors");
         let program = Parser::new(tokens).parse().expect("program should parse");
         let mut lowerer = Lowerer::new();
-        lowerer.lower_program(&program)
+        let mut lowered = lowerer.lower_program(&program);
+        // Every statement now carries the span it came from, so the C backend can emit
+        // `#line`. These tests assert the statement *shapes*, so they look through the
+        // wrapper the way every backend walker does with `peel()`.
+        for function in &mut lowered.functions {
+            function.body = std::mem::take(&mut function.body)
+                .into_iter()
+                .map(|statement| match statement {
+                    SirStatement::Spanned(inner, _) => *inner,
+                    other => other,
+                })
+                .collect();
+        }
+        lowered
     }
 
     fn print_arg(program: &SirProgram, index: usize) -> &SirExpr {

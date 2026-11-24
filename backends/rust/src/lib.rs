@@ -247,7 +247,8 @@ impl RustBackend {
     }
 
     fn generate_statement(&mut self, stmt: &SirStatement) {
-        match stmt {
+        match stmt.peel() {
+            SirStatement::Spanned(inner, _) => self.generate_statement(inner),
             SirStatement::Let { name, typ, value } => {
                 // A tuple literal carries its generated struct name even when
                 // the binding's inferred NOVA type is not recorded.
@@ -492,7 +493,8 @@ impl RustBackend {
                 // Blocks in Rust are expressions
                 let mut block_code = "{ ".to_string();
                 for stmt in stmts {
-                    match stmt {
+                    match stmt.peel() {
+                        SirStatement::Spanned(inner, _) => { let _ = inner; }
                         SirStatement::Let { name, typ, value } => {
                             let rust_type = typ.as_ref().map(|t| self.type_to_rust(t)).unwrap_or("i32");
                             block_code.push_str(&format!("let {}: {} = {}; ", name, rust_type, self.expr_to_rust(value)));

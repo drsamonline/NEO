@@ -483,7 +483,14 @@ fn compile_to(input: &Path, target: Target) -> String {
     let mut lowerer = Lowerer::new();
     let sir = lowerer.lower_program(&program);
     match target {
-        Target::C => CBackend::new().generate(&sir),
+        // The C backend is told the source file so it can emit `#line`, which the host
+        // compiler turns into a line table. The other backends have no line mapping yet.
+        Target::C => {
+            let lines = std::fs::read_to_string(&name)
+                .map(|text| text.lines().count())
+                .unwrap_or(0);
+            CBackend::new().generate_with_source(&sir, Some((&name, lines)))
+        }
         Target::JavaScript => JsBackend::new().generate(&sir),
         Target::Rust => RustBackend::new().generate(&sir),
         Target::WebAssembly => {

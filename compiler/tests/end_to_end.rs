@@ -547,6 +547,58 @@ fn main() -> int {
     );
 }
 
+/// The emitted C carries `#line` directives naming the NOVA source.
+///
+/// The host C compiler turns those into a `.debug_line` section, which is what lets a debugger
+/// show NOVA line numbers without this repository writing a DWARF emitter. Two things are
+/// asserted beyond "a directive exists": every line it names **is a line of the file** — a
+/// 12-line program once emitted `#line 387`, attributing a standard-library statement to the
+/// user's file — and the program still runs.
+#[test]
+fn emitted_c_carries_line_directives() {
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let dir = scratch("line_directives");
+    let file = dir.join("line_program.nova");
+    let source = "use core;\n\nfn add(a: int, b: int) -> int {\n    let total = a + b;\n    total\n}\n\nfn main() -> int {\n    let x = add(2, 3);\n    print(x);\n    return 0;\n}\n";
+    fs::write(&file, source).expect("write source");
+    let total_lines = source.lines().count();
+
+    let emitted = Command::new(compiler())
+        .arg("emit")
+        .arg(&file)
+        .arg("-o")
+        .arg(dir.join("out.c"))
+        .output()
+        .expect("run nova-compiler emit");
+    assert!(emitted.status.success(), "{}", String::from_utf8_lossy(&emitted.stderr));
+    let c = fs::read_to_string(dir.join("out.c")).expect("read emitted C");
+
+    let mut named = 0;
+    for line in c.lines() {
+        let Some(rest) = line.strip_prefix("#line ") else {
+            continue;
+        };
+        named += 1;
+        let number: usize = rest
+            .split_whitespace()
+            .next()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("unparseable directive: {line}"));
+        assert!(
+            number >= 1 && number <= total_lines,
+            "`#line {number}` is outside the {total_lines}-line source: {line}"
+        );
+        assert!(
+            rest.contains("line_program.nova"),
+            "the directive must name the source file: {line}"
+        );
+    }
+    assert!(named > 0, "no `#line` directives were emitted:\n{c}");
+}
+
 /// `break` and `continue` inside an `if` inside a loop.
 ///
 /// `break;` parses as `Statement::Expr(Expr::Break)`, and the *expression* form wraps it in
