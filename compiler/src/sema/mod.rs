@@ -132,18 +132,23 @@ impl SemanticAnalyzer {
             }
         }
         for arg in args {
-            let mut inner = arg;
-            while let nova_common::Expr::Spanned(wrapped, _) = inner {
-                inner = wrapped;
-            }
-            if let nova_common::Expr::Identifier(name) = inner {
-                let non_copy = self
-                    .lookup_variable_type(name)
-                    .map(|type_| !Self::is_copy(&type_))
-                    .unwrap_or(false);
-                if non_copy {
-                    self.moved.insert(name.clone());
-                }
+            self.mark_moved_value(arg);
+        }
+    }
+
+    /// Mark one expression as given away, if it is a non-`Copy` name.
+    fn mark_moved_value(&mut self, expr: &nova_common::Expr) {
+        let mut inner = expr;
+        while let nova_common::Expr::Spanned(wrapped, _) = inner {
+            inner = wrapped;
+        }
+        if let nova_common::Expr::Identifier(name) = inner {
+            let non_copy = self
+                .lookup_variable_type(name)
+                .map(|type_| !Self::is_copy(&type_))
+                .unwrap_or(false);
+            if non_copy {
+                self.moved.insert(name.clone());
             }
         }
     }
@@ -641,6 +646,10 @@ impl SemanticAnalyzer {
             nova_common::Expr::Assign(target, value) => {
                 self.check_expr(target);
                 self.check_expr(value);
+                // Assigning a non-`Copy` value gives it away, exactly as passing it does. This
+                // was the gap ADR 0017 recorded: `x = f(y)` moved nothing, so a rule that reads
+                // "using a moved value is a warning" was narrower than it claimed.
+                self.mark_moved_value(value);
             }
             nova_common::Expr::Cast(expr_inner, _type_expr) => {
                 self.check_expr(expr_inner);
@@ -687,10 +696,13 @@ impl SemanticAnalyzer {
         if self.symbol_table.lookup(name).is_some() {
             if self.moved.contains(name) {
                 let mut diag = Diagnostic::warning(format!(
-                    "`{name}` was moved when it was passed to a function, and is used again here"
+                    "`{name}` was moved earlier in this function, and is used again here"
                 ))
                 .with_code("E0010")
-                .with_help("clone it before passing it, or pass it last");
+                .with_help(
+                    "a value is moved when it is passed to a function or assigned to another \
+                     binding; `clone` it first, or move it last",
+                );
                 // A warning with no span cannot be attributed to a file, and an unattributed
                 // warning cannot be filtered out of an imported module — measured: 25 of the
                 // corpus's 28 arrived with no span and were therefore all shown. Falling back to
