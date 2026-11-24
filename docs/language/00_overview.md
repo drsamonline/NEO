@@ -66,8 +66,9 @@ NOVA is pre-release and the gaps are deliberate and documented. The short list:
   the `.nova` line; `step` and `continue` move it; `backtrace` follows the frame-pointer chain;
   `attach <pid>` stops a running process (ADR 0016); `where` symbolizes the real instruction
   pointer; `line <address>` maps any address to a `.nova` file and line; `list` shows the real
-  source. `print` refuses: it needs each variable's type, and only line information is emitted.
-  A frame or stop outside the program's own code is reported as an address with no source line.
+  source. `print 0xADDRESS` reads memory; `print <name>` refuses, because a variable needs its stack
+  offset and type and only line information is emitted. A frame or stop outside the program's
+  own code is reported as an address with no source line.
 
 `DEV_PLAN.md` is the authority for this list. Where it and this page disagree,
 `DEV_PLAN.md` is right and this page is stale.
