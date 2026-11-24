@@ -78,27 +78,54 @@ pub fn attach(pid: u32) -> Result<DebugTarget, DebuggerError> {
         // Check if process exists
         let proc_path = std::path::Path::new("/proc").join(pid.to_string());
         if !proc_path.exists() {
-            return Err(DebuggerError::AttachFailed(
-                format!("Process {} does not exist", pid)
-            ));
+            return Err(DebuggerError::AttachFailed(format!(
+                "process {pid} does not exist. Nothing was attached"
+            )));
         }
         
-        // The process exists — and that is all this can say. Attaching needs `ptrace`, which
-        // stops the process and lets a debugger read its registers and stack. This function
-        // used to check `/proc` and then print "Attached to process N", so a user believed
-        // they were debugging something that was running free: breakpoints would never fire
-        // and a backtrace would describe a program nobody had stopped. A false success is
-        // worse than a refusal, because it is acted on.
         let comm_path = proc_path.join("comm");
         let process_name = std::fs::read_to_string(&comm_path)
             .unwrap_or_else(|_| "unknown".to_string())
             .trim()
             .to_string();
-        Err(DebuggerError::AttachFailed(format!(
-            "process {pid} ({process_name}) exists, but attaching is not implemented: it needs \
-             `ptrace` to stop the process and read its registers, which this debugger does not \
-             do. Nothing was attached"
-        )))
+
+        // SAFETY: `ptrace` is variadic and takes pointers whose meaning depends on the request.
+        // For `PTRACE_ATTACH` both are ignored, so passing null is correct; the kernel only
+        // reads `pid`, and `pid` came from the caller as a `u32`, which is a valid `pid_t`.
+        let attached = unsafe {
+            libc::ptrace(
+                libc::PTRACE_ATTACH,
+                pid as libc::pid_t,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        };
+        if attached == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::AttachFailed(format!(
+                "cannot attach to process {pid} ({process_name}): {error}. Nothing was attached"
+            )));
+        }
+
+        // `PTRACE_ATTACH` sends `SIGSTOP`; the process is not ours to read until that stop is
+        // reaped. Without this wait, a register read races the kernel and returns garbage.
+        let mut status: libc::c_int = 0;
+        // SAFETY: `waitpid` writes one `c_int` through the pointer, which points at a live
+        // local of exactly that type, and `pid` is a valid `pid_t`.
+        let waited = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, 0) };
+        if waited == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::AttachFailed(format!(
+                "attached to {pid} but could not wait for it to stop: {error}"
+            )));
+        }
+        if !libc::WIFSTOPPED(status) {
+            return Err(DebuggerError::AttachFailed(format!(
+                "process {pid} did not stop after attach (status {status})"
+            )));
+        }
+
+        Ok(DebugTarget::Attached { pid, process_name })
     }
     
     #[cfg(windows)]
@@ -108,6 +135,74 @@ pub fn attach(pid: u32) -> Result<DebugTarget, DebuggerError> {
             "process {pid}: attaching is not implemented on Windows in this debugger; \
              nothing was attached"
         )))
+    }
+}
+
+/// Detach from a process this debugger attached to, letting it run again.
+pub fn detach(pid: u32) -> Result<(), DebuggerError> {
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: as in `attach`, `PTRACE_DETACH` ignores both pointers; `pid` is the process
+        // this debugger attached to, and detaching a process it did not attach to fails with
+        // `EPERM` rather than doing something undefined.
+        let detached = unsafe {
+            libc::ptrace(
+                libc::PTRACE_DETACH,
+                pid as libc::pid_t,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        };
+        if detached == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::Target(format!(
+                "cannot detach from {pid}: {error}"
+            )));
+        }
+        return Ok(());
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        Err(DebuggerError::Target(
+            "detaching is implemented on Linux only".to_string(),
+        ))
+    }
+}
+
+/// The instruction pointer of a stopped process — where it is right now.
+///
+/// x86-64 only. A stopped process's `rip` is the address of the instruction it will execute
+/// next, which is exactly what `addr2line` needs to name a source line.
+pub fn instruction_pointer(pid: u32) -> Result<u64, DebuggerError> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        // SAFETY: `user_regs_struct` is plain data; zeroing it is a valid initial value and
+        // `PTRACE_GETREGS` overwrites it. The pointer is to a live local of the exact type the
+        // kernel writes, and `pid` is a process this debugger attached to.
+        let mut registers: libc::user_regs_struct = unsafe { std::mem::zeroed() };
+        let read = unsafe {
+            libc::ptrace(
+                libc::PTRACE_GETREGS,
+                pid as libc::pid_t,
+                std::ptr::null_mut::<libc::c_void>(),
+                &mut registers as *mut libc::user_regs_struct as *mut libc::c_void,
+            )
+        };
+        if read == -1 {
+            let error = std::io::Error::last_os_error();
+            return Err(DebuggerError::Target(format!(
+                "cannot read registers of {pid}: {error}. Is it attached and stopped?"
+            )));
+        }
+        Ok(registers.rip)
+    }
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    {
+        let _ = pid;
+        Err(DebuggerError::Target(
+            "reading the instruction pointer is implemented for x86-64 Linux only".to_string(),
+        ))
     }
 }
 

@@ -3,6 +3,12 @@
 //! Interactive debugger for NOVA programs with support for breakpoints,
 //! step execution, variable inspection, and call stack navigation.
 
+// `unsafe` is confined to `target`, where `ptrace` is called, and this attribute is what keeps
+// it there: a future `unsafe` block anywhere else fails the build rather than arriving in
+// review. See docs/adr/0016-debugger-uses-ptrace.md.
+#![deny(unsafe_code)]
+
+#[allow(unsafe_code)]
 mod target;
 mod commands;
 mod session;
