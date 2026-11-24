@@ -620,6 +620,11 @@ fn build(input: &Path, output: Option<&Path>) -> PathBuf {
     // so a NOVA build produces debug info by default — the cost is binary size, and the
     // alternative is a debugger that cannot work on any program the compiler produced.
     link.arg("-g");
+    // A frame pointer in every frame, so a debugger can walk the stack at all. Without it the
+    // compiler is free to use `rbp` as a general register and a backtrace has nothing to follow
+    // — the same reason `gdb` recommends this flag. The cost is one register and a few
+    // instructions per call; the alternative is a `backtrace` that refuses on every program.
+    link.arg("-fno-omit-frame-pointer");
     link.arg(&c_path).arg(&runtime_c).arg("-o").arg(&binary);
     // The runtime shim calls `sqrt`, `sin` and friends, which live in libm on every
     // Unix. macOS folds them into libSystem and ignores `-lm`; MSVC has no `-lm` and

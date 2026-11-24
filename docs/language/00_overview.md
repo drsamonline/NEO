@@ -61,13 +61,13 @@ NOVA is pre-release and the gaps are deliberate and documented. The short list:
   channels; the language does not expose them.
 - **The package registry is not implemented.** Dependencies are recorded in a
   manifest and not built; every command that would reach the registry refuses.
-- **The debugger runs, breaks, steps and inspects.** `run` starts the program under `ptrace`;
-  `break <function>` resolves the symbol and writes an `int3`, and a hit reports the `.nova`
-  line; `step` and `continue` move it; `attach <pid>` stops a running process (ADR 0016);
-  `where` symbolizes the real instruction pointer; `line <address>` maps any address to a
-  `.nova` file and line; `list` shows the real source. `backtrace` and `print` refuse: both
-  need the stack and the variables. A stop outside the program's own code is reported as an
-  address with no source line rather than as an error.
+- **The debugger runs, breaks, steps, inspects and walks the stack.** `run` starts the program
+  under `ptrace`; `break <function>` resolves the symbol and writes an `int3`, and a hit reports
+  the `.nova` line; `step` and `continue` move it; `backtrace` follows the frame-pointer chain;
+  `attach <pid>` stops a running process (ADR 0016); `where` symbolizes the real instruction
+  pointer; `line <address>` maps any address to a `.nova` file and line; `list` shows the real
+  source. `print` refuses: it needs each variable's type, and only line information is emitted.
+  A frame or stop outside the program's own code is reported as an address with no source line.
 
 `DEV_PLAN.md` is the authority for this list. Where it and this page disagree,
 `DEV_PLAN.md` is right and this page is stale.

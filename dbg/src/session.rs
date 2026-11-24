@@ -501,19 +501,68 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
         Ok(format!("{function}\n{location}"))
     }
 
-    /// Get backtrace
+    /// The call stack, walked through frame pointers.
+    ///
+    /// x86-64 frame layout: `[rbp]` is the caller's `rbp` and `[rbp+8]` is the return address,
+    /// so following the chain from the current frame reaches every caller. This works because
+    /// the compiler is told to keep a frame pointer (`-fno-omit-frame-pointer`); without it the
+    /// chain does not exist and this refuses rather than inventing frames.
     pub fn backtrace(&self) -> Result<Vec<StackFrame>, DebuggerError> {
-        // Refused rather than invented. This returned three fabricated frames — a function
-        // called `current_function` at `main.nova:10` — and the REPL printed them as though
-        // they were the program's stack. A user debugging a real fault would have been given
-        // a fiction that looked exactly like an answer.
-        Err(DebuggerError::Target(
-            "backtrace is not available: the debugger does not read the binary's line table \
-             yet. Compiled programs do carry one — the C backend emits `#line` and the build \
-             passes `-g` — so the missing half is here, not in the compiler \
-             (see DEV_PLAN.md, 'DWARF debugger')"
-                .to_string(),
-        ))
+        let pid = match &self.target {
+            DebugTarget::Attached { pid, .. } => Some(*pid),
+            _ => self.traced_pid,
+        };
+        let Some(pid) = pid else {
+            return Err(DebuggerError::Target(
+                "no stack to walk: nothing is running or stopped. `run` a program, or \
+                 `attach <pid>`"
+                    .to_string(),
+            ));
+        };
+
+        let mut frames = Vec::new();
+        let mut frame_pointer = crate::target::frame_pointer(pid)?;
+        let mut address = crate::target::instruction_pointer(pid)?;
+
+        // A bound, because a corrupt or absent chain would otherwise walk for ever. Thirty-two
+        // frames is deeper than any NOVA program here has been observed to nest.
+        for index in 0..32usize {
+            let (function, file, line) = match self.symbolize(&format!("0x{address:x}")) {
+                Ok(symbolized) => {
+                    let mut lines = symbolized.lines();
+                    let function = lines.next().unwrap_or("??").to_string();
+                    let location = lines.next().unwrap_or("??:0");
+                    let (file, line) = location
+                        .rsplit_once(':')
+                        .map(|(file, line)| (Some(file.to_string()), line.parse().ok()))
+                        .unwrap_or((None, None));
+                    (function, file, line)
+                }
+                // A frame in the loader or libc has no NOVA line. It is still a frame.
+                Err(_) => (format!("0x{address:x}"), None, None),
+            };
+            frames.push(StackFrame {
+                index,
+                function,
+                file,
+                line,
+                address,
+            });
+
+            // The chain ends at a zero frame pointer, or where the stack stops being readable.
+            let Ok(next) = crate::target::read_word(pid, frame_pointer) else {
+                break;
+            };
+            let Ok(return_address) = crate::target::read_word(pid, frame_pointer + 8) else {
+                break;
+            };
+            if next == 0 || return_address == 0 {
+                break;
+            }
+            frame_pointer = next;
+            address = return_address;
+        }
+        Ok(frames)
     }
     
     /// Evaluate expression
@@ -1004,19 +1053,18 @@ mod tests {
     }
 
     #[test]
-    fn test_backtrace() {
+    fn test_backtrace_refuses_without_a_process() {
+        // It once answered three fabricated frames — `current_function`, `caller_function`,
+        // `main` at `main.nova:10` — and the test asserted their contents, which is how a mock
+        // becomes a contract. It walks a real chain now; with no process there is no chain, and
+        // the refusal says where to get one.
         let target = DebugTarget::Binary {
             path: "/tmp/test".to_string(),
             symbols_loaded: false,
         };
         let session = DebugSession::new(target).unwrap();
-        
-        // The frames used to be fabricated, and this test asserted their contents — which
-        // is how a mock becomes a contract. It now asserts the refusal.
         let error = session.backtrace().unwrap_err().to_string();
-        assert!(
-            error.contains("does not read the binary's line table"),
-            "the refusal must say where the gap is: {error}"
-        );
+        assert!(error.contains("no stack to walk"), "{error}");
+        assert!(error.contains("run") || error.contains("attach"), "{error}");
     }
 }
