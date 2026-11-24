@@ -1,4 +1,4 @@
-69.60
+69.28
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -163,3 +163,8 @@
 # 69.60% (10,270 of 14,755) when PIE load bases landed. A FALL of 0.02, lowered in the same PR as
 # the rule requires. `load_bias` is exercised against a real `/usr/bin/sleep`, but its two error
 # paths — no such mapping, unreadable maps — need a process that has exited mid-read.
+# 69.28% (10,272 of 14,826) when `backtrace` began walking the frame chain. A FALL of 0.32,
+# lowered in the same PR as the rule requires. The walk is ~90 lines that need a stopped process
+# with a real stack; a unit test can arrange neither. The refusal is covered, the walk is covered
+# by hand with a transcript in the PR. Every `ptrace` feature has this shape, and the notes in
+# this file are the record of it rather than a series of quiet exceptions.
