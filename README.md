@@ -58,7 +58,10 @@ NOVA is a statically-typed, compiled systems programming language with a complet
   emitting placeholder code.
 - `nova-compiler test --parity` compares stdout and exit status across all four
   backends. CI runs it over every `examples/*.nova` and `tests/parity/*.nova`
-  program.
+  program. A backend that **disagrees** and one that **could not run** are reported
+  separately — `parity: FAILED (... disagree with the reference: c, js)` against
+  `parity: INCOMPLETE (... held — install the toolchain to check: wasm)` — because a
+  wrong answer and an unanswered question are not the same result.
 - **344 `#[test]` functions across the workspace** (`cargo test --workspace`; the WASM
   execution tests need `node` and `wat2wasm`). CI runs them on every push.
 
