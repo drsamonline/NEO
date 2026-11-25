@@ -1,4 +1,4 @@
-68.58
+68.55
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -205,3 +205,6 @@
 # denominator grew and the numerator did not.
 # 68.58% (10,456 of 15,246) when `let` began marking a move as assignment does. It rose 0.01: the
 # change is two lines and the corpus trips neither spelling.
+# 68.55% (10,460 of 15,259) when the loader began refusing a name collision. A FALL of 0.03: the
+# refusal path only runs when two modules clash, and no program in the corpus does — it is proved
+# by hand with two throwaway modules.
