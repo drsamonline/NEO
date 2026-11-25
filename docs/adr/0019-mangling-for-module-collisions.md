@@ -29,8 +29,37 @@ Four facts, from the code:
 4. **`Item::Function` carries a `name: String`**, so a module can be encoded there without a new
    field, exactly as in (2).
 
-That makes the change smaller than 0018 feared: no new struct fields, one function to extend, and
-the information needed already exists.
+That made the change look smaller than 0018 feared: no new struct fields, one function to extend,
+and the information needed already exists.
+
+## Correction — measured the same day, and fact 4 is wrong
+
+Writing the plan turned up the thing that decides the whole shape: **a call site has to know which
+module it is in**, or `io`'s internal `log(x)` still resolves to `math`'s. Nothing carries that:
+
+- `Item::Function` has no module field — fact 4 said one would fit, but it is not there;
+- the merged program is a flat `Vec<Item>` with no origin;
+- **spans cannot stand in for it**: a span is line and column with no file, and **24 line:column
+  positions are shared by two or more standard-library functions** (measured: `91:1` is both
+  `core.array_pop` and `math.log2`; `95:1` is `core.array_get`, `io.feof` and `text.trim`).
+
+So the minimal honest change is **one new field**, `module: Option<String>`, on `Item::Function`,
+set by the loader. Its ripple is measurable rather than guessed:
+
+| | count |
+|---|---|
+| places that construct a `Function` | 8 |
+| files that match on `Item::Function` | 5 |
+| reads of `func.name` in the C backend alone | 20 |
+
+That is a real change to the AST shared by four backends, and it is the piece this ADR's first
+draft claimed did not exist. **The estimate was wrong a third time**, and the pattern is now clear
+enough to state: every one of these ADRs under-estimated because it counted the *emission* point and
+not the *information* the emission needs.
+
+The rest of this document is the original plan; read it with that correction in mind. Steps 1–3 are
+larger than written: step 1 must also attach the module to every declaration, and step 3 needs the
+caller's module to resolve an unqualified name.
 
 ## Options
 
