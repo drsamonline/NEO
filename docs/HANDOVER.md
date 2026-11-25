@@ -238,9 +238,18 @@ keeps its names because it is a family; `io`'s logging primitive had a synonym a
 did not. Verified: `use core; use io; use math; use text;` now builds and runs, where
 `use math; use io;` did not.
 
-**The underlying bug is still there**: any two modules that share a name will collide again, and
-the only defence is a naming convention nobody enforces. Module-qualified resolution is the real
-fix and remains a language change.
+**And the general case is now handled twice over.** The loader used to drop the second definition
+silently; it now refuses and names both modules:
+
+    error: `shared` is declared by both `alpha` and `beta`, and NOVA has one flat namespace:
+    importing both is ambiguous. Rename one of them.
+
+`tools/stdlib-check.py` additionally fails if any two standard-library modules declare the same
+name, so the library cannot reintroduce the problem. Seen to bite: renaming `math.log10` to
+`math.log_message` produces `FAIL two standard-library modules declare the same name`.
+
+Module-qualified resolution is still the real fix — a program cannot import two modules that share
+a name at all — and remains a language change nobody has decided on.
 
 ### Why `print <name>` is blocked here, and what would unblock it
 

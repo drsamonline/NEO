@@ -28,6 +28,9 @@ BEGIN = "<!-- stdlib-check:begin -->"
 END = "<!-- stdlib-check:end -->"
 BUILTIN = re.compile(r"__builtin_[a-z_0-9]+")
 FUNCTION = re.compile(r"(?m)^fn\s+([A-Za-z_][A-Za-z0-9_]*)")
+# A struct or enum name collides exactly as a function name does.
+STRUCT = re.compile(r"(?m)^struct\s+([A-Za-z_][A-Za-z0-9_]*)")
+ENUM = re.compile(r"(?m)^enum\s+([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def known_builtins() -> set[str]:
@@ -99,6 +102,31 @@ def table(per_module: dict[str, tuple[int, int, int]]) -> str:
     return "\n".join(lines)
 
 
+def collisions() -> list[tuple[str, str, str]]:
+    """Names two standard-library modules both declare.
+
+    Imported modules share **one flat namespace**, and the loader used to drop the second
+    definition silently — so `use math; use io;` resolved `log` to whichever module loaded first
+    and reported a wrong-arity call inside the library. That was found by hand on 2026-11-24 and
+    fixed twice: the collision is now an error naming both modules, and this check keeps the
+    library from producing one in the first place.
+    """
+    seen: dict[str, str] = {}
+    clashes: list[tuple[str, str, str]] = []
+    for module in sorted((ROOT / "stdlib").glob("*/*.nova")):
+        text = module.read_text()
+        names = [match.group(1) for match in FUNCTION.finditer(text)]
+        names += [match.group(1) for match in STRUCT.finditer(text)]
+        names += [match.group(1) for match in ENUM.finditer(text)]
+        for name in names:
+            previous = seen.get(name)
+            if previous is not None and previous != module.stem:
+                clashes.append((name, previous, module.stem))
+            else:
+                seen[name] = module.stem
+    return clashes
+
+
 def main() -> int:
     known = known_builtins()
     per_module, missing = survey(known)
@@ -123,6 +151,16 @@ def main() -> int:
         print("FAIL the table in stdlib/README.md does not match the source")
         print("     regenerate it with: python3 tools/stdlib-check.py --print")
         return 1
+
+    clashes = collisions()
+    if clashes:
+        print()
+        print("FAIL two standard-library modules declare the same name:")
+        for name, first, second in clashes:
+            print(f"     `{name}` in both `{first}` and `{second}`")
+        print("     one flat namespace: a program importing both cannot build")
+        return 1
+    print("no name is declared by two modules")
 
     # Reported, not gated: these are legal NOVA that the runtime cannot honour, and the
     # count belongs to ADR 0006 rather than to a threshold nobody has set.
