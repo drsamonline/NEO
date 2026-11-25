@@ -43,6 +43,9 @@ pub struct SemanticAnalyzer {
     type_scopes: Vec<HashMap<String, Type>>,
     /// Struct name -> field name -> declared type.
     struct_fields: HashMap<String, HashMap<String, Type>>,
+    /// Modules named by `use`. A dotted call whose head is one of these is a qualified call
+    /// (ADR 0018), not a field access on a variable.
+    imported_modules: std::collections::HashSet<String>,
     /// Span of the expression currently being checked, so nested identifiers that
     /// are not individually spanned still report a useful location.
     current_span: Option<Span>,
@@ -58,6 +61,7 @@ impl SemanticAnalyzer {
             return_context: Vec::new(),
             type_scopes: Vec::new(),
             struct_fields: HashMap::new(),
+            imported_modules: std::collections::HashSet::new(),
             current_span: None,
         };
         
@@ -521,6 +525,24 @@ impl SemanticAnalyzer {
                 if let nova_common::Expr::Identifier(name) = inner.as_ref() {
                     self.check_identifier(name, Some(*span));
                 } else if let nova_common::Expr::Call(func, args) = inner.as_ref() {
+                    // A qualified call is checked here too: the parser wraps every expression in
+                    // `Spanned`, so the unwrapped arm below is not the one that runs.
+                    if let nova_common::Expr::Field(object, name) = func.unspanned() {
+                        if let nova_common::Expr::Identifier(module) = object.unspanned() {
+                            if self.imported_modules.contains(module) {
+                                let outer = self.current_span.replace(*span);
+                                self.check_identifier(name, Some(*span));
+                                for arg in args {
+                                    self.check_expr(arg);
+                                }
+                                self.current_span = outer;
+                                let qualified =
+                                    nova_common::Expr::Identifier(name.clone());
+                                self.check_call_arguments(&qualified, args, Some(*span));
+                                return;
+                            }
+                        }
+                    }
                     let outer = self.current_span.replace(*span);
                     self.check_expr(func);
                     for arg in args {
@@ -548,6 +570,23 @@ impl SemanticAnalyzer {
                 self.check_identifier(name, None);
             }
             nova_common::Expr::Call(func, args) => {
+                // `math.log(x)` — the head names a module, so this is a qualified call, not a
+                // method or a field. Checked against the *function's* signature, and the module
+                // name is not looked up as a variable (ADR 0018).
+                if let nova_common::Expr::Field(object, name) = func.unspanned() {
+                    if let nova_common::Expr::Identifier(module) = object.unspanned() {
+                        if self.imported_modules.contains(module) {
+                            self.check_identifier(name, self.current_span);
+                            for arg in args {
+                                self.check_expr(arg);
+                            }
+                            let qualified =
+                                nova_common::Expr::Identifier(name.clone());
+                            self.check_call_arguments(&qualified, args, None);
+                            return;
+                        }
+                    }
+                }
                 self.check_expr(func);
                 for arg in args {
                     self.check_expr(arg);
@@ -1089,8 +1128,12 @@ impl SemanticAnalyzer {
     }
 
     /// Resolve use declaration
-    fn resolve_use_decl(&mut self, _use_decl: &UseDecl) {
-        // Simplified import resolution
+    fn resolve_use_decl(&mut self, use_decl: &UseDecl) {
+        // The declarations themselves arrive merged (see `modules.rs`); what the analyser needs is
+        // the *names*, so a dotted call can be told apart from a field access (ADR 0018).
+        if let Some(name) = use_decl.path.first() {
+            self.imported_modules.insert(name.clone());
+        }
     }
 
     /// Check impl block
