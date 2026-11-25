@@ -27,7 +27,7 @@ pub fn load_modules(
 ) -> Result<Program, String> {
     let mut loader = ModuleLoader {
         loaded: HashSet::new(),
-        declared: HashSet::new(),
+        declared: std::collections::HashMap::new(),
         items: Vec::new(),
         module_roots,
     };
@@ -46,7 +46,10 @@ struct ModuleLoader<'a> {
     loaded: HashSet<PathBuf>,
     /// Declaration names already merged, so two modules cannot emit two C
     /// functions with the same name.
-    declared: HashSet<String>,
+    /// Every declaration a module contributed, and which module contributed it. The name alone
+    /// was enough while a collision was silently ignored; naming the other module is what turns
+    /// the collision into a message someone can act on.
+    declared: std::collections::HashMap<String, String>,
     items: Vec<Item>,
     /// Directories to search for modules, in order, after the importing file's own
     /// directory. A dependency's source root goes here.
@@ -114,9 +117,30 @@ impl ModuleLoader<'_> {
                 continue;
             }
             if let Some(name) = item_name(&item) {
-                if !self.declared.insert(name) {
+                let module = path
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.display().to_string());
+                if let Some(existing) = self.declared.get(&name) {
+                    if existing != &module {
+                        // Two modules declare the same name. The loader used to drop the second
+                        // silently, which made `use math; use io;` resolve `log` to whichever
+                        // module happened to load first — and the error the user saw was a
+                        // wrong-arity call inside the *library*, not this.
+                        return Err(format!(
+                            "`{}` is declared by both `{}` and `{}`, and NOVA has one flat \
+                             namespace: importing both is ambiguous. Rename one of them.",
+                            name
+                                .split_once(' ')
+                                .map(|(_, bare)| bare)
+                                .unwrap_or(name.as_str()),
+                            existing,
+                            module
+                        ));
+                    }
                     continue;
                 }
+                self.declared.insert(name, module);
             }
             self.items.push(item);
         }
