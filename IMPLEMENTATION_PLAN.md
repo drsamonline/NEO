@@ -1,7 +1,8 @@
 # NOVA Compiler Implementation Plan
 
 > **Superseded.** An 8-phase implementation plan written before the backends
-> worked. Its 184-test figure is from an early snapshot; the workspace runs 199.
+> worked. Its 184-test figure is from an early snapshot; the workspace runs 342. Every number
+> in this file is a snapshot of its own date — the gated one is `docs/status.json`.
 > Its phase numbering matches neither `DEV_PLAN.md` nor `MILESTONES.md`. Kept for
 > the history only; `DEV_PLAN.md` is the only plan.
 
