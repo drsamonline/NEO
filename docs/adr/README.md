@@ -51,6 +51,7 @@ about a decision are about a reading of it that nobody chose.
 | [0015](0015-generic-return-type-inference.md) | A generic used only in its return type takes `T` from the binding | accepted |
 | [0016](0016-debugger-uses-ptrace.md) | The debugger attaches with `ptrace`, and `unsafe` lives in one file | accepted |
 | [0017](0017-ownership-proposal.md) | Move semantics for non-`Copy` types, then reference counting | accepted |
+| [0018](0018-module-qualified-names.md) | How a name from another module is written at the use site | **proposed** |
 
 ## Writing one
 

@@ -37,7 +37,7 @@ again in six months.
 ## Consequences — including what this makes worse
 ```
 
-`docs/adr/README.md` holds the format and the index. There are seventeen.
+`docs/adr/README.md` holds the format and the index. There are eighteen.
 
 ## When a decision needs an ADR
 
