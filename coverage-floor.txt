@@ -1,4 +1,4 @@
-68.91
+68.57
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -200,3 +200,6 @@
 # 68.91% (10,512 of 15,255) when struct cloning landed. A FALL of 0.26: the field-wise branch is
 # 60 lines the corpus never reaches — no example or parity program clones a struct — and the
 # all-Copy check adds a second path. Covered by hand, with a transcript in the PR.
+# 68.57% (10,454 of 15,245) when the rule narrowed to assignment. A FALL of 0.34: the call-marking
+# path was deleted, and with it the code the corpus used to reach. Nothing was added, so the
+# denominator grew and the numerator did not.
