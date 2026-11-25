@@ -50,6 +50,12 @@ jobs:
       - name: Every document is written, reachable and explained
         run: python3 tools/docs-check.py
 
+      # The manifest records provenance for two files. `tools/manifest.py check` cannot
+      # gate on its exit code — a correct file and a drifted one both answer `protected` —
+      # so this reads the statuses and fails only on drift it can actually see.
+      - name: MANIFEST.json still describes the files it records
+        run: python3 tools/manifest-check.py
+
       - name: The stdlib README matches what the stdlib can actually run
         run: python3 tools/stdlib-check.py
 
