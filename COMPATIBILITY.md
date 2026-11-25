@@ -19,11 +19,17 @@ target, whatever the code looks like.
 ## What is stable
 
 - **The C ABI.** `nova_runtime.h` is versioned (currently v3) and generated C calls
-  only what it declares. A change to it is a change to the compiler's output
-  contract, so it gets a version bump.
-- **Error codes.** `E0002`, `E0061`, `E0308` are searchable identifiers and do not
-  change meaning. New codes are added; old ones are not repurposed. See
-  `docs/errors.md`.
+  only what it declares. **An addition does not bump the version; a change to an
+  existing declaration or a removal does.** That distinction is the whole rule: C
+  emitted by an older compiler calls only what it declared, so a new function is
+  invisible to it, while a changed signature or a deleted one breaks it. `nova_array_clone`
+  was added under v3 on that reading — recorded here because the previous wording
+  ("a change gets a bump") would have required v4 for a function nothing older calls.
+- **Error codes.** `E0002`, `E0010`, `E0061`, `E0308` are searchable identifiers and do
+  not change meaning. New codes are added; old ones are not repurposed. See
+  `docs/errors.md`. This list is checked against the compiler by
+  `tools/error-code-check.py`, so it cannot quietly fall behind again — `E0010` was
+  missing from it until 2026-11-26.
 - **The diagnostics JSON shape.** `--error-format=json` is documented in
   `docs/errors.md` and the language server is meant to consume it.
 

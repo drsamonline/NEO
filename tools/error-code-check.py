@@ -6,7 +6,10 @@ Three places name the codes a user can see:
 - `compiler/src/sema/` attaches them with `.with_code("Exxxx")` — what the
   compiler actually emits;
 - `ERROR_CODES` in `compiler/src/main.rs` — what `explain` can describe;
-- `docs/errors.md` — what a reader is told exists.
+- `docs/errors.md` — what a reader is told exists;
+- `COMPATIBILITY.md` — what a *program* is told it can rely on, which promised the same
+  set and was missing `E0010` until 2026-11-26. A list in two places drifts; this makes
+  the second place part of the check.
 
 Any pair disagreeing is a bug: a code the compiler emits but `explain` cannot
 describe, or a documented code that no longer fires. This checks all three, and it
@@ -26,6 +29,12 @@ CODE = r"E\d{3,5}"
 EMITTED = re.compile(r'\.with_code\(\s*"(' + CODE + r')"')
 DESCRIBED = re.compile(r'\(\s*"(' + CODE + r')"\s*,')
 DOCUMENTED = re.compile(r"^##+\s+(" + CODE + r")\b", re.MULTILINE)
+# `COMPATIBILITY.md` lists the codes inline — "`E0002`, `E0010`, ..." — because it is
+# promising a set, not documenting one code per section. Every mention there is part of
+# that promise, so the pattern is simply the shape of a code.
+# Only the line that promises the set, not prose that mentions a code: a sentence like
+# "`E0010` was missing from this list" must not count as promising `E0010`.
+PROMISED = re.compile(r"(?m)^- \*\*Error codes\.\*\*(.*)$")
 
 
 def scan(paths: list[Path], pattern: re.Pattern[str]) -> set[str]:
@@ -49,12 +58,21 @@ def main() -> int:
     emitted = scan(sema, EMITTED)
     described = scan([main_rs], DESCRIBED)
     documented = scan([docs], DOCUMENTED)
+    promise_text = (ROOT / "COMPATIBILITY.md").read_text()
+    promised = set()
+    for match in PROMISED.finditer(promise_text):
+        promised |= set(re.findall(r"\b(" + CODE + r")\b", match.group(1)))
 
     print(f"emitted     ({len(emitted)}): {', '.join(sorted(emitted)) or '-'}")
     print(f"described   ({len(described)}): {', '.join(sorted(described)) or '-'}")
     print(f"documented  ({len(documented)}): {', '.join(sorted(documented)) or '-'}")
+    print(f"promised    ({len(promised)}): {', '.join(sorted(promised)) or '-'}")
 
     problems = []
+    if promised != emitted:
+        problems.append(
+            f"COMPATIBILITY.md promises {sorted(promised)}; the compiler emits {sorted(emitted)}"
+        )
     for label, a, a_name, b, b_name in [
         ("emitted but not described", emitted - described, "emitted", described, "explain"),
         ("described but not emitted", described - emitted, "explain", emitted, "emitted"),
@@ -70,7 +88,8 @@ def main() -> int:
             print(f"FAIL {problem}")
         print(
             "\nEvery code must be attached with `.with_code`, described in "
-            "`ERROR_CODES`, and given a section in `docs/errors.md`."
+            "`ERROR_CODES`, given a section in `docs/errors.md`, and promised in "
+            "`COMPATIBILITY.md`'s error-codes line."
         )
         return 1
 
