@@ -47,7 +47,7 @@ What exists today, and what you should read instead:
 | 15 | [Generics](15_generics.md) | ✅ written |
 | 16 | [Interfaces](16_interfaces.md) | ✅ written |
 | 17 | [Packages](17_packages.md) | ✅ written |
-| 18 | [Domain packs](18_domain_packs.md) | — |
+| 18 | [Domain packs](18_domain_packs.md) | ✅ written |
 | 19 | [Semantic model](19_semantic_model.md) | ✅ written |
 | 20 | [SIR](20_sir_intro.md) | ✅ written |
 | 21 | [Style guide](21_style_guide.md) | ✅ written |
@@ -55,11 +55,15 @@ What exists today, and what you should read instead:
 | 23 | [Glossary](23_glossary.md) | ✅ written |
 | 24 | [RFC process](24_rfc_process.md) | ✅ written |
 
-## Why the stubs are still here
+## There are no stubs left
 
-They are listed in the service worker's cache manifest (`docs/sw.js`), so
-deleting one makes `cache.addAll` reject and the offline site stops installing.
-Remove the file and its manifest entry in the same change, or fill the file.
+Every chapter is written, as of 2026-11-25. Six of them — memory, errors, concurrency, attributes,
+interfaces and domain packs — describe what the language **does not have**, because that is the
+truthful thing to say about them: each states the absence with a command whose output proves it, and
+what a program does instead.
+
+The service worker's cache manifest (`docs/sw.js`) still lists all 25 files, so a chapter may not be
+deleted without removing its entry in the same change.
 
 ## Writing a chapter
 
