@@ -338,7 +338,20 @@ impl CBackend {
             "memcpy", "memset", "memcmp", "qsort", "bsearch", "div", "abs", "labs",
             "fopen", "fclose", "fread", "fwrite", "fseek", "ftell", "fflush", "feof",
         ];
-        if C_LIBRARY.contains(&name) {
+        // C's own keywords and type names, which a NOVA function may legally be called. A
+        // function named `double` emitted `long long double(long long x)` — invalid C, and the
+        // user's program did not compile for a reason that named nothing they had written.
+        const C_RESERVED: &[&str] = &[
+            "auto", "break", "case", "char", "const", "continue", "default", "do", "double",
+            "else", "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long",
+            "register", "restrict", "return", "short", "signed", "sizeof", "static", "struct",
+            "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Bool",
+            "_Complex", "_Imaginary", "bool", "true", "false", "NULL", "size_t", "FILE",
+            "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t",
+            "uint64_t",
+        ];
+        // `main` is the entry point and must keep its name; it is not in either list.
+        if C_LIBRARY.contains(&name) || C_RESERVED.contains(&name) {
             format!("nova_fn_{name}")
         } else {
             name.to_string()

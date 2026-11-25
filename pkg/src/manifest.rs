@@ -226,8 +226,11 @@ pub fn save_manifest(dir: &Path, manifest: &Manifest) -> Result<(), ManifestErro
 
 /// Create a new manifest for a project
 pub fn create_manifest(name: &str, is_lib: bool) -> Manifest {
+    // A library's entry is `src/<package>.nova`, not `src/lib.nova`: `use <package>;` resolves
+    // through the module loader, which looks for `<root>/src/<name>.nova`, so a file called
+    // `lib.nova` could never be imported by the name of its own package.
     let entry = if is_lib {
-        "src/lib.nova".to_string()
+        format!("src/{name}.nova")
     } else {
         "src/main.nova".to_string()
     };
@@ -275,7 +278,7 @@ mod tests {
     fn test_create_manifest_library() {
         let manifest = create_manifest("my_lib", true);
         assert_eq!(manifest.package.name, "my_lib");
-        assert_eq!(manifest.build.entry, "src/lib.nova");
+        assert_eq!(manifest.build.entry, "src/my_lib.nova");
     }
     
     #[test]
