@@ -212,6 +212,19 @@ specification, which `docs/specs/constitution.md` forbids first.
 **4. The DWARF debugger.** Lowest value-per-week in the plan. The REPL works, and since the
 refusals landed it says what it cannot do instead of inventing frames.
 
+### `✓ built` is now checked
+
+The C compiler's exit status is a claim about *itself*, not about the file. A wrapper that exits 0
+without writing produced `✓ built <path>` for a binary that did not exist — the same shape as
+`✓ Published` and "Attached to process N", both of which a user acted on before anyone noticed.
+
+`build` now checks the file exists and dies naming it if not, with a regression test that runs the
+build against `/bin/true`. **Seen to bite**: with the check removed the test fails at
+`compiler/tests/end_to_end.rs:91`.
+
+The other success messages were audited and are already verified: `✓ wrote` and `✓ formatted`
+follow an `fs::write` whose error is fatal, and `write_runtime_for` checks both files.
+
 ### A namespace collision the ownership work exposed
 
 `io.nova` defines `log(level: LogLevel, message: String)` and `math.nova` defines
