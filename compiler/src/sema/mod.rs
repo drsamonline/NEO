@@ -464,6 +464,9 @@ impl SemanticAnalyzer {
                 // Check initialization expression
                 if let Some(init_expr) = &let_stmt.init {
                     self.check_expr(init_expr);
+                    // `let t = s` is the same giving-away as `t = s`: a second name for one
+                    // buffer. Reported the same way, so the rule is one rule.
+                    self.mark_moved_value(init_expr);
                 }
 
                 // Record the binding's type so later expressions can be inferred.
