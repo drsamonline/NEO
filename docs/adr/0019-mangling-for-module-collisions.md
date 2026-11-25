@@ -1,10 +1,40 @@
 # ADR 0019 — mangling, so two modules can declare one name
 
-- **Status:** proposed
+- **Status:** **accepted** (2026-11-25), option C — implemented
 - **Date:** 2026-11-25
 - **Related:** [0018](0018-module-qualified-names.md), [Modules chapter](../language/08_modules.md)
 
-> **Proposed, not accepted.** Nothing here is implemented.
+> **Accepted and implemented 2026-11-25.** What was built, and the two things this plan
+g> still got wrong, are in "What was built" below.
+
+## What was built — 2026-11-25
+
+Option C, in four places:
+
+| Place | Change |
+|---|---|
+| `Item::Function` | a `module: Option<String>` field, set by the loader |
+| loader | keeps both declarations instead of refusing; tags each function with its module |
+| sema | two modules declaring one name is **ambiguity**, not a duplicate; an unqualified use is `E0002` naming both and both qualified forms; signatures are also keyed `module::name` |
+| lowerer | mangles only a colliding name, and only a module's function |
+| backend | `emitted_name` maps `a::b` to `a__b`, every other name unchanged |
+
+Verified end to end: two throwaway modules both declaring `shared` compile, `alpha.shared(1)`
+answers 2 and `beta.shared(1,2)` answers 3, the C contains `alpha__shared` and `beta__shared`, and
+`shared(1)` unqualified is refused with *"`shared` is declared by alpha and beta — write which one
+you mean"*.
+
+**Two things this plan still got wrong**, recorded because they are the same mistake twice more:
+
+1. It said the second module's signature would be "keyed by `module::name`" as though that were
+   free. It is not: the ambiguity branch returned early and skipped the insertion, so
+   `beta.shared` was reported as *"`beta` does not declare `shared`"* until the signature was
+   recorded before the return.
+2. It said a qualified call would "emit the mangled name directly". It also has to **skip the
+   unqualified-name check** — the bare name is ambiguous by definition there, so the check that
+   makes `shared` illegal also made `alpha.shared` illegal.
+
+Both were found by running the two cases against each other, not by reading the plan.
 
 ## Context
 

@@ -314,6 +314,12 @@ impl CBackend {
     /// making it. This list covers the collisions that exist; the next one needs
     /// adding to it.
     fn emitted_name(name: &str) -> String {
+        // A colliding name arrives as `module::name`; C has no `::`, and `module__name` is what
+        // the debugger's `nm` lookup will find. Every other name is unchanged, which is why a
+        // program without a collision emits exactly what it emitted before (ADR 0019).
+        if let Some((module, bare)) = name.split_once("::") {
+            return format!("{module}__{bare}");
+        }
         const C_LIBRARY: &[&str] = &[
             // libm — the stdlib wraps all of these
             "sqrt", "cbrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh",

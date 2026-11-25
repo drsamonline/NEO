@@ -233,6 +233,85 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
 }
 
 #[test]
+fn two_modules_may_declare_one_name() {
+    // ADR 0019. Two modules declaring `shared` used to make the import fatal; the second was
+    // once dropped silently, then refused by name. Both are now kept: the definition is mangled
+    // and the call must say which one it means.
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let dir = scratch("collision");
+    fs::write(
+        dir.join("alpha.nova"),
+        "fn shared(x: int) -> int {\n    x + 1\n}\n",
+    )
+    .expect("write alpha");
+    fs::write(
+        dir.join("beta.nova"),
+        "fn shared(x: int, y: int) -> int {\n    x + y\n}\n",
+    )
+    .expect("write beta");
+
+    let program = dir.join("program.nova");
+    fs::write(
+        &program,
+        "use core;\nuse alpha;\nuse beta;\n\nfn main() -> int {\n    print(alpha.shared(1));\n    print(beta.shared(1, 2));\n    return 0;\n}\n",
+    )
+    .expect("write program");
+
+    let binary = dir.join("collision");
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&program)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run built binary");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "2\n3\n",
+        "each module's `shared` must be called, not one of them twice"
+    );
+
+    // And the unqualified form must be refused, naming both modules.
+    let ambiguous = dir.join("ambiguous.nova");
+    fs::write(
+        &ambiguous,
+        "use core;\nuse alpha;\nuse beta;\n\nfn main() -> int {\n    print(shared(1));\n    return 0;\n}\n",
+    )
+    .expect("write ambiguous program");
+    let refused = Command::new(compiler())
+        .arg("build")
+        .arg(&ambiguous)
+        .arg("-o")
+        .arg(dir.join("ambiguous"))
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(!refused.status.success(), "an ambiguous use was accepted");
+    assert!(
+        stderr.contains("declared by alpha and beta"),
+        "the refusal did not name both modules: {stderr}"
+    );
+    assert!(
+        stderr.contains("alpha.shared"),
+        "the refusal did not offer the qualified form: {stderr}"
+    );
+}
+
+#[test]
 fn a_qualified_call_answers_the_same_as_an_unqualified_one() {
     // ADR 0018. `math.log(2.0)` used to be `E0002: undefined name math`; then it built but
     // answered 0, because the call's return type was lost and `print` fell back to `int`.

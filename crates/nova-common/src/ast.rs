@@ -56,6 +56,14 @@ impl AstNode for Item {
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
+    /// The module that declared this function, when it came from a `use`.
+    ///
+    /// `None` for the program being compiled. The loader sets it, because after merging there is
+    /// nothing else to say where a function came from — and a call site needs that to resolve an
+    /// unqualified name to the right module (ADR 0019). Spans cannot stand in: they carry line and
+    /// column with no file, and 24 line:column positions are shared by two standard-library
+    /// functions.
+    pub module: Option<String>,
     pub generics: Vec<String>,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,

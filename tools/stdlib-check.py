@@ -154,13 +154,15 @@ def main() -> int:
 
     clashes = collisions()
     if clashes:
+        # Not a failure since ADR 0019: two modules may declare one name, and an unqualified use
+        # of it is refused with both modules named. Reported so a reader of the library knows
+        # which names now need the qualified form.
         print()
-        print("FAIL two standard-library modules declare the same name:")
+        print("note: these names need a qualified call (`module.name`):")
         for name, first, second in clashes:
             print(f"     `{name}` in both `{first}` and `{second}`")
-        print("     one flat namespace: a program importing both cannot build")
-        return 1
-    print("no name is declared by two modules")
+    else:
+        print("no name is declared by two modules")
 
     # Reported, not gated: these are legal NOVA that the runtime cannot honour, and the
     # count belongs to ADR 0006 rather than to a threshold nobody has set.
