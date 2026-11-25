@@ -46,6 +46,11 @@ pub struct SemanticAnalyzer {
     /// Modules named by `use`. A dotted call whose head is one of these is a qualified call
     /// (ADR 0018), not a field access on a variable.
     imported_modules: std::collections::HashSet<String>,
+    /// Which module declared each function name, and the names two modules both declare.
+    /// A name in `ambiguous` is legal to import but must be written qualified (ADR 0019).
+    function_modules: HashMap<String, String>,
+    /// Name -> every module that declares it, for a name more than one module declares.
+    ambiguous: HashMap<String, Vec<String>>,
     /// Span of the expression currently being checked, so nested identifiers that
     /// are not individually spanned still report a useful location.
     current_span: Option<Span>,
@@ -62,6 +67,8 @@ impl SemanticAnalyzer {
             type_scopes: Vec::new(),
             struct_fields: HashMap::new(),
             imported_modules: std::collections::HashSet::new(),
+            function_modules: HashMap::new(),
+            ambiguous: HashMap::new(),
             current_span: None,
         };
         
@@ -254,6 +261,49 @@ impl SemanticAnalyzer {
     fn collect_declaration(&mut self, item: &Item) {
         match item {
             Item::Function(func) => {
+                // Two modules declaring one name is not a duplicate definition: it is an
+                // ambiguity, and the qualified call `module.name` resolves it (ADR 0019). The
+                // name is kept once in the symbol table so the qualified form can be checked,
+                // and recorded as ambiguous so an unqualified use can be rejected.
+                if let Some(module) = &func.module {
+                    match self.function_modules.get(&func.name) {
+                        Some(existing) if existing != module => {
+                            let modules = self
+                                .ambiguous
+                                .entry(func.name.clone())
+                                .or_insert_with(|| vec![existing.clone()]);
+                            if !modules.contains(module) {
+                                modules.push(module.clone());
+                            }
+                            // The second module's signature still has to be recorded, or the
+                            // qualified form `beta.shared` is reported as missing. It is
+                            // recorded under `module::name` only — the bare name belongs to the
+                            // first declaration, and an unqualified use is an error anyway.
+                            self.signatures.insert(
+                                format!("{module}::{}", func.name),
+                                FunctionSig {
+                                    params: func
+                                        .params
+                                        .iter()
+                                        .map(|param| {
+                                            type_from_name(&crate::lowerer::type_display(&param.typ))
+                                        })
+                                        .collect(),
+                                    return_type: func.return_type.as_ref().map(|t| {
+                                        type_from_name(&crate::lowerer::type_display(t))
+                                    }),
+                                    generics: func.generics.clone(),
+                                },
+                            );
+                            return;
+                        }
+                        Some(_) => return,
+                        None => {
+                            self.function_modules
+                                .insert(func.name.clone(), module.clone());
+                        }
+                    }
+                }
                 // Don't set type yet - function types are complex
                 let symbol = Symbol::new(func.name.clone(), SymbolKind::Function, func.span);
                 // `insert` returns the symbol it replaced, and every caller used to discard
@@ -277,21 +327,27 @@ impl SemanticAnalyzer {
                 }
                 // Remember the declared return type so `return` can be checked
                 // against it and calls can be typed.
-                self.signatures.insert(
-                    func.name.clone(),
-                    FunctionSig {
-                        params: func
-                            .params
-                            .iter()
-                            .map(|param| type_from_name(&crate::lowerer::type_display(&param.typ)))
-                            .collect(),
-                        return_type: func
-                            .return_type
-                            .as_ref()
-                            .map(|t| type_from_name(&crate::lowerer::type_display(t))),
-                        generics: func.generics.clone(),
-                    },
-                );
+                let signature = FunctionSig {
+                    params: func
+                        .params
+                        .iter()
+                        .map(|param| type_from_name(&crate::lowerer::type_display(&param.typ)))
+                        .collect(),
+                    return_type: func
+                        .return_type
+                        .as_ref()
+                        .map(|t| type_from_name(&crate::lowerer::type_display(t))),
+                    generics: func.generics.clone(),
+                };
+                // A module's function is also reachable under `module::name`, so a qualified
+                // call is checked against the right signature when two modules share a name
+                // (ADR 0019). The bare name stays for the unqualified case, which is only
+                // legal while the name is unambiguous.
+                if let Some(module) = &func.module {
+                    self.signatures
+                        .insert(format!("{module}::{}", func.name), signature.clone());
+                }
+                self.signatures.insert(func.name.clone(), signature);
             }
             Item::Struct(struct_def) => {
                 let symbol = Symbol::new(struct_def.name.clone(), SymbolKind::Struct, struct_def.span);
@@ -531,13 +587,17 @@ impl SemanticAnalyzer {
                         if let nova_common::Expr::Identifier(module) = object.unspanned() {
                             if self.imported_modules.contains(module) {
                                 let outer = self.current_span.replace(*span);
-                                self.check_identifier(name, Some(*span));
+                                // Not `check_identifier`: the bare name is ambiguous by
+                                // definition here, and the whole point of the qualified form is
+                                // that it is not (ADR 0019).
+                                self.check_qualified_name(module, name, Some(*span));
                                 for arg in args {
                                     self.check_expr(arg);
                                 }
                                 self.current_span = outer;
-                                let qualified =
-                                    nova_common::Expr::Identifier(name.clone());
+                                let qualified = nova_common::Expr::Identifier(format!(
+                                    "{module}::{name}"
+                                ));
                                 self.check_call_arguments(&qualified, args, Some(*span));
                                 return;
                             }
@@ -576,12 +636,13 @@ impl SemanticAnalyzer {
                 if let nova_common::Expr::Field(object, name) = func.unspanned() {
                     if let nova_common::Expr::Identifier(module) = object.unspanned() {
                         if self.imported_modules.contains(module) {
-                            self.check_identifier(name, self.current_span);
+                            self.check_qualified_name(module, name, self.current_span);
                             for arg in args {
                                 self.check_expr(arg);
                             }
-                            let qualified =
-                                nova_common::Expr::Identifier(name.clone());
+                            let qualified = nova_common::Expr::Identifier(format!(
+                                "{module}::{name}"
+                            ));
                             self.check_call_arguments(&qualified, args, None);
                             return;
                         }
@@ -735,10 +796,45 @@ impl SemanticAnalyzer {
     }
 
     /// Check that an identifier resolves, reporting the name's span when known.
+    /// Check `module::name`, the form a qualified call resolves to.
+    fn check_qualified_name(&mut self, module: &str, name: &str, span: Option<Span>) {
+        if self.signatures.contains_key(&format!("{module}::{name}")) {
+            return;
+        }
+        let mut diag = Diagnostic::error(format!("`{module}` does not declare `{name}`"))
+            .with_code("E0002")
+            .with_help("check the module name and the function name");
+        if let Some(span) = span.or(self.current_span) {
+            diag = diag.with_span(span);
+        }
+        self.diagnostics.push(diag);
+    }
+
     fn check_identifier(&mut self, name: &str, span: Option<Span>) {
         // `__builtin_*` names and the built-in `Option` constructors are
         // declared by the compiler, not the program.
         if name.starts_with("__builtin_") || name == "Some" || name == "None" {
+            return;
+        }
+        if let Some(modules) = self.ambiguous.get(name).cloned() {
+            // Legal to import, illegal to use unqualified: two modules declare it and NOVA has
+            // one flat namespace (ADR 0019). The message names both and both qualified forms,
+            // because the fix is one keystroke and the alternative is renaming someone else's
+            // library.
+            let qualified: Vec<String> = modules
+                .iter()
+                .map(|module| format!("`{module}.{name}`"))
+                .collect();
+            let mut diag = Diagnostic::error(format!(
+                "`{name}` is declared by {} and {} — write which one you mean",
+                modules[0], modules[1]
+            ))
+            .with_code("E0002")
+            .with_help(format!("use {} instead of `{name}`", qualified.join(" or ")));
+            if let Some(span) = span.or(self.current_span) {
+                diag = diag.with_span(span);
+            }
+            self.diagnostics.push(diag);
             return;
         }
         if self.symbol_table.lookup(name).is_some() {

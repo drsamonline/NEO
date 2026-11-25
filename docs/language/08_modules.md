@@ -67,17 +67,17 @@ A qualified call is recognised by its head: if the identifier before the dot is 
 an enum variant. Those three readings are checked in that order — module, then method, then enum —
 and the order matters, because `math.log` and `file.read` are the same syntax.
 
-**A collision is still fatal.** If two imported modules declare the same name, the import fails and
-both modules are named:
+**A collision is legal to import and illegal to use unqualified.** Two modules may declare the
+same name; the definitions are kept, and an unqualified use is refused:
 
 ```text
-error: `log` is declared by both `math` and `io`, and NOVA has one flat namespace: importing both
-is ambiguous. Rename one of them.
+error: `shared` is declared by alpha and beta — write which one you mean
+  help: use `alpha.shared` or `beta.shared` instead of `shared`
 ```
 
-Qualifying the call does not help there, because both definitions cannot be carried into one
-program — that needs the backend to emit two functions under one name. See
-[ADR 0018](../adr/0018-module-qualified-names.md).
+The qualified form then picks one. Only a colliding name is mangled in the generated C
+(`alpha__shared`), so a program without a collision emits exactly what it emitted before. See
+[ADR 0018](../adr/0018-module-qualified-names.md) and [0019](../adr/0019-mangling-for-module-collisions.md).
 
 ## `use name.*;` and `use a::b;`
 
@@ -106,9 +106,8 @@ this reason, with a comment saying so.
 
 ## What is missing
 
-- No namespacing: two modules declaring `helper` is a collision. It used to be resolved silently by
-  first-wins; it is now refused, naming both modules. A qualified call (`math.log(x)`) exists but
-  does not resolve a collision, because both definitions cannot live in one program.
+- No namespacing beyond the qualified call: a name two modules declare must be written
+  `module.name`, and there is no `use ... as ...`, no visibility and no re-export.
 - No visibility, no re-export, no `use ... as ...`.
 - No cycle detection — a cycle loads each file once and stops, which is not the same as
   reporting it.

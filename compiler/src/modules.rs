@@ -112,35 +112,31 @@ impl ModuleLoader<'_> {
         // Depth-first: a module's own imports precede its declarations.
         self.collect_uses(&program, path)?;
 
+        let module = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string());
+
         for item in program.items {
             if matches!(item, Item::Use(_)) {
                 continue;
             }
             if let Some(name) = item_name(&item) {
-                let module = path
-                    .file_stem()
-                    .map(|stem| stem.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.display().to_string());
                 if let Some(existing) = self.declared.get(&name) {
-                    if existing != &module {
-                        // Two modules declare the same name. The loader used to drop the second
-                        // silently, which made `use math; use io;` resolve `log` to whichever
-                        // module happened to load first — and the error the user saw was a
-                        // wrong-arity call inside the *library*, not this.
-                        return Err(format!(
-                            "`{}` is declared by both `{}` and `{}`, and NOVA has one flat \
-                             namespace: importing both is ambiguous. Rename one of them.",
-                            name
-                                .split_once(' ')
-                                .map(|(_, bare)| bare)
-                                .unwrap_or(name.as_str()),
-                            existing,
-                            module
-                        ));
+                    if existing == &module {
+                        // The same module declaring one name twice is a real duplicate; the
+                        // analyser reports it with a span, which is more useful than this can be.
+                        continue;
                     }
-                    continue;
+                    // Two modules, one name. Both are kept (ADR 0019): each carries its module,
+                    // and only a colliding name is mangled, so a program without a collision
+                    // emits exactly what it emitted before.
                 }
-                self.declared.insert(name, module);
+                self.declared.insert(name, module.clone());
+            }
+            let mut item = item;
+            if let Item::Function(function) = &mut item {
+                function.module = Some(module.clone());
             }
             self.items.push(item);
         }

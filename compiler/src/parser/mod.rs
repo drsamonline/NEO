@@ -144,6 +144,7 @@ impl Parser {
     fn expr_to_function(&self, expr: Expr) -> Function {
         let span = expr.span().clone();
         Function {
+            module: None,
             name: "__main".to_string(),
             generics: Vec::new(),
             params: Vec::new(),
@@ -161,6 +162,7 @@ impl Parser {
     // Helper to convert a let statement to a dummy function for now
     fn stmt_to_function(&self, stmt: LetStmt) -> Function {
         Function {
+            module: None,
             name: "__dummy".to_string(),
             generics: Vec::new(),
             params: Vec::new(),
@@ -234,6 +236,7 @@ impl Parser {
         };
         
         Ok(Function {
+            module: None,
             name: name.lexeme.clone(),
             generics,
             params,

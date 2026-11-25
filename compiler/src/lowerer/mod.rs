@@ -24,6 +24,9 @@ pub struct Lowerer {
     struct_field_order: HashMap<String, Vec<String>>,
     /// Modules named by `use`, so `math.log(x)` can be told from `value.field` (ADR 0018).
     imported_modules: std::collections::HashSet<String>,
+    /// Names two modules both declare. Only these are mangled, so a program without a collision
+    /// emits exactly what it emitted before (ADR 0019).
+    ambiguous_names: std::collections::HashSet<String>,
     /// Struct name -> method name -> signature, collected from `impl` blocks.
     methods: HashMap<String, HashMap<String, MethodSig>>,
     /// Enum name -> variant names, in declaration order.
@@ -143,6 +146,7 @@ impl Lowerer {
             struct_types: HashMap::new(),
             struct_field_order: HashMap::new(),
             imported_modules: std::collections::HashSet::new(),
+            ambiguous_names: std::collections::HashSet::new(),
             methods: HashMap::new(),
             enums: HashMap::new(),
             enum_ordinals: HashMap::new(),
@@ -410,6 +414,24 @@ impl Lowerer {
             if let nova_common::Item::Use(use_decl) = item {
                 if let Some(name) = use_decl.path.first() {
                     self.imported_modules.insert(name.clone());
+                }
+            }
+        }
+
+        // Which names two modules both declare: those, and only those, are mangled (ADR 0019).
+        let mut seen_in: HashMap<String, String> = HashMap::new();
+        for item in &program.items {
+            if let nova_common::Item::Function(function) = item {
+                if let Some(module) = &function.module {
+                    match seen_in.get(&function.name) {
+                        Some(other) if other != module => {
+                            self.ambiguous_names.insert(function.name.clone());
+                        }
+                        Some(_) => {}
+                        None => {
+                            seen_in.insert(function.name.clone(), module.clone());
+                        }
+                    }
                 }
             }
         }
@@ -821,7 +843,14 @@ impl Lowerer {
         self.pop_scope();
 
         SirFunction {
-            name: func.name.clone(),
+            // Only a colliding name is mangled, and only a module's function: the program's own
+            // functions keep the name the user wrote.
+            name: match &func.module {
+                Some(module) if self.ambiguous_names.contains(&func.name) => {
+                    format!("{module}::{}", func.name)
+                }
+                _ => func.name.clone(),
+            },
             params: func.params.iter().map(|p| SirParam {
                 name: p.name.clone(),
                 typ: type_display(&p.typ),
@@ -2370,8 +2399,13 @@ impl Lowerer {
                 if let Expr::Field(object, function) = callee.unspanned() {
                     if let Expr::Identifier(module) = object.unspanned() {
                         if self.imported_modules.contains(module) {
+                            let emitted = if self.ambiguous_names.contains(function) {
+                                format!("{module}::{function}")
+                            } else {
+                                function.clone()
+                            };
                             let call = SirExpr::Call {
-                                callee: function.clone(),
+                                callee: emitted,
                                 args: self.lower_call_args(function, args),
                             };
                             // The return type must ride along, exactly as it does for an
