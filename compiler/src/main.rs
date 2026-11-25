@@ -781,7 +781,12 @@ fn parity_harness(input: &Path) -> ! {
     });
 
     println!("parity: {}", input.display());
-    let mut held = 0;
+    // Two different things were counted as one: a backend that ran and disagreed, and a backend
+    // that never ran because its toolchain is absent. The summary said "not passing" for both, so
+    // `parity: FAILED` on a machine without `wat2wasm` looked exactly like a wrong answer — and
+    // the one case a reader must not confuse is "this program is wrong" with "this was not run".
+    let mut failed: Vec<&str> = Vec::new();
+    let mut held: Vec<&str> = Vec::new();
     for outcome in &outcomes {
         match &outcome.result {
             Ok(run) => {
@@ -789,7 +794,7 @@ fn parity_harness(input: &Path) -> ! {
                 let status_ok = run.status == reference_status;
                 let state = if stdout_ok && status_ok { "pass" } else { "FAIL" };
                 if state == "FAIL" {
-                    held += 1;
+                    failed.push(outcome.backend);
                 }
                 let mut notes = Vec::new();
                 if !stdout_ok {
@@ -811,14 +816,29 @@ fn parity_harness(input: &Path) -> ! {
                 }
             }
             Err(message) => {
-                held += 1;
+                held.push(outcome.backend);
                 println!("  {:<5} held {}", outcome.backend, message);
             }
         }
     }
 
-    if held > 0 {
-        eprintln!("parity: FAILED ({held} backend(s) not passing)");
+    if !failed.is_empty() {
+        eprintln!(
+            "parity: FAILED ({} backend(s) disagree with the reference: {})",
+            failed.len(),
+            failed.join(", ")
+        );
+        exit(1);
+    }
+    if !held.is_empty() {
+        // Still not a pass: parity was not demonstrated. But it is a different sentence, and the
+        // exit status is the same because a caller asking "is this program the same on all four
+        // backends?" has not been answered.
+        eprintln!(
+            "parity: INCOMPLETE ({} backend(s) held — install the toolchain to check: {})",
+            held.len(),
+            held.join(", ")
+        );
         exit(1);
     }
     eprintln!("parity: ok (all 4 backends)");
