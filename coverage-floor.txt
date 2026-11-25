@@ -1,4 +1,4 @@
-68.59
+68.87
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -212,3 +212,6 @@
 # and the new end-to-end test runs the guard on both sides.
 # 68.59% (10,511 of 15,325) when qualified calls landed. It rose 0.03: three code paths and a test
 # that exercises them through a real program, rather than a unit test of the resolver alone.
+# 68.87% (10,614 of 15,412) when mangling landed. It rose 0.28: the new end-to-end test builds two
+# modules that both declare `shared` and exercises both the resolution and the refusal, so the
+# whole path is covered by a program rather than by unit tests of each piece.
