@@ -50,7 +50,7 @@ What exists today, and what you should read instead:
 | 18 | [Domain packs](18_domain_packs.md) | — |
 | 19 | [Semantic model](19_semantic_model.md) | ✅ written |
 | 20 | [SIR](20_sir_intro.md) | ✅ written |
-| 21 | [Style guide](21_style_guide.md) | — |
+| 21 | [Style guide](21_style_guide.md) | ✅ written |
 | 22 | [Best practices](22_best_practices.md) | ✅ written |
 | 23 | [Glossary](23_glossary.md) | ✅ written |
 | 24 | [RFC process](24_rfc_process.md) | ✅ written |
