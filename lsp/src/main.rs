@@ -125,6 +125,18 @@ fn symbol_kind_for(kind: ItemKind) -> Option<SymbolKind> {
     })
 }
 
+/// The names a source file declares, in order, for completion.
+///
+/// Pure so it can be tested without a client or a running server — which is the only
+/// reason this is not a method.
+fn declared_names(source: &str) -> Vec<String> {
+    ItemTree::parse(source)
+        .items()
+        .iter()
+        .filter_map(|item| item.name.clone())
+        .collect()
+}
+
 /// One item as an outline entry. An `impl`'s methods are expanded here, on demand,
 /// which is the whole point of deferring bodies: a file-level search never pays
 /// for them.
@@ -425,11 +437,43 @@ impl LanguageServer for Backend {
         documents.remove(&params.text_document.uri);
     }
 
+    /// Completions: the language's keywords and built-in types, **plus the names this document
+    /// declares**.
+    ///
+    /// It was a fixed list that read neither the document nor the position — `uri` and `position`
+    /// were bound and unused, so "autocomplete" offered `fn` and `let` in a file whose own
+    /// functions were invisible. The list below is still static, but the document's declarations
+    /// are now appended, which is the part a user notices: typing the name of a function defined
+    /// twenty lines up completes it.
+    ///
+    /// It does not offer the standard library, and does not filter by the prefix already typed —
+    /// the client does that. Both are gaps rather than claims.
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        
-        let completions = vec![
+
+        // What this file declares, from the same deferred item tree the outline uses — so a
+        // function body is never parsed just to complete a name.
+        let declared: Vec<String> = {
+            let documents = self.documents.read().await;
+            documents
+                .get(&uri)
+                .map(|doc| declared_names(&doc.content))
+                .unwrap_or_default()
+        };
+
+        let mut completions: Vec<CompletionItem> = declared
+            .into_iter()
+            .map(|name| CompletionItem {
+                label: name.clone(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some("declared in this file".to_string()),
+                insert_text: Some(name),
+                ..Default::default()
+            })
+            .collect();
+
+        completions.extend(vec![
             CompletionItem {
                 label: "fn".to_string(),
                 kind: Some(CompletionItemKind::KEYWORD),
@@ -500,8 +544,9 @@ impl LanguageServer for Backend {
                 insert_text: Some("Int".to_string()),
                 ..Default::default()
             },
-        ];
-        
+        ]);
+        let _ = position;
+
         Ok(Some(CompletionResponse::Array(completions)))
     }
 
@@ -693,4 +738,25 @@ async fn main() -> std::io::Result<()> {
         .await;
     
     Ok(())
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::declared_names;
+
+    #[test]
+    fn a_files_own_declarations_are_offered() {
+        // The defect this replaced: completion returned a fixed keyword list and read neither
+        // the document nor the position, so a function defined in the file was invisible.
+        let source = "fn double(x: int) -> int {\n    x * 2\n}\n\nstruct Point {\n    x: int,\n}\n";
+        let names = declared_names(source);
+        assert!(names.contains(&"double".to_string()), "missing function: {names:?}");
+        assert!(names.contains(&"Point".to_string()), "missing struct: {names:?}");
+    }
+
+    #[test]
+    fn a_broken_file_declares_nothing_rather_than_panicking() {
+        let names = declared_names("fn { this is not a program");
+        assert!(names.is_empty(), "expected nothing, got {names:?}");
+    }
 }
