@@ -56,6 +56,11 @@ jobs:
       - name: MANIFEST.json still describes the files it records
         run: python3 tools/manifest-check.py
 
+      # A `[workspace.dependencies]` entry nothing opts into is a claim about the project
+      # that is not true. `cargo` warns; a warning is not a gate.
+      - name: Every workspace dependency is used by a member
+        run: python3 tools/workspace-dep-check.py
+
       - name: The stdlib README matches what the stdlib can actually run
         run: python3 tools/stdlib-check.py
 

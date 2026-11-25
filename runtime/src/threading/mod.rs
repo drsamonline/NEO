@@ -1,6 +1,7 @@
-//! Threading Primitives for NOVA Runtime
-//! 
-//! Provides mutexes, condition variables, and synchronization primitives.
+//! Threading primitives — **nothing calls them**.
+//!
+//! NOVA has no concurrency: one thread, no locks, no atomics (see
+//! `docs/language/13_concurrency.md`). This module is a sketch, not the runtime.
 
 use std::sync::{Mutex, RwLock, Condvar, Arc};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

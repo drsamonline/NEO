@@ -1,6 +1,8 @@
-//! NOVA Runtime Garbage Collection Foundation
-//! 
-//! Provides basic garbage collection infrastructure for NOVA programs.
+//! Garbage collection infrastructure — **nothing calls it**.
+//!
+//! A compiled NOVA program has no collector: `nova_strdup` leaks by design and the process exit
+//! is the only cleanup (see `docs/language/11_memory.md`). This module is a sketch, not the
+//! runtime; `runtime/src/lib.rs` says why it is still here.
 //! This is a foundational implementation that will be extended in future phases.
 
 use std::cell::RefCell;
