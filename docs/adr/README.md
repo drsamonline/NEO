@@ -52,6 +52,7 @@ about a decision are about a reading of it that nobody chose.
 | [0016](0016-debugger-uses-ptrace.md) | The debugger attaches with `ptrace`, and `unsafe` lives in one file | accepted |
 | [0017](0017-ownership-proposal.md) | Move semantics for non-`Copy` types, then reference counting | accepted |
 | [0018](0018-module-qualified-names.md) | Qualified calls; a collision is refused, not resolved | accepted |
+| [0019](0019-mangling-for-module-collisions.md) | Mangle only what collides, so two modules can share a name | **proposed** |
 
 ## Writing one
 
