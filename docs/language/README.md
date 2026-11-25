@@ -39,7 +39,7 @@ What exists today, and what you should read instead:
 | 07 | [Functions](07_functions.md) | ✅ written |
 | 08 | [Modules](08_modules.md) | ✅ written |
 | 09 | [Control flow](09_control_flow.md) | ✅ written |
-| 10 | [Ownership](10_ownership.md) | — |
+| 10 | [Ownership](10_ownership.md) | ✅ written |
 | 11 | [Memory](11_memory.md) | ✅ written |
 | 12 | [Errors](12_errors.md) | ✅ written |
 | 13 | [Concurrency](13_concurrency.md) | — |
