@@ -63,6 +63,47 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 #[test]
+fn a_compiler_that_writes_nothing_is_not_a_success() {
+    // The C compiler's exit status is a claim about itself, not about the file. A wrapper that
+    // exits 0 without writing used to produce "✓ built <path>" for a binary that did not exist.
+    // `/bin/true` is exactly that wrapper, and it is on every Unix.
+    if !Path::new("/bin/true").exists() {
+        return;
+    }
+    let dir = scratch("cc-lies");
+    let source = dir.join("ok.nova");
+    fs::write(&source, "use core;\nfn main() -> int { print(1); return 0; }\n")
+        .expect("write source");
+    let binary = dir.join("ok");
+
+    let output = Command::new(compiler())
+        .arg("build")
+        .arg(&source)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .env("CC", "/bin/true")
+        .output()
+        .expect("run nova-compiler build");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "a compiler that produced nothing was reported as success: {stderr}"
+    );
+    assert!(
+        stderr.contains("reported success but did not produce"),
+        "the failure did not name the missing file: {stderr}"
+    );
+    assert!(
+        !stderr.contains("✓ built"),
+        "the success message was printed anyway: {stderr}"
+    );
+    assert!(!binary.exists(), "no binary should have been produced");
+}
+
+#[test]
 fn version_flag_and_subcommand_agree() {
     let expected = format!("nova-compiler {}", env!("CARGO_PKG_VERSION"));
     for arguments in [["--version"], ["-V"], ["version"]] {

@@ -706,6 +706,17 @@ fn build(input: &Path, output: Option<&Path>) -> PathBuf {
         die(&format!("`{cc}` failed to compile {}", c_path.display()));
     }
 
+    // The C compiler said it succeeded. That is a claim about its own exit status, not about the
+    // file: a wrapper script that exits 0 without writing anything reports success, and the user
+    // finds out when the binary they were told about does not run. Checked, because this
+    // repository has spent a session removing exactly this shape of claim — `✓ Published`, and
+    // "Attached to process N", both of which were acted on.
+    if !binary.exists() {
+        die(&format!(
+            "`{cc}` reported success but did not produce {}",
+            binary.display()
+        ));
+    }
     eprintln!("✓ built {} (C: {})", binary.display(), c_path.display());
     binary
 }
