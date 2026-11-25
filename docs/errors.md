@@ -67,53 +67,33 @@ Causes, in the order they happen:
 
 ---
 
-## E0010 — value used after being moved
+## E0010 — value used after being assigned away
 
-A **warning**, not an error. A value that is not `Copy` was passed to a function or assigned, and
-then used again.
-
-It is reported only for a type `clone` can copy: `String` and `[int]`. A `[String]`, a struct or a
-closure is also not `Copy`, but passing one is not reported — a rule that says "clone it" about a
-value that cannot be cloned is a trap rather than a rule.
+A **warning**, not an error. A value that owns a buffer was assigned to another binding and the
+original is used again.
 
 ```text
-prog.nova:10:19: warning [E0010]: `greeting` was moved earlier in this function, and is used again
+prog.nova:8:11: warning [E0010]: `greeting` was assigned to another binding, and is used again
 here
-  help: clone it before passing it, or pass it last
+  help: assigning a value that owns a buffer gives it away; `clone` it first, or use the new
+binding
 ```
 
-`int`, `float`, `bool`, `char` and references are copied when passed. `String`, arrays, structs
-and closures are not: they own a buffer, so passing one shares it, and a later use is a second
-name for the same memory.
+**Passing to a function does not count.** A NOVA `String` is a shared pointer: the callee gets the
+same address and the caller's variable stays valid, because nothing frees it. Reporting a move on
+every pass was tried and produced **214** warnings in the standard library alone — a rule that
+demands a copy to prevent a mutation the runtime does not permit.
 
-It warns rather than rejects because the rule is new (ADR 0017): the number of places it fires is
-being counted before anything is enforced.
+Assignment is different: after `other = greeting`, the program has two names for one value and the
+reader cannot tell which one it meant.
+
+It is reported only for a type `clone` can copy — `String`, `[int]`, and a struct whose fields are
+all scalars. Anything else would be a rule demanding something the language cannot do.
 
 **Only your own code is reported.** An imported module is merged into the same tree, so a warning
 inside `io.nova` would be repeated for every program that imports it, and you cannot act on it. A
 line past the end of the file you named is not from that file — the same bound the C backend uses
-for `#line` — and such warnings are counted, not printed:
-
-```text
-25 warning(s) in imported modules were not shown; they are not your code
-```
-
-`clone` is the answer the help line points at, and it is a **compiler builtin** rather than a
-library function because what it does depends on the argument's type and NOVA has no overloading:
-
-| Argument | Result |
-|---|---|
-| `String` | a fresh buffer with the same bytes |
-| `[int]` | a fresh buffer with the same elements |
-| a struct whose fields are all scalars | a field-by-field copy |
-| `[String]`, a struct holding a `String`, a closure | a compile-time error — a shallow copy would share what the rule protects | It does not itself count as a move —
-a clone that moved its argument would make the advice produce the same warning one line later.
-Arrays and structs are not cloneable yet; calling `clone` on one is a type error rather than a
-shallow copy that shares the buffer the rule exists to protect.
-
-**Assignment moves too.** `other = greeting` gives `greeting` away, exactly as passing it does.
-The gap this section used to record — `x = f(y)` moving nothing — is closed: the value of an
-assignment is marked the same way a call argument is.
+for `#line` — and such warnings are counted, not printed.
 
 ## E0061 — wrong number of arguments
 

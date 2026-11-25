@@ -131,20 +131,6 @@ impl SemanticAnalyzer {
     ///
     /// Called from both call paths: the parser wraps every expression in `Spanned`, so a call
     /// reaches the wrapped branch and would otherwise never see this.
-    fn mark_moved_arguments(&mut self, callee: &nova_common::Expr, args: &[nova_common::Expr]) {
-        // `clone` exists to *not* consume: it takes a value and answers a copy. Marking its
-        // argument moved would make the answer to every move warning produce the same warning
-        // at the next line, which is how a rule becomes something people turn off.
-        if let nova_common::Expr::Identifier(name) = callee.unspanned() {
-            if name == "clone" {
-                return;
-            }
-        }
-        for arg in args {
-            self.mark_moved_value(arg);
-        }
-    }
-
     /// Mark one expression as given away, if it is a non-`Copy` name.
     fn mark_moved_value(&mut self, expr: &nova_common::Expr) {
         let mut inner = expr;
@@ -539,7 +525,6 @@ impl SemanticAnalyzer {
                     }
                     self.current_span = outer;
                     self.check_call_arguments(func, args, Some(*span));
-                    self.mark_moved_arguments(func, args);
                 } else {
                     let outer = self.current_span.replace(*span);
                     self.check_expr(inner);
@@ -565,7 +550,6 @@ impl SemanticAnalyzer {
                     self.check_expr(arg);
                 }
                 self.check_call_arguments(func, args, None);
-                self.mark_moved_arguments(func, args);
             }
             nova_common::Expr::Field(object, _field) => {
                 self.check_expr(object);
@@ -723,12 +707,13 @@ impl SemanticAnalyzer {
                 // trips the rule 3 times; our own library trips it more often than that, and a
                 // rule that rejects the library it ships with is not enforceable yet.
                 let mut diag = Diagnostic::warning(format!(
-                    "`{name}` was moved earlier in this function, and is used again here"
+                    "`{name}` was assigned to another binding, and is used again here"
                 ))
                 .with_code("E0010")
                 .with_help(
-                    "a value is moved when it is passed to a function or assigned to another \
-                     binding; `clone` it first, or move it last",
+                    "assigning a value that owns a buffer gives it away; `clone` it first, or \
+                     use the new binding. Passing one to a function does **not** count: a NOVA \
+                     `String` is a shared pointer, and the caller's variable stays valid",
                 );
                 // A warning with no span cannot be attributed to a file, and an unattributed
                 // warning cannot be filtered out of an imported module — measured: 25 of the
