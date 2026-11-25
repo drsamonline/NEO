@@ -45,6 +45,23 @@ Both handlers work on the compiler's own tokens:
 **Not a resolver.** Two identifiers with the same text are one symbol, so shadowing
 is not distinguished. `docs/adr/0001` says what would fix it.
 
+## Completion and hover
+
+Both exist, and both are narrower than the names suggest.
+
+**`completion`** offers the language's keywords and built-in types, **plus the names the current
+document declares** — read from the same deferred item tree the outline uses, so a function body is
+never parsed to complete a name. It does not offer the standard library and does not filter by the
+prefix already typed; the client does the filtering.
+
+Until 2026-11-26 it returned the keyword list and nothing else: it bound `uri` and `position` and
+used neither, so "autocomplete" offered `fn` and `let` in a file whose own functions were invisible.
+A capability advertised and answered with a constant is the failure mode this repository keeps
+finding, and it is why the handler now reads the document.
+
+**`hover`** extracts the identifier under the cursor and answers `Symbol: \`name\`` — the name, not
+a type or a doc comment. It is a name-at-cursor, and calling it hover *info* would be generous.
+
 ## Outline
 
 `documentSymbol` uses `compiler/src/syntax` — the item tree — rather than scanning
