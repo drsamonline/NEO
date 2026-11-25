@@ -396,7 +396,14 @@ enum LogLevel {
 }
 
 /// Log message with level
-fn log(level: LogLevel, message: String) {
+/// Write one log line at a level.
+///
+/// Named `log_message` rather than `log` because `math` exports `log(x: float)` and imported
+/// modules share **one flat namespace**: with both imported, `math`'s own `log(x)` calls were
+/// checked against this two-argument signature and every program that used both modules failed to
+/// build. Measured 2026-11-24. `math`'s `log`/`log10`/`log2` family keeps its names; this one had
+/// a synonym available and they did not.
+fn log_message(level: LogLevel, message: String) {
     let timestamp = now();
     let level_str = match level {
         LogLevel.DEBUG => "[DEBUG]",
@@ -427,27 +434,27 @@ fn log(level: LogLevel, message: String) {
 
 /// Debug logging
 fn debug(message: String) {
-    log(LogLevel.DEBUG, message)
+    log_message(LogLevel.DEBUG, message)
 }
 
 /// Info logging
 fn info(message: String) {
-    log(LogLevel.INFO, message)
+    log_message(LogLevel.INFO, message)
 }
 
 /// Warning logging
 fn warn(message: String) {
-    log(LogLevel.WARNING, message)
+    log_message(LogLevel.WARNING, message)
 }
 
 /// Error logging
 fn error(message: String) {
-    log(LogLevel.ERROR, message)
+    log_message(LogLevel.ERROR, message)
 }
 
 /// Fatal logging (exits program)
 fn fatal(message: String) -> ! {
-    log(LogLevel.FATAL, message);
+    log_message(LogLevel.FATAL, message);
     exit(1)
 }
 

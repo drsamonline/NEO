@@ -229,11 +229,18 @@ use io;
 
 This is a name-resolution bug, not an ownership one: `use` merges every declaration into one flat
 namespace and the last definition of a name wins. It surfaced while counting move warnings, and it
-is more serious than the thing being measured — a user cannot import two standard-library modules
-that happen to share a function name.
+was more serious than the thing being measured — a user could not import two standard-library
+modules that happen to share a function name.
 
-The fix is either module-qualified resolution (a language change) or unique names in the library
-(a one-line rename that leaves the language's scoping unchanged). Neither is done.
+**Fixed on 2026-11-24** by renaming `io.log` to `io.log_message` — the smaller of the two options,
+and the one that leaves the language's scoping unchanged. `math`'s `log`/`log10`/`log2` family
+keeps its names because it is a family; `io`'s logging primitive had a synonym available and they
+did not. Verified: `use core; use io; use math; use text;` now builds and runs, where
+`use math; use io;` did not.
+
+**The underlying bug is still there**: any two modules that share a name will collide again, and
+the only defence is a naming convention nobody enforces. Module-qualified resolution is the real
+fix and remains a language change.
 
 ### Why `print <name>` is blocked here, and what would unblock it
 
