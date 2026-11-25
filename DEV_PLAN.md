@@ -42,7 +42,7 @@ the code and a CI run, and the run is named where it matters.
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ **`run` traces, `break <function>` and `break <file:line>` insert a real `int3`, `backtrace` walks the frame chain** — all reporting `.nova` lines (ADR 0016); `print 0xADDRESS` reads memory; PIE binaries need the program started first; **`print <name>` refuses** — a variable needs its stack offset and type, which nothing emits | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
-| Language spec | ⚠️ 20 of 25 chapters written; the five left need language features that do not exist | `docs/language/README.md` |
+| Language spec | ⚠️ 21 of 25 chapters written; the four left need language features that do not exist | `docs/language/README.md` |
 | **Test suite** | **199 passing, 0 failing, 0 ignored** | CI run 44117607709, the branch merged as #21 |
 
 ---

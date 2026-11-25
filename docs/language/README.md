@@ -46,7 +46,7 @@ What exists today, and what you should read instead:
 | 14 | [Attributes](14_attributes.md) | — |
 | 15 | [Generics](15_generics.md) | ✅ written |
 | 16 | [Interfaces](16_interfaces.md) | — |
-| 17 | [Packages](17_packages.md) | — |
+| 17 | [Packages](17_packages.md) | ✅ written |
 | 18 | [Domain packs](18_domain_packs.md) | — |
 | 19 | [Semantic model](19_semantic_model.md) | ✅ written |
 | 20 | [SIR](20_sir_intro.md) | ✅ written |
