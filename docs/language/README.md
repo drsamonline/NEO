@@ -43,9 +43,9 @@ What exists today, and what you should read instead:
 | 11 | [Memory](11_memory.md) | ✅ written |
 | 12 | [Errors](12_errors.md) | ✅ written |
 | 13 | [Concurrency](13_concurrency.md) | ✅ written |
-| 14 | [Attributes](14_attributes.md) | — |
+| 14 | [Attributes](14_attributes.md) | ✅ written |
 | 15 | [Generics](15_generics.md) | ✅ written |
-| 16 | [Interfaces](16_interfaces.md) | — |
+| 16 | [Interfaces](16_interfaces.md) | ✅ written |
 | 17 | [Packages](17_packages.md) | ✅ written |
 | 18 | [Domain packs](18_domain_packs.md) | — |
 | 19 | [Semantic model](19_semantic_model.md) | ✅ written |

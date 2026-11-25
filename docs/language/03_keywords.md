@@ -17,10 +17,10 @@ word the compiler does not reserve, or misses one it does.
 | `impl` | an inherent method block | `impl_block` |
 | `const` | a constant | `const_def` |
 | `static` | a mutable global | parsed as a `const_def` |
-| `type` | a type alias | `type_alias` |
+| `type` | **reserved, not parsed** — `type Meters = int;` is `Expected expression at 'type'` | `type_alias` |
 | `use` | a module import | `use_decl` |
 | `mod` | a module declaration | `module_decl` |
-| `pub` | visibility | prefix on any item |
+| `pub` | **reserved, not parsed** — `pub fn f()` is `Expected expression at 'pub'` | prefix on any item |
 
 ## Control flow
 
@@ -29,7 +29,7 @@ word the compiler does not reserve, or misses one it does.
 | `if` / `else` | conditional; both are expressions |
 | `while` | loop |
 | `for` … `in` | range loop: `for i in 0..10` |
-| `loop` | unconditional loop |
+| `loop` | **reserved, not parsed** — `loop { }` is `Expected expression at 'loop'`; use `while true` |
 | `match` | pattern matching, arms are `pattern => expr` |
 | `break` / `continue` | loop control |
 | `return` | early return, with or without a value |
@@ -41,6 +41,19 @@ word the compiler does not reserve, or misses one it does.
 | Keyword | Value |
 |---|---|
 | `true` / `false` | the two `bool` values |
+
+## Reserved, and not accepted
+
+Three of the words above are reserved by the lexer and listed in the grammar, and the parser
+rejects them: **`type`**, **`pub`** and **`loop`**. So do the compound assignment operators the
+grammar reserves (`+=`, `-=`, `*=`, `/=`, `^`, `~`) — `i += 1` is `Expected expression at '+='`.
+
+Reserved-but-rejected is a deliberate state, not an oversight to be discovered: the words cannot be
+used as identifiers, which means a program written today will not change meaning when they are
+implemented. Every one of them was checked by compiling a program that uses it — 2026-11-25.
+
+`static` and `const` are the opposite case: reserved *and* accepted. `static COUNTER: int = 0;`
+compiles and prints `0`.
 
 ## Not a keyword
 
