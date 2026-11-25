@@ -42,7 +42,7 @@ What exists today, and what you should read instead:
 | 10 | [Ownership](10_ownership.md) | ✅ written |
 | 11 | [Memory](11_memory.md) | ✅ written |
 | 12 | [Errors](12_errors.md) | ✅ written |
-| 13 | [Concurrency](13_concurrency.md) | — |
+| 13 | [Concurrency](13_concurrency.md) | ✅ written |
 | 14 | [Attributes](14_attributes.md) | — |
 | 15 | [Generics](15_generics.md) | ✅ written |
 | 16 | [Interfaces](16_interfaces.md) | — |
