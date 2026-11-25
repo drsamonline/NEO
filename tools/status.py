@@ -86,9 +86,25 @@ def stdlib() -> dict[str, int]:
     return {"modules": len(modules), "listed_as_not_compiling": listed}
 
 
+def test_functions() -> int:
+    """`#[test]` functions in the workspace.
+
+    Counted rather than run: this file is a no-toolchain gate, and `cargo test` needs one. The
+    number is the static size of the suite — what a document means when it says "the workspace has
+    N tests" — and it is the number four documents quoted wrongly as 199 while the suite was 339.
+    """
+    total = 0
+    for path in ROOT.rglob("*.rs"):
+        if "target" in path.parts:
+            continue
+        total += path.read_text(encoding="utf-8", errors="ignore").count("#[test]")
+    return total
+
+
 def collect() -> dict:
     return {
         "version": version(),
+        "tests": {"functions": test_functions()},
         "loc": {
             "compiler_src": rust_lines("compiler/src"),
             "workspace": rust_lines(*WORKSPACE_MEMBERS),

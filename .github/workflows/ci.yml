@@ -61,6 +61,11 @@ jobs:
       - name: Every workspace dependency is used by a member
         run: python3 tools/workspace-dep-check.py
 
+      # Five documents quoted the test suite as 199, 316 and 193 while it was 342. Each number
+      # was true on the day it was typed. This is the check that stops the sixth.
+      - name: Every number a document states matches the thing it counts
+        run: python3 tools/count-check.py
+
       - name: The stdlib README matches what the stdlib can actually run
         run: python3 tools/stdlib-check.py
 

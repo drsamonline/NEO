@@ -1,5 +1,8 @@
 {
   "version": "0.7.0",
+  "tests": {
+    "functions": 342
+  },
   "loc": {
     "compiler_src": 15013,
     "workspace": 34785
@@ -7,6 +10,7 @@
   "adrs": 19,
   "gates": [
     "architecture",
+    "count",
     "diagnostic",
     "docs",
     "error-code",
