@@ -57,7 +57,10 @@ pub fn init(name: &str, is_lib: bool) -> Result<(), CommandError> {
     manifest::save_manifest(&project_dir, &manifest)?;
     
     // Create source file
-    let source_path = project_dir.join("src").join(if is_lib { "lib.nova" } else { "main.nova" });
+    let library_entry = format!("{name}.nova");
+    let source_path = project_dir
+        .join("src")
+        .join(if is_lib { library_entry.as_str() } else { "main.nova" });
     let source_content = if is_lib {
         // No `pub` here: the parser lexes it as a keyword but has no production for
         // it yet, so a library scaffold that used it would not compile.
@@ -123,7 +126,7 @@ MIT
     
     println!("✓ Created {}", name);
     println!("  - Nova.toml");
-    println!("  - src/{}", if is_lib { "lib.nova" } else { "main.nova" });
+    println!("  - src/{}", if is_lib { format!("{name}.nova") } else { "main.nova".to_string() });
     println!("  - .gitignore");
     println!("  - README.md");
     println!("\nRun `cd {} && nova-pkg build` to get started!", name);
@@ -153,13 +156,24 @@ pub fn add(name: &str, version: &str, is_dev: bool) -> Result<(), CommandError> 
         DependencySpec::Simple(version.to_string()),
     );
     
+    // Resolve *before* writing: a dependency that cannot be fetched must not leave the manifest
+    // changed. Measured before this: `add somepkg` wrote `somepkg = "*"`, printed a tick, and then
+    // the resolution failed — so the project was left with a dependency that breaks `build`, and
+    // the user had to undo it by hand.
+    let previous = manifest::load_manifest(&cwd)?;
     manifest::save_manifest(&cwd, &manifest)?;
-    
-    println!("✓ Added `{}` v{} to {}", name, version, if is_dev { "dev-dependencies" } else { "dependencies" });
-    
-    // Resolve and download dependencies
-    resolve_dependencies()?;
-    
+    if let Err(error) = resolve_dependencies() {
+        manifest::save_manifest(&cwd, &previous)?;
+        return Err(error);
+    }
+
+    println!(
+        "✓ Added `{}` v{} to {}",
+        name,
+        version,
+        if is_dev { "dev-dependencies" } else { "dependencies" }
+    );
+
     Ok(())
 }
 
@@ -259,9 +273,18 @@ fn output_path(manifest: &Manifest, release: bool, cwd: &Path) -> PathBuf {
 
 /// A library entry (`src/lib.nova`) has no `main`, so it cannot be linked or run.
 fn is_library(manifest: &Manifest) -> bool {
+    // A library's entry is `src/<package>.nova` — the name `use <package>;` resolves to — and an
+    // application's is `src/main.nova`. `lib.nova` is still accepted for a project created before
+    // the convention changed, because a manifest that already exists should keep building.
     Path::new(&manifest.build.entry)
         .file_stem()
-        .map(|stem| stem == "lib")
+        .and_then(|stem| stem.to_str())
+        .map(|stem| {
+            // Both spellings: the entry is written from the name as given, and a crate-style
+            // name (`my-lib`) is what a manifest usually holds.
+            let name = &manifest.package.name;
+            stem == "lib" || stem == name.as_str() || stem == name.replace('-', "_")
+        })
         .unwrap_or(false)
 }
 
@@ -307,9 +330,10 @@ pub fn build(release: bool, no_incremental: bool) -> Result<(), CommandError> {
     let library = is_library(&manifest);
     let compiler = compiler_command();
     let mut cmd = std::process::Command::new(&compiler);
-    for dependency in &dependencies {
-        cmd.arg("--module-root").arg(&dependency.root);
-    }
+    // `--module-root` goes **after** the subcommand: the compiler parses `build`/`emit` first and
+    // treats a flag before it as an unknown option. Measured: a package with one path dependency
+    // failed with `unknown option --module-root`, so no package with a dependency could be built
+    // at all — the tool and the compiler disagreed about their own command line.
     if library {
         // No separate compilation yet: a library is emitted as C, not linked.
         cmd.arg("emit")
@@ -321,6 +345,10 @@ pub fn build(release: bool, no_incremental: bool) -> Result<(), CommandError> {
             .arg(&entry)
             .arg("-o")
             .arg(&output);
+    }
+
+    for dependency in &dependencies {
+        cmd.arg("--module-root").arg(&dependency.root);
     }
 
     let result = cmd.output().map_err(|e| {

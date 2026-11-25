@@ -131,26 +131,14 @@ fn fetch_package(name: &str, version: Option<&str>) -> Result<Manifest, Resolver
         Err(_) => {}
     }
     
-    // For now, create a placeholder manifest for testing
-    // In production, this would fail with PackageNotFound
-    Ok(Manifest {
-        package: crate::manifest::PackageInfo {
-            name: name.to_string(),
-            version: version.unwrap_or("1.0.0").trim_start_matches('^').trim_start_matches('~').to_string(),
-            description: format!("Package {}", name),
-            authors: vec!["Unknown".to_string()],
-            license: None,
-            homepage: None,
-            repository: None,
-            keywords: vec![],
-            categories: vec![],
-            nova_version: None,
-        },
-        build: crate::manifest::BuildConfig::default(),
-        dependencies: HashMap::new(),
-        dev_dependencies: HashMap::new(),
-        target: HashMap::new(),
-    })
+    // Nothing has it: not `nova_modules/`, and the registry refuses because it does not exist.
+    //
+    // This used to fall through to a placeholder manifest — `version 1.0.0`, `authors ["Unknown"]`,
+    // `description "Package <name>"` — and `nova-pkg add` printed `✓ Resolved 1 dependencies` for a
+    // package that does not exist. `nova-pkg build` then refused, so the two commands disagreed
+    // about the same dependency. A resolver that invents what it cannot fetch is worse than one
+    // that stops, which is the rule ADR 0006 and the constitution both state.
+    Err(ResolverError::PackageNotFound(name.to_string()))
 }
 
 /// Check if two version specifications are compatible
