@@ -196,6 +196,28 @@ strings are immutable in practice).
 Option 2 is the one this measurement argues for, and it is the opposite of what the ADR proposed
 when the rule was designed.
 
+## The decision the measurement forced — 2026-11-24
+
+Of the three options the 214 measurement left, the **second was taken: the rule is narrowed to
+assignment**, and passing no longer counts.
+
+| Construct | Marked? | Why |
+|---|---|---|
+| `other = greeting` | **yes** | two names for one value; the reader cannot tell which was meant |
+| `f(greeting)` | no | the callee gets the same pointer and the caller's variable stays valid |
+
+Verified both ways by hand: a `String` passed and used again builds with no warning; a `String`
+assigned and then used warns, with a message that says which of the two happened. The corpus trips
+it **0** times, and so does the standard library, because neither assigns a `String` away.
+
+**This is the opposite of what this ADR proposed.** It said a value is moved when passed *or*
+assigned. The measurement — 214 sites in the library, every one of them a pass-then-use — showed
+that the passing half of the rule was describing a language that does not exist, and it was
+dropped rather than enforced.
+
+What the rule now catches is small and real. What it no longer catches was never a bug in this
+language.
+
 ## What the sweep would touch — measured, 2026-11-24
 
 The cost of option C is not the number of functions but the number of **call sites** that pass a
