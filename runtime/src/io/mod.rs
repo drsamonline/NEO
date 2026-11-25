@@ -1,6 +1,7 @@
-//! I/O Runtime Support for NOVA
-//! 
-//! Provides file I/O, streams, and buffered operations for the NOVA runtime.
+//! I/O — **nothing calls it**.
+//!
+//! Files, streams and buffering live in the C shim (`nova_file_*`), which is what a compiled
+//! program calls. This module is a sketch, not the runtime.
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};

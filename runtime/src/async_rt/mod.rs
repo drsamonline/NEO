@@ -1,6 +1,7 @@
-//! Async Runtime for NOVA
-//! 
-//! Provides event loop, futures, and async/await support.
+//! An async runtime — **nothing calls it, and the language has no `async`**.
+//!
+//! There is no `async`, `await` or `spawn` in the grammar or the lexer (see
+//! `docs/language/13_concurrency.md`). This module is a sketch, not the runtime.
 
 use std::future::Future;
 use std::pin::Pin;

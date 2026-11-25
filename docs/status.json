@@ -2,7 +2,7 @@
   "version": "0.7.0",
   "loc": {
     "compiler_src": 15013,
-    "workspace": 34765
+    "workspace": 34785
   },
   "adrs": 19,
   "gates": [
@@ -16,7 +16,8 @@
     "manifest",
     "module",
     "stdlib",
-    "type-name"
+    "type-name",
+    "workspace-dep"
   ],
   "stdlib": {
     "modules": 4,

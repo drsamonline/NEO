@@ -1,6 +1,8 @@
-//! NOVA Runtime FFI (Foreign Function Interface)
-//! 
-//! Provides interoperability with C and other languages.
+//! FFI wrappers — **nothing calls them**.
+//!
+//! The only C interop that runs is the shim itself: `compiler/src/runtime.rs` calls `malloc`
+//! directly. This module is kept because it records how to wrap C safely in a workspace that is
+//! otherwise `#![forbid(unsafe_code)]` — not because a program uses it.
 
 // ============================================================================
 // C-Compatible Types
