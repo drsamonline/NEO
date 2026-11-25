@@ -43,6 +43,42 @@ That last rule is why `stdlib/io` and `stdlib/core` could not both declare `chdi
 second copy was silently dropped, and the emitted C then had one `chdir` where the source
 had two. It was a duplicate in the library, and the fix was to delete one.
 
+## Qualified calls
+
+A function from an imported module can be written with the module in front:
+
+```nova
+use math;
+
+fn main() -> int {
+    print(math.log(2.0));   // 0.693147
+    print(log(2.0));        // the same function, unqualified
+    return 0;
+}
+```
+
+Both spellings reach the same function — imported modules share one flat namespace, and the
+qualified form is a way of **saying which one you meant**, not a separate scope. It is resolved by
+looking the name up in the module that was imported, and it carries the function's return type, so
+`math.log(2.0)` prints `0.693147` rather than `0`.
+
+A qualified call is recognised by its head: if the identifier before the dot is a module named by a
+`use`, the call is qualified. Otherwise `a.b(...)` is a method call on a value, and `Color.Red` is
+an enum variant. Those three readings are checked in that order — module, then method, then enum —
+and the order matters, because `math.log` and `file.read` are the same syntax.
+
+**A collision is still fatal.** If two imported modules declare the same name, the import fails and
+both modules are named:
+
+```text
+error: `log` is declared by both `math` and `io`, and NOVA has one flat namespace: importing both
+is ambiguous. Rename one of them.
+```
+
+Qualifying the call does not help there, because both definitions cannot be carried into one
+program — that needs the backend to emit two functions under one name. See
+[ADR 0018](../adr/0018-module-qualified-names.md).
+
 ## `use name.*;` and `use a::b;`
 
 The path is parsed and its **first element** is what gets loaded. `use core.*;` and
@@ -70,8 +106,9 @@ this reason, with a comment saying so.
 
 ## What is missing
 
-- No namespacing: two modules declaring `helper` is a collision, silently resolved by
-  first-wins.
+- No namespacing: two modules declaring `helper` is a collision. It used to be resolved silently by
+  first-wins; it is now refused, naming both modules. A qualified call (`math.log(x)`) exists but
+  does not resolve a collision, because both definitions cannot live in one program.
 - No visibility, no re-export, no `use ... as ...`.
 - No cycle detection — a cycle loads each file once and stops, which is not the same as
   reporting it.

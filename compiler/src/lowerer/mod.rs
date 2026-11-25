@@ -22,6 +22,8 @@ pub struct Lowerer {
     /// it emitted `{"y":0,"x":0}` for `Point { x, y }`, and the keys would move between
     /// runs. A JSON object whose keys reorder is not a stable format.
     struct_field_order: HashMap<String, Vec<String>>,
+    /// Modules named by `use`, so `math.log(x)` can be told from `value.field` (ADR 0018).
+    imported_modules: std::collections::HashSet<String>,
     /// Struct name -> method name -> signature, collected from `impl` blocks.
     methods: HashMap<String, HashMap<String, MethodSig>>,
     /// Enum name -> variant names, in declaration order.
@@ -140,6 +142,7 @@ impl Lowerer {
             signatures: HashMap::new(),
             struct_types: HashMap::new(),
             struct_field_order: HashMap::new(),
+            imported_modules: std::collections::HashSet::new(),
             methods: HashMap::new(),
             enums: HashMap::new(),
             enum_ordinals: HashMap::new(),
@@ -357,6 +360,15 @@ impl Lowerer {
                 ))
             }
             Expr::Call(callee, args) => match callee.unspanned() {
+                // A qualified call's type is the function's, exactly as an unqualified one's is.
+                // Without this `print(math.log(2.0))` printed 0: the type was unknown, `print`
+                // fell back to `int`, and the answer was truncated. Measured.
+                Expr::Field(object, function)
+                    if matches!(object.unspanned(), Expr::Identifier(module)
+                        if self.imported_modules.contains(module)) =>
+                {
+                    self.signatures.get(function).cloned().flatten()
+                }
                 // A builtin's type comes from the one table the analyser also uses.
                 Expr::Identifier(name) if name.starts_with("__builtin_") => {
                     crate::sema::builtin_return_type(name).map(|typ| typ.to_string())
@@ -391,6 +403,16 @@ impl Lowerer {
         let mut functions = Vec::new();
         let mut globals = Vec::new();
         let mut structs = Vec::new();
+
+        // Which modules were imported: a dotted callee whose head is one of these is a qualified
+        // call, not a field access (ADR 0018).
+        for item in &program.items {
+            if let nova_common::Item::Use(use_decl) = item {
+                if let Some(name) = use_decl.path.first() {
+                    self.imported_modules.insert(name.clone());
+                }
+            }
+        }
 
         // Signatures and struct layouts first: a body may call a function or
         // build a struct defined after it.
@@ -2336,6 +2358,36 @@ impl Lowerer {
                                     params,
                                 }),
                                 typ: return_type,
+                            };
+                        }
+                    }
+                }
+                // `math.log(x)` — a qualified call. The head names a module, so this is not a
+                // method on a value and not a field read: it lowers to the function itself,
+                // because imported modules share one flat namespace (ADR 0018). Checked before
+                // the method path, which would otherwise look for a method named `log` on a
+                // value named `math`.
+                if let Expr::Field(object, function) = callee.unspanned() {
+                    if let Expr::Identifier(module) = object.unspanned() {
+                        if self.imported_modules.contains(module) {
+                            let call = SirExpr::Call {
+                                callee: function.clone(),
+                                args: self.lower_call_args(function, args),
+                            };
+                            // The return type must ride along, exactly as it does for an
+                            // unqualified call: without it the backend assumes `int` and
+                            // `math.log(2.0)` printed 0 instead of 0.693147. Measured.
+                            return match self
+                                .signatures
+                                .get(function)
+                                .cloned()
+                                .flatten()
+                            {
+                                Some(typ) => SirExpr::Typed {
+                                    expr: Box::new(call),
+                                    typ: self.substitute(&typ),
+                                },
+                                None => call,
                             };
                         }
                     }

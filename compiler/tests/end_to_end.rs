@@ -232,6 +232,32 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).to_string()
 }
 
+#[test]
+fn a_qualified_call_answers_the_same_as_an_unqualified_one() {
+    // ADR 0018. `math.log(2.0)` used to be `E0002: undefined name math`; then it built but
+    // answered 0, because the call's return type was lost and `print` fell back to `int`.
+    // Both spellings must agree, and the value must be the real one.
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let stdout = run_with_stdlib(
+        "qualified",
+        "use core;\nuse math;\n\nfn main() -> int {\n    print(log(2.0));\n    print(math.log(2.0));\n    return 0;\n}\n",
+    );
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 2, "expected two lines, got {stdout:?}");
+    assert_eq!(
+        lines[0], lines[1],
+        "qualified and unqualified disagree: {stdout:?}"
+    );
+    assert!(
+        lines[0].starts_with("0.693"),
+        "`log(2.0)` should be about 0.693, got {:?}",
+        lines[0]
+    );
+}
+
 /// Does a `[float]` array survive being passed to `sum_float`?
 ///
 /// It did not: `sum_float([1.5, 2.5])` returned **3**, because `NovaArray` held `int`

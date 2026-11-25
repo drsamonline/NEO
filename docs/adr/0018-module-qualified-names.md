@@ -1,10 +1,11 @@
 # ADR 0018 — module-qualified names
 
-- **Status:** proposed
+- **Status:** **accepted** (2026-11-25) — option **C**, of which the qualified form is implemented
 - **Date:** 2026-11-25
 - **Related:** [Modules chapter](../language/08_modules.md), [0017](0017-ownership-proposal.md)
 
-> **Proposed, not accepted.** Nothing here is implemented. The decision is the maintainer's.
+> **Accepted 2026-11-25: option C.** `math.log(x)` now resolves. The parts not implemented are
+> named in "What was built, and what the plan got wrong" below.
 
 ## Context
 
@@ -28,6 +29,32 @@ Measured facts:
 - The parser already produces `Expr::Field(Identifier("math"), "log")` for `math.log`, and the
   lowerer already special-cases one meaning for that shape — `Color.Red` is an enum variant. So
   the syntax exists and has a competing interpretation.
+
+## What was built, and what the plan got wrong — 2026-11-25
+
+**Implemented: step 3, the qualified form.** `math.log(x)` resolves to `log`, in three places that
+each had to learn about it:
+
+| Place | What it does now |
+|---|---|
+| `sema` | a call whose callee is `Field(module, name)` checks `name`, not the module |
+| `lowerer` | lowers it to the function itself, before the method-call path |
+| `lowerer`'s `expr_type` | answers the function's return type |
+
+**The third one was not in the plan and it mattered.** With only the first two, `math.log(2.0)`
+built and printed `0`: the type was unknown, `print` fell back to `int`, and the answer was
+truncated. A qualified call that compiles and answers wrong is worse than one that refuses — the
+same lesson as `✓ Published`, in a different place.
+
+**And the plan's order was wrong.** It said steps 1–2 (diagnose an ambiguous use, naming both
+modules) would remove the failure on their own. They cannot: to keep *both* definitions in the
+merged program, the backend must emit two C functions with the same name, which needs mangling —
+work the plan did not account for. So a collision is still refused at import, and `use math; use
+io;` still fails until the library renames one. What C bought is the **syntax** for when that is
+not the case.
+
+Verified by hand and by a test: `log(2.0)` and `math.log(2.0)` both answer `0.693147`, and a
+`String` argument works (`text.trim(s)`).
 
 ## What is actually being decided
 
