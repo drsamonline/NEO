@@ -20,6 +20,12 @@ Each is runnable locally with no toolchain, which is why they are Python.
 | `tools/status.py` | `docs/status.json` no longer matches the version, line counts, ADR count, gate list or stdlib ratchet | Other repositories read that file instead of copying numbers into prose; drift is how the NEO skill claimed v0.6.0 for a week |
 | `tools/type-name-check.py` | a type is read through `TypeExpr::name` instead of `type_display`, or a helper inspects a `SirExpr` without unwrapping `Typed` | Ten defects in one session came from those two idioms; both drop information silently |
 | `tools/docs-check.py` | a document is a stub, a `docs/` page is unreachable from `docs/README.md`, a workflow or tool has no explanation | This page's own guarantee |
+| `tools/architecture-check.py` | `ARCHITECTURE.md`'s line counts drift from the source, or a `Location` it names does not resolve | A count typed into prose is wrong within a week; `--fix` rewrites it |
+| `tools/module-check.py` | a module is declared and never used, or a file exists that nothing references | Two empty modules survived for months behind `pub mod` lines |
+| `tools/stdlib-check.py` | the README's function table disagrees with the source, a function calls a builtin the compiler lacks, or two modules declare one name | The library's own claims, checked against the library |
+| `tools/manifest-check.py` | `MANIFEST.json` no longer describes the files it records | Provenance nobody checks drifts into a claim nobody can trust |
+| `tools/workspace-dep-check.py` | `[workspace.dependencies]` names a crate no member opts into | `nova-runtime` sat there reading as "NOVA has a Rust runtime" while nothing used it |
+| `tools/count-check.py` | a document states a number the workspace does not have — tests, chapters, parity programs | Six documents quoted the suite as 199, 316 and 193 while it was 342 |
 
 ## The shell scripts
 
@@ -34,7 +40,7 @@ Each is runnable locally with no toolchain, which is why they are Python.
 
 | Workflow | Guards | Blocking? |
 |---|---|---|
-| `ci.yml` | Build, 214 tests, every example runs, stdlib emits C, generated JS and Rust run, `test --parity`, docs check | **yes** |
+| `ci.yml` | Build, 346 tests, every example runs, stdlib emits C, generated JS and Rust run, `test --parity`, docs check | **yes** |
 | `accuracy.yml` | **G1** generated C under ASan+UBSan; **G2** emitted WASM validated by `wasm-tools` | **yes** |
 | `diagnostics.yml` | **G3** eight diagnostic goldens plus the JSON contract; error-code agreement | **yes** |
 | `corpus.yml` | **G4** 20 generated programs, each compared to an independent Python oracle *and* across four backends | **yes** |

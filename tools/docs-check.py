@@ -114,11 +114,16 @@ def main() -> int:
                 f".github/workflows/{workflow.name} has no comment saying what it guards"
             )
 
-    # 5. every check says what it checks
+    # 5. every check says what it checks — in its own docstring, and in the page that
+    #    explains the checks. A tool missing from `docs/tooling.md` is a check nobody can
+    #    find, which is how six gates were added and the index still listed eight.
+    tooling = (ROOT / "docs" / "tooling.md").read_text(encoding="utf-8")
     for tool in sorted((ROOT / "tools").glob("*.py")):
         text = tool.read_text(encoding="utf-8")
         if not re.match(r'(?:#![^\n]*\n|\s*\n)*?"""', text.split("from __future__")[0]):
             problems.append(f"tools/{tool.name} has no module docstring")
+        if tool.name.endswith("-check.py") and f"tools/{tool.name}" not in tooling:
+            problems.append(f"tools/{tool.name} is not explained in docs/tooling.md")
 
     print(f"{len(markdown)} document(s), {len(reachable)} reachable from a front door")
 

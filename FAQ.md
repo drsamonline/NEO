@@ -63,13 +63,14 @@ Go-to-definition and find-references work on tokens, so they match text rather t
 scopes. It is exact about *where* and honest that it is not a resolver. Fixing it
 needs a scope map over a parsed body.
 
-### Why does the compiler print error codes now, and why only three?
+### Why does the compiler print error codes now, and why only four?
 
-`E0002`, `E0061`, `E0308`. The CLI used to drop the code and print only the message,
-so a code existed everywhere except in front of the person who needed it. Three is
-what the analyser actually has; `docs/errors.md` documents those and nothing else,
-because a page listing codes the compiler does not emit teaches readers to distrust
-it.
+`E0002`, `E0010`, `E0061`, `E0308`. The CLI used to drop the code and print only the
+message, so a code existed everywhere except in front of the person who needed it.
+Four is what the analyser actually has — and this answer said three until 2026-11-26,
+a week after `E0010` was added, which is why `tools/error-code-check.py` now checks
+this file's list too. `docs/errors.md` documents those four and nothing else, because
+a page listing codes the compiler does not emit teaches readers to distrust it.
 
 ### Is my source sent anywhere?
 
@@ -86,8 +87,8 @@ lexer was slicing a `String` with character offsets.
 
 ### How do I know the claims in this repository are true?
 
-Every number is produced by a command or a CI run, and eleven workflows check the
-claims rather than trusting them: sanitisers on generated C, WebAssembly validation,
+Every number is produced by a command or a CI run, and thirteen no-toolchain checks
+plus the workflows check the claims rather than trusting them: sanitisers on generated C, WebAssembly validation,
 diagnostic goldens, a generated differential corpus, fuzzing, a coverage ratchet,
 mutation testing, a licence policy, extension packaging. `docs/tooling.md` lists
 them and what each one would catch.
