@@ -1,4 +1,4 @@
-69.27
+69.25
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -224,3 +224,5 @@
 # 69.27% (10,703 of 15,451) when `panic` stopped being declared as a builtin. A FALL of 0.01: six
 # lines of builtin registration were deleted and nothing was added to replace them, so the
 # denominator fell by less than the numerator.
+# 69.25% (10,700 of 15,451) when the privacy claim became a gate. A FALL of 0.02: the new check is
+# Python, which coverage does not measure, and nothing in Rust changed.
