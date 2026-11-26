@@ -186,10 +186,19 @@ on backend coverage.
 ## Current Stage
 
 Phase 1 is complete. The Rust runtime crate exists but is not linked into generated
-programs. Phase 3 (tooling) is partial: the package registry is mocked, LSP
-go-to-definition is a string search with `references` missing, and the debugger's
-stack frames/DWARF are mocked. Phase 4 is in progress. `DEV_PLAN.md` is
-authoritative for status and the test suite has 346 passing tests.
+programs — nothing depends on it, and `runtime/src/lib.rs` says so. Phase 3 (tooling) is
+partial: the package registry **refuses** rather than answering from a mock, the LSP
+answers `definition`, `references`, `documentSymbol`, `completion`, `hover` and
+diagnostics, and the debugger is **real** — `ptrace`, breakpoints, a frame-chain
+backtrace and `.nova` line numbers through `addr2line` (ADR 0016), with only
+`print <name>` still refusing because this sandbox's C compiler emits no local-variable
+DWARF. Phase 4 is in progress. `DEV_PLAN.md` is authoritative for status and the test
+suite has 346 passing tests.
+
+**This paragraph said the opposite until 2026-11-26** — that the registry, the LSP's
+`references` and the debugger's stack frames were all mocked. Each had been made real in
+a pull request whose number is in `CHANGELOG.md`; none of them updated the page a new
+reader opens first.
 
 ### Future Architecture
 

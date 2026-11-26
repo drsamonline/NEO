@@ -278,7 +278,7 @@ represented.
   is derived from `crates/nova-common/src/token.rs`, and a language configuration.
   `tsc` and `vsce package` run in CI, and `tools/extension-check.py` fails if the
   grammar stops describing the compiler's keywords.
-- **Package manager**: replace the mock registry with git and path dependencies.
+- ~~**Package manager**: replace the mock registry with git and path dependencies.~~ **Done** — the registry refuses rather than mocking, and `path`/`git` dependencies resolve and are importable.
   ✅ `pkg/src/deps.rs` resolves each dependency to a directory and passes
   `--module-root` to the compiler, so `use utils;` finds a dependency's source. A
   git dependency is cloned into `.nova/deps/<name>` and checked out at
