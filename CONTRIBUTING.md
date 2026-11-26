@@ -38,6 +38,19 @@ You also need, for the parts that use them:
 
 `nova-compiler doctor` tells you which of these it can find.
 
+**Without `wat2wasm` you can still check the WASM output**, which matters because `test --parity`
+reports `wasm held` and cannot compare it:
+
+```bash
+pip install wasmtime
+python3 -c "import wasmtime, sys; wasmtime.wat2wasm(open(sys.argv[1]).read())" out.wat
+```
+
+`wasmtime.wat2wasm` is the same text-format parser `wat2wasm` uses, so it answers the question
+`test --parity` cannot: *does the emitted `.wat` parse?* It does not run the module — that still
+needs `node` and the host — but a `.wat` that does not parse never gets that far. Verified on
+2026-11-26 against every program in `examples/` and `tests/parity/`: 12 of 12 parse.
+
 ## The checks that must pass
 
 Run these before you open a pull request. CI runs the same set.
