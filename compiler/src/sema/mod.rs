@@ -105,13 +105,12 @@ impl SemanticAnalyzer {
         );
         let _ = self.symbol_table.insert(clone_symbol);
 
-        // Register panic function
-        let panic_symbol = Symbol::new(
-            "panic".to_string(),
-            SymbolKind::Function,
-            Span::default(),
-        );
-        let _ = self.symbol_table.insert(panic_symbol);
+        // `panic` is **not** declared here. It is a standard-library function
+        // (`core.nova`: `fn panic(message: String) -> !` wrapping `__builtin_panic`), and
+        // declaring it as a builtin meant a program without `use core;` passed semantic
+        // analysis and emitted a C call to `panic`, which the runtime does not define:
+        // `error: call to undeclared function 'panic'`. `print` stays a builtin because the
+        // runtime *does* declare `print`; the rule is that this list matches the C shim.
     }
 
     /// Analyze a complete program

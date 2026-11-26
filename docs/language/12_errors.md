@@ -60,6 +60,8 @@ itself, and there is no standard type for that yet.
 `core.panic` takes a message and never returns — its type is `!`, the type with no values:
 
 ```nova
+use core;
+
 fn main() -> int {
     print(1);
     panic("cannot continue");

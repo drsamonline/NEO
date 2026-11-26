@@ -66,6 +66,10 @@ fn main() -> int {
 }
 ```
 
+This one is a fragment of a package: `double` is declared by the `lib` dependency, so it compiles
+only inside a project whose `Nova.toml` names that dependency. Every other program in this chapter
+compiles on its own.
+
 `nova-pkg` passes each resolved dependency's directory to the compiler as `--module-root`, and the
 loader searches it for `src/<name>.nova` before it searches the standard library — so a project can
 shadow a stdlib module with its own, as every other package manager allows.
