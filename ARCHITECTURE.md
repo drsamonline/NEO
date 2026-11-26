@@ -148,7 +148,6 @@ coverage, and `DEV_PLAN.md` says which feature stops where.
 │   ├── rust/            # Rust backend
 │   └── wasm/            # WebAssembly backend
 │
-├── runtime/              # Runtime system (scaffold)
 ├── pkg/                  # Package manager (nova-pkg)
 ├── lsp/                  # LSP implementation
 ├── dbg/                  # Debugger
@@ -185,15 +184,15 @@ on backend coverage.
 
 ## Current Stage
 
-Phase 1 is complete. The Rust runtime crate exists but is not linked into generated
-programs — nothing depends on it, and `runtime/src/lib.rs` says so. Phase 3 (tooling) is
+Phase 1 is complete. The Rust runtime crate was **deleted** on 2026-11-26 (ADR 0021): nothing
+depended on it, and generated C links the shim in `compiler/src/runtime.rs`. Phase 3 (tooling) is
 partial: the package registry **refuses** rather than answering from a mock, the LSP
 answers `definition`, `references`, `documentSymbol`, `completion`, `hover` and
 diagnostics, and the debugger is **real** — `ptrace`, breakpoints, a frame-chain
 backtrace and `.nova` line numbers through `addr2line` (ADR 0016), with only
 `print <name>` still refusing because this sandbox's C compiler emits no local-variable
 DWARF. Phase 4 is in progress. `DEV_PLAN.md` is authoritative for status and the test
-suite has 346 passing tests.
+suite has 313 passing tests.
 
 **This paragraph said the opposite until 2026-11-26** — that the registry, the LSP's
 `references` and the debugger's stack frames were all mocked. Each had been made real in
@@ -202,7 +201,8 @@ reader opens first.
 
 ### Future Architecture
 
-- Link the Rust runtime crate or replace it with a documented native runtime.
+- ~~Link the Rust runtime crate or replace it with a documented native runtime.~~ **Answered**
+  by ADR 0021: the C shim *is* the documented native runtime.
 - More backend coverage: WASM float struct fields and non-`int` closures, Rust
   struct-focused parity.
 - Real package registry, LSP references, DWARF debugging.

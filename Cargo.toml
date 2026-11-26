@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "compiler",
-    "runtime",
     "pkg",
     "lsp",
     "dbg",

@@ -35,7 +35,6 @@ Everything written down, and where to start.
 | [`language/07_functions.md`](language/07_functions.md) | Declarations, parameters by value and by reference, generics, and the `nova_fn_` prefix |
 | [`language/08_modules.md`](language/08_modules.md) | Resolution order, module roots, and why a program must not be named after the module it imports |
 | [`language/09_control_flow.md`](language/09_control_flow.md) | `if`/`while`/`loop`/`for`/`match`, blocks as expressions, and what is missing |
-| [`RUNTIME_PROGRESS.md`](RUNTIME_PROGRESS.md) | The Rust runtime crate: what it provides and what it does not |
 
 ## Decisions
 
@@ -95,7 +94,6 @@ Each directory that holds something explains itself in its own README.
 | [`compiler/`](../compiler/README.md) | The compiler crate: stages, tests, how to build it |
 | [`backends/`](../backends/README.md) | The three non-C generators, and what a backend must provide |
 | [`backends/javascript/`](../backends/javascript/README.md) · [`backends/rust/`](../backends/rust/README.md) · [`backends/wasm/`](../backends/wasm/README.md) | One per target, with its supported subset |
-| [`runtime/`](../runtime/README.md) | The Rust runtime crate — and that it is not linked into generated C |
 | [`stdlib/`](../stdlib/README.md) | The standard library, and the four modules: [`core`](../stdlib/core/README.md) · [`io`](../stdlib/io/README.md) · [`math`](../stdlib/math/README.md) · [`text`](../stdlib/text/README.md) |
 | [`crates/nova-common/`](../crates/nova-common/README.md) | Shared AST, tokens, spans, diagnostics and SIR |
 | [`examples/`](../examples/README.md) | Five programs, all built and run in CI |
