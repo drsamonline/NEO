@@ -1,4 +1,4 @@
-69.28
+69.27
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -221,3 +221,6 @@
 # 69.28% (10,709 of 15,457) when the mangled-name fix landed. It rose 0.37: the new test emits all
 # three non-C targets and reads their output, so the JS, Rust and WASM emission paths are covered by
 # a program for the first time.
+# 69.27% (10,703 of 15,451) when `panic` stopped being declared as a builtin. A FALL of 0.01: six
+# lines of builtin registration were deleted and nothing was added to replace them, so the
+# denominator fell by less than the numerator.
