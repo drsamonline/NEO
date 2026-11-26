@@ -50,6 +50,6 @@ programs currently use.
 cargo test --workspace   # includes the 33 runtime tests
 ```
 
-The workspace total is 313 passing tests, 0 failing (compiler, runtime, tooling
+The workspace total is 314 passing tests, 0 failing (compiler, runtime, tooling
 and end-to-end tests together). For overall project status, `DEV_PLAN.md` is
 authoritative.
