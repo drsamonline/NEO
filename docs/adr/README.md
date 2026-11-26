@@ -53,7 +53,7 @@ about a decision are about a reading of it that nobody chose.
 | [0017](0017-ownership-proposal.md) | Move semantics for non-`Copy` types, then reference counting | accepted |
 | [0018](0018-module-qualified-names.md) | Qualified calls; a collision is refused, not resolved | accepted |
 | [0019](0019-mangling-for-module-collisions.md) | Mangle only what collides, so two modules can share a name | accepted |
-| [0020](0020-concurrency-model.md) | A concurrency model, and why the one-string backend contract cannot carry a thread on two of four targets | **proposed** |
+| [0020](0020-concurrency-model.md) | A concurrency model, and why the one-string backend contract cannot carry a thread on two of four targets | accepted (E) |
 
 ## Writing one
 
