@@ -32,7 +32,8 @@ exit: 1
 ---
 tests/diagnostics/<name>.nova: semantic errors:
   <case>:4:11: [E0002] undefined name `missing`
-    help: declare `missing` first (`let missing = ...` or `fn missing(...)`), or check the spelling
+    help: declare `missing` first (`let missing = ...` or `fn missing(...)`), import the module
+        that defines it (`use core;`, `use io;`, `use math;`, `use text;`), or check the spelling
 error: semantic analysis failed
 ```
 

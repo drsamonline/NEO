@@ -55,7 +55,8 @@ A name was used that nothing has declared in scope.
 
 ```
 error [E0002]: undefined name `total`
-    help: declare `total` first (`let total = ...` or `fn total(...)`), or check the spelling
+    help: declare `total` first (`let total = ...` or `fn total(...)`), import the module that
+          defines it (`use core;`, `use io;`, `use math;`, `use text;`), or check the spelling
 ```
 
 Causes, in the order they happen:
@@ -78,6 +79,12 @@ here
   help: assigning a value that owns a buffer gives it away; `clone` it first, or use the new
 binding
 ```
+
+This transcript is checked: `tests/diagnostics/E0010_value_used_after_move.nova` produces it, and
+`tools/diagnostic-check.py` compares every `help:` line shown in a document against a golden. Until
+2026-11-26 this example had no case behind it — the document showed output nothing verified, and the
+harness could not express a warning at all, because it required every annotated case to exit
+non-zero.
 
 **Passing to a function does not count.** A NOVA `String` is a shared pointer: the callee gets the
 same address and the caller's variable stays valid, because nothing frees it. Reporting a move on

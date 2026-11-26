@@ -1,0 +1,12 @@
+// A value that owns a buffer is assigned to another binding, and the original is used
+// again afterwards. The rule is assignment only: `let t = s` copies the header, `t = s`
+// gives the buffer away, and the giver is then empty.
+//
+//~ WARNING E0010
+fn main() -> int {
+    let greeting = "hello";
+    let holder = "world";
+    holder = greeting;
+    print(greeting);
+    return 0;
+}

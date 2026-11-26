@@ -1,0 +1,4 @@
+exit: 0
+---
+  <case>:10:11: [E0010] `greeting` was assigned to another binding, and is used again here
+    help: assigning a value that owns a buffer gives it away; `clone` it first, or use the new binding. Passing one to a function does **not** count: a NOVA `String` is a shared pointer, and the caller's variable stays valid
