@@ -1,8 +1,25 @@
 # ADR 0020 — a concurrency model, and why it cannot be one model
 
-- **Status:** **proposed** (2026-11-26)
+- **Status:** **accepted** (2026-11-26) — option **E**, decide not to decide
 - **Date:** 2026-11-26
 - **Related:** [0017](0017-ownership-proposal.md) (reclamation), [0019](0019-mangling-for-module-collisions.md), [Concurrency chapter](../language/13_concurrency.md), `BACKEND_API.md`
+
+## What accepting this means — 2026-11-26
+
+Option **E** was accepted. Concretely:
+
+| Document | State after acceptance |
+|---|---|
+| `docs/language/13_concurrency.md` | unchanged — it documents the absence, which is still the truth |
+| `DEV_PLAN.md` | concurrency is an **open decision with a written measurement**, not a task |
+| this ADR | the measurement, kept so the next person argues with numbers instead of re-deriving them |
+
+**Option D is the design to write if a user asks for concurrency**: a channel is a value, a value
+fits the one-string backend contract, and "no shared state" is the only guarantee the current type
+system can keep. That is a decision to make when a program needs it, not a roadmap item.
+
+What would reopen this ADR: a backend contract that returns more than one file, or a JavaScript
+target that can carry a thread inside a single script.
 
 ## The question
 

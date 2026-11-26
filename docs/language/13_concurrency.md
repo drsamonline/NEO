@@ -7,6 +7,14 @@ no way to start a second process from a program. A NOVA program is one thread of
 This chapter says that plainly, and lists what a program can do instead, because "there is nothing
 here" is a fact a reader needs to know before designing around it.
 
+**This absence is a decision, not a gap.** [ADR 0020](../adr/0020-concurrency-model.md) records why:
+the backend contract is one program in and **one string of source out**, and a thread does not fit
+that on JavaScript (a `Worker` is a second file) or WebAssembly (shared memory, an assembly flag and
+a cooperating host). Two of four targets cannot express a thread at all, so the choice was to
+document the absence rather than ship a `spawn` that means less than the word. If it is ever added,
+a channel is the shape that fits — a channel is a value, and "no shared state" is the only guarantee
+this type system can keep.
+
 ## What is not in the language
 
 Every word a concurrency model would need is absent from both the grammar and the runtime —
