@@ -233,6 +233,88 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
 }
 
 #[test]
+fn every_complete_program_in_the_spec_compiles() {
+    // A chapter is a test. Seven `nova` blocks in `docs/language/` contain `fn main`, which means
+    // they claim to be whole programs — and two of them did not compile: the `panic` example was
+    // missing its `use core;`, and the package example needs a dependency it does not have (that
+    // one is annotated in the chapter rather than compiled).
+    //
+    // Fragments are skipped: a block without `fn main` is an excerpt, and compiling it would test
+    // the extraction rather than the chapter.
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let spec = workspace_root().join("docs").join("language");
+    let dir = scratch("spec-programs");
+    let mut compiled = 0;
+    let mut skipped = 0;
+
+    for entry in fs::read_dir(&spec).expect("read docs/language") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let text = fs::read_to_string(&path).expect("read chapter");
+        for (index, block) in nova_blocks(&text).into_iter().enumerate() {
+            if !block.contains("fn main") {
+                continue;
+            }
+            if block.contains("use lib;") {
+                // The package chapter's example needs a dependency; it says so in the text.
+                skipped += 1;
+                continue;
+            }
+            let name = format!(
+                "{}-{index}.nova",
+                path.file_stem().and_then(|s| s.to_str()).unwrap_or("chapter")
+            );
+            let source = dir.join(&name);
+            fs::write(&source, &block).expect("write program");
+            let build = Command::new(compiler())
+                .arg("build")
+                .arg(&source)
+                .arg("-o")
+                .arg(dir.join(format!("{name}.bin")))
+                .arg("--module-root")
+                .arg(workspace_root().join("stdlib"))
+                .output()
+                .expect("run nova-compiler build");
+            assert!(
+                build.status.success(),
+                "{}: a complete program in the spec does not compile:\n{}\n{}",
+                path.display(),
+                block,
+                String::from_utf8_lossy(&build.stderr)
+            );
+            compiled += 1;
+        }
+    }
+
+    assert!(compiled >= 5, "expected to compile several spec programs, did {compiled}");
+    eprintln!("spec programs compiled: {compiled}, skipped: {skipped}");
+}
+
+/// Every ```nova fenced block in a Markdown document, in order.
+fn nova_blocks(text: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut current: Option<String> = None;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```nova") {
+            current = Some(String::new());
+        } else if line.trim_start().starts_with("```") {
+            if let Some(block) = current.take() {
+                blocks.push(block);
+            }
+        } else if let Some(block) = current.as_mut() {
+            block.push_str(line);
+            block.push('\n');
+        }
+    }
+    blocks
+}
+
+#[test]
 fn a_mangled_name_is_valid_in_every_target() {
     // ADR 0019 mangles a colliding name to `module::name`, and `::` is not an identifier
     // character in JavaScript, Rust or WebAssembly. The C backend mapped it; the other three

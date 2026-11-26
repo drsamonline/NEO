@@ -62,7 +62,7 @@ NOVA is a statically-typed, compiled systems programming language with a complet
   separately — `parity: FAILED (... disagree with the reference: c, js)` against
   `parity: INCOMPLETE (... held — install the toolchain to check: wasm)` — because a
   wrong answer and an unanswered question are not the same result.
-- **345 `#[test]` functions across the workspace** (`cargo test --workspace`; the WASM
+- **346 `#[test]` functions across the workspace** (`cargo test --workspace`; the WASM
   execution tests need `node` and `wat2wasm`). CI runs them on every push.
 
 **✅ Phase 2: an unused Rust runtime crate — the language has none of what it contains**

@@ -38,14 +38,14 @@ Recursive descent parser building AST:
 
 ---
 
-### 3. Semantic Analyzer (2,224 lines) ✅
+### 3. Semantic Analyzer (2,223 lines) ✅
 **Location**: `compiler/src/sema/`
 
 Type checking and name resolution:
 - **checker.rs** (176 lines): Type system enforcement
 - **resolver.rs** (130 lines): Name/scope resolution
 - **types.rs** (99 lines): Type definitions
-- **mod.rs** (1,819 lines): Main analyzer logic
+- **mod.rs** (1,818 lines): Main analyzer logic
 
 Performs:
 - Symbol table construction
@@ -189,7 +189,7 @@ Phase 1 is complete. The Rust runtime crate exists but is not linked into genera
 programs. Phase 3 (tooling) is partial: the package registry is mocked, LSP
 go-to-definition is a string search with `references` missing, and the debugger's
 stack frames/DWARF are mocked. Phase 4 is in progress. `DEV_PLAN.md` is
-authoritative for status and the test suite has 345 passing tests.
+authoritative for status and the test suite has 346 passing tests.
 
 ### Future Architecture
 
