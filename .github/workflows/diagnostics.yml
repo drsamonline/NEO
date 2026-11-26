@@ -58,14 +58,23 @@ jobs:
         if: github.event.inputs.bless != 'true'
         run: |
           set -eu
-          # Every case except `ok_*` must exit non-zero. `--bless` will happily
-          # record `exit: 0` for a case that stopped failing, which would turn a
-          # regression into a new expected value.
+          # Every case except `ok_*` and a warning case must exit non-zero. `--bless`
+          # will happily record `exit: 0` for a case that stopped failing, which would
+          # turn a regression into a new expected value.
+          #
+          # A warning case is the exception: `//~ WARNING` means the compiler exits 0 and
+          # prints a diagnostic, so `exit: 0` is correct there. This step is a second copy
+          # of a rule the harness also applies, so it had to learn the same distinction —
+          # otherwise the first warning case fails CI while passing locally.
           fail=0
           for golden in tests/diagnostics/*.stderr; do
             case "$(basename "$golden")" in
               ok_*) continue ;;
             esac
+            source="${golden%.stderr}.nova"
+            if grep -q '//~[[:space:]]*WARNING' "$source" 2>/dev/null; then
+              continue
+            fi
             if grep -qx 'exit: 0' "$golden"; then
               echo "::error file=$golden::this case is expected to fail but its golden says exit: 0"
               fail=1
