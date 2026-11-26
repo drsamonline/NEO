@@ -19,6 +19,7 @@
     "grammar",
     "manifest",
     "module",
+    "no-network",
     "stdlib",
     "type-name",
     "workspace-dep"

@@ -74,9 +74,12 @@ a page listing codes the compiler does not emit teaches readers to distrust it.
 
 ### Is my source sent anywhere?
 
-No. The compiler and language server are local processes with no network code in
-them at all. The package manager is the only part that ever had an HTTP client, and
-it was removed when the licence gate found what it dragged in.
+No. The compiler, language server and debugger are local processes with no network
+code in them at all — no HTTP client crate and no socket call in their sources. The
+package manager is the only part that ever had an HTTP client, and it was removed when
+the licence gate found what it dragged in; it reaches the network only when you give it
+a `git` dependency, by running `git clone` with your own credentials. `PRIVACY.md` has
+the per-program table.
 
 ### Can I use Hindi or Gujarati in my source?
 
