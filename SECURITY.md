@@ -40,8 +40,12 @@ Out of scope:
 - Panics or crashes on malformed source. Those are bugs, and they are welcome as
   ordinary issues — a compiler should not crash on bad input, but a crash is not
   a vulnerability.
-- The known limitations listed in `DEV_PLAN.md`, including the mocked package
-  registry and the mocked DWARF debugger. They are documented, not secret.
+- The known limitations listed in `DEV_PLAN.md`. They are documented, not secret —
+  and two of them are no longer what they were when this list was written. The package
+  registry **refuses** rather than answering from a mock, and the debugger is **real**:
+  `ptrace`, breakpoints, a frame-chain backtrace and `.nova` line numbers (ADR 0016).
+  A defect in either is in scope if it meets the criteria above; "mocked" was true in
+  October and is not true now.
 - Anything requiring the attacker to already have write access to the victim's
   machine.
 

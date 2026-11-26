@@ -71,6 +71,12 @@ jobs:
       - name: The compiler, language server and debugger are offline
         run: python3 tools/no-network-check.py
 
+      # Three documents called the registry, `references` and the debugger's stack frames
+      # "mocked" months after each was made real. A capability claim is checkable when the
+      # capability has a name in the source.
+      - name: No document calls a capability mocked after it became real
+        run: python3 tools/stale-claim-check.py
+
       - name: The stdlib README matches what the stdlib can actually run
         run: python3 tools/stdlib-check.py
 

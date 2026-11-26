@@ -26,6 +26,7 @@ Each is runnable locally with no toolchain, which is why they are Python.
 | `tools/manifest-check.py` | `MANIFEST.json` no longer describes the files it records | Provenance nobody checks drifts into a claim nobody can trust |
 | `tools/workspace-dep-check.py` | `[workspace.dependencies]` names a crate no member opts into | `nova-runtime` sat there reading as "NOVA has a Rust runtime" while nothing used it |
 | `tools/no-network-check.py` | the compiler, language server or debugger gains an HTTP client crate or a socket call | `PRIVACY.md` and `FAQ.md` promise they never reach the network; that is a claim about the dependency graph, so it is checked |
+| `tools/stale-claim-check.py` | a document calls a capability "mocked" or "missing" after the source made it real | `ARCHITECTURE.md` said the registry, `references` and the debugger's frames were all mocked, months after each was fixed |
 | `tools/count-check.py` | a document states a number the workspace does not have — tests, chapters, parity programs | Six documents quoted the suite as 199, 316 and 193 while it was 342 |
 
 ## The shell scripts
