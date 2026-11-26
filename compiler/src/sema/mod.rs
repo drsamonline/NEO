@@ -864,10 +864,17 @@ impl SemanticAnalyzer {
             return;
         }
 
+        // Three ways a name is legitimately absent, and the help names all of them. It used to
+        // offer only the first, so `panic` without `use core;` — which is a *standard-library*
+        // function, not a typo — was told to "declare `panic` first". The import hint is generic
+        // on purpose: naming the module would mean a table of stdlib exports in the compiler,
+        // which is a second copy of the stdlib.
         let mut diag = Diagnostic::error(format!("undefined name `{name}`"))
             .with_code("E0002")
             .with_help(format!(
-                "declare `{name}` first (`let {name} = ...` or `fn {name}(...)`), or check the spelling"
+                "declare `{name}` first (`let {name} = ...` or `fn {name}(...)`), import the module \
+                 that defines it (`use core;`, `use io;`, `use math;`, `use text;`), or check the \
+                 spelling"
             ));
         if let Some(span) = span.or(self.current_span) {
             diag = diag.with_span(span);

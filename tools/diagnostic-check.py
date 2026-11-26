@@ -147,7 +147,10 @@ def check_json(nova: str, case: Path, expected_codes: set[str], should_fail: boo
         )
     if should_fail and code == 0:
         problems.append("JSON mode exited 0 on a case that should fail")
-    if not should_fail and lines:
+    # A warning case exits 0 *and* prints a diagnostic in JSON mode, which is correct. The
+    # check that matters is the code set above; this one only catches output from a program
+    # that annotates nothing at all.
+    if not should_fail and lines and not expected_codes:
         problems.append("JSON mode produced diagnostics for a valid program")
     return problems
 
@@ -216,9 +219,17 @@ def main() -> int:
 
         # 1. The annotation is a claim about what should happen, independent of
         #    what the compiler happened to say.
-        if levels and code == 0:
+        # A `//~ WARNING` case must exit 0 — a warning does not fail a build. The rule used
+        # to be "any annotation means non-zero", so the first warning case ever added to this
+        # directory could not be expressed.
+        expects_error = "ERROR" in levels
+        if expects_error and code == 0:
             problems.append(
                 f"the source annotates {sorted(levels)} but the compiler exited 0"
+            )
+        if levels and not expects_error and code != 0:
+            problems.append(
+                f"the source annotates only {sorted(levels)} but the compiler exited {code}"
             )
         if not levels and code != 0:
             problems.append(
@@ -253,7 +264,7 @@ def main() -> int:
 
         # The machine-readable form is part of the contract too: the LSP is
         # meant to read it instead of re-deriving diagnostics on its own.
-        problems += check_json(nova, case, expected_codes, should_fail=bool(levels))
+        problems += check_json(nova, case, expected_codes, should_fail=expects_error)
 
         if problems:
             failures += 1
@@ -277,7 +288,34 @@ def main() -> int:
         print("Re-run with --bless to accept the compiler's output, then read the diff.")
         return 1
 
-    print(f"\nall {len(cases)} case(s) match their goldens")
+    # A transcript copied into a document is a second copy of the golden, and it drifted the
+    # moment the E0002 help text changed: `docs/errors.md` and `tests/diagnostics/README.md` both
+    # still showed the old wording. Every `help:` line a document shows must appear in a golden.
+    goldens_normalised = "\n".join(
+        re.sub(r"`[^`]*`", "`X`", path.read_text(errors="ignore"))
+        for path in sorted(CASES.glob("*.stderr"))
+    )
+    stale: list[str] = []
+    for document in [ROOT / "docs" / "errors.md", CASES / "README.md"]:
+        if not document.is_file():
+            continue
+        for line in document.read_text(errors="ignore").splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("help:"):
+                continue
+            # The document's example uses its own identifier (`total`) where the golden uses
+            # another (`missing`), so every backticked run is replaced with one placeholder before
+            # comparing. What must match is the sentence, not the name in it.
+            head = re.sub(r"`[^`]*`", "`X`", stripped.split(",")[0])
+            if head not in goldens_normalised:
+                stale.append(f"{document.relative_to(ROOT)}: {stripped[:80]}")
+    if stale:
+        print("\nFAIL a document shows a diagnostic that no golden contains:")
+        for line in stale:
+            print(f"     {line}")
+        return 1
+
+    print(f"\nall {len(cases)} case(s) match their goldens, and the transcripts in the docs do too")
     return 0
 
 
