@@ -174,9 +174,9 @@ Add user-facing changes to the `[Unreleased]` section of `CHANGELOG.md`.
 - `clippy` clean where you touched the code.
 - Comments explain *why*, not *what*. The existing code is dense with
   why-comments; match that, and skip the ones that restate the line.
-- `unsafe` in `runtime/` needs a `// SAFETY:` comment on the block saying what
-  invariant makes it sound.
-
+- `unsafe` anywhere needs a `// SAFETY:` comment on the block saying what
+  obligation it relies on. The workspace is `#![forbid(unsafe_code)]` except the C shim
+  (`compiler/src/runtime.rs`), which is the only place that talks to C.
 ## Reporting a bug
 
 Use the issue template. Include the NOVA source, the command you ran, what you

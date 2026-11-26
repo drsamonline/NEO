@@ -16,7 +16,7 @@
 
 </details>
 
-**A statically-typed, compiled systems programming language.** Its compiler lowers NOVA source through a semantic pipeline — lexer, parser, semantic analyser, SIR, lowerer — to four backends: **C, JavaScript, Rust and WebAssembly**, with a runtime, package manager, language server and debugger alongside.
+**A statically-typed, compiled systems programming language.** Its compiler lowers NOVA source through a semantic pipeline — lexer, parser, semantic analyser, SIR, lowerer — to four backends: **C, JavaScript, Rust and WebAssembly**, with a runtime shim, package manager, language server and debugger alongside.
 
 <a href="https://drsamonline.github.io/NEO/"><img src="https://img.shields.io/badge/Landing%20Page-Visit-3b82f6?style=flat-square" alt="Landing page"></a>
 <a href="https://img.shields.io/badge/Phase%201-Complete-brightgreen"><img src="https://img.shields.io/badge/Phase%201-Complete-brightgreen?style=flat-square" alt="Phase 1 Complete"></a>
@@ -62,17 +62,21 @@ NOVA is a statically-typed, compiled systems programming language with a complet
   separately — `parity: FAILED (... disagree with the reference: c, js)` against
   `parity: INCOMPLETE (... held — install the toolchain to check: wasm)` — because a
   wrong answer and an unanswered question are not the same result.
-- **346 `#[test]` functions across the workspace** (`cargo test --workspace`; the WASM
+- **313 `#[test]` functions across the workspace** (`cargo test --workspace`; the WASM
   execution tests need `node` and `wat2wasm`). CI runs them on every push.
 
-**✅ Phase 2: an unused Rust runtime crate — the language has none of what it contains**
+**✅ Phase 2: a Rust runtime crate that was never wired in — deleted 2026-11-26**
 
-`runtime/` is a workspace crate of 1,498 source lines (plus tests): `gc.rs` 420, `types.rs` 276,
-`ffi.rs` 262, `error.rs` 250, `memory.rs` 198, `lib.rs` 92. It compiles and its tests pass.
+`runtime/` was a workspace crate of 2,480 lines: `gc.rs`, `types.rs`, `ffi.rs`, `error.rs`,
+`memory.rs`, `threading/`, `async_rt/`, `io/`, `lib.rs`, with thirty-three unit tests of its own, all passing.
 
-**Nothing depends on it.** No crate lists `nova-runtime` in `[dependencies]`, and generated C
+**Nothing depended on it.** No crate listed `nova-runtime` in `[dependencies]`, and generated C
 links only the `nova_runtime` shim in `compiler/src/runtime.rs`. That shim contains **no**
 garbage collector, **no** arena allocator, **no** FFI layer and **no** threading.
+
+It is **gone** (ADR 0021), because 2,480 lines whose presence makes "NOVA has a garbage collector"
+a reading a person can reach from the file tree is the exact defect this repository spent the week
+removing. Git history keeps every line if a future decision wants them back.
 
 So the compiled language, as it ships:
 
@@ -80,12 +84,8 @@ So the compiled language, as it ships:
 |---|---|
 | garbage collection, arena allocation | **none** — every allocation leaks; the process exits to reclaim |
 | FFI, C interop | **none** |
-| threading, async, channels | **none** |
-| backtraces | **none** — the debugger refuses them |
-
-The crate is a design sketch for a runtime that was never wired in. It is kept because it is
-tested and may become the real one; it is **not** a feature list, and this section previously
-read as one.
+| threading, async, channels | **none**, and [ADR 0020](docs/adr/0020-concurrency-model.md) records why |
+| backtraces | the **debugger** has them; the language does not |
 
 **🔄 Phase 3: Tooling - PARTIAL (crates exist, integration incomplete)**
 - 🟡 Package manager (1,984 lines) — `init`/`build`/`run` real; path and git dependencies resolve; **the registry refuses** rather than inventing packages
@@ -140,7 +140,6 @@ cargo build --release
 │   ├── javascript/    # JavaScript backend (478 lines)
 │   ├── rust/          # Rust backend (748 lines)
 │   └── wasm/          # WebAssembly backend, WAT emitter + Node host (1,859 lines)
-├── runtime/           # Runtime system (2,359 lines, 33 tests)
 │   ├── src/memory.rs  # Memory utilities (195 lines)
 │   ├── src/types.rs   # Runtime string/array/option types (276 lines)
 │   ├── src/error.rs   # Error handling (232 lines)

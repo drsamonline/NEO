@@ -54,6 +54,7 @@ about a decision are about a reading of it that nobody chose.
 | [0018](0018-module-qualified-names.md) | Qualified calls; a collision is refused, not resolved | accepted |
 | [0019](0019-mangling-for-module-collisions.md) | Mangle only what collides, so two modules can share a name | accepted |
 | [0020](0020-concurrency-model.md) | A concurrency model, and why the one-string backend contract cannot carry a thread on two of four targets | accepted (E) |
+| [0021](0021-delete-runtime-crate.md) | Delete the Rust runtime crate — 2,480 lines nothing depends on | accepted |
 
 ## Writing one
 
