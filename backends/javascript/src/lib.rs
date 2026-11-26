@@ -99,7 +99,11 @@ impl JsBackend {
         }
         params.extend(func.params.iter().map(|p| p.name.clone()));
         let params_str = params.join(", ");
-        self.writeln(&format!("function {}({}) {{", func.name, params_str));
+        self.writeln(&format!(
+            "function {}({}) {{",
+            nova_common::sir::safe_identifier(&func.name),
+            params_str
+        ));
         
         self.indent_level += 1;
         
@@ -268,7 +272,11 @@ impl JsBackend {
             }
             SirExpr::Call { callee, args } => {
                 let args_str: Vec<String> = args.iter().map(|a| self.expr_to_js(a)).collect();
-                format!("{}({})", callee, args_str.join(", "))
+                format!(
+                    "{}({})",
+                    nova_common::sir::safe_identifier(callee),
+                    args_str.join(", ")
+                )
             }
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_js(value))

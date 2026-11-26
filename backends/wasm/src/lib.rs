@@ -672,7 +672,7 @@ impl WasmBackend {
 
         self.writeln(&format!(
             "(func ${}{}{}",
-            func.name,
+            nova_common::sir::safe_identifier(&func.name),
             if params.is_empty() {
                 String::new()
             } else {
@@ -1234,7 +1234,10 @@ impl WasmBackend {
                 for arg in args {
                     self.generate_expr(arg);
                 }
-                self.writeln(&format!("(call ${callee})"));
+                self.writeln(&format!(
+                "(call ${})",
+                nova_common::sir::safe_identifier(callee)
+            ));
             }
             SirExpr::CallValue {
                 callee,

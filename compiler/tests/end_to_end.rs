@@ -233,6 +233,66 @@ fn run_with_stdlib(name: &str, source: &str) -> String {
 }
 
 #[test]
+fn a_mangled_name_is_valid_in_every_target() {
+    // ADR 0019 mangles a colliding name to `module::name`, and `::` is not an identifier
+    // character in JavaScript, Rust or WebAssembly. The C backend mapped it; the other three
+    // emitted `function alpha::shared(x)` — invalid JavaScript and invalid Rust — because the
+    // mapping was written once, in one backend.
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let dir = scratch("mangled-targets");
+    fs::write(
+        dir.join("alpha.nova"),
+        "fn shared(x: int) -> int {\n    x + 1\n}\n",
+    )
+    .expect("write alpha");
+    fs::write(
+        dir.join("beta.nova"),
+        "fn shared(x: int, y: int) -> int {\n    x + y\n}\n",
+    )
+    .expect("write beta");
+    let program = dir.join("program.nova");
+    fs::write(
+        &program,
+        "use core;\nuse alpha;\nuse beta;\n\nfn main() -> int {\n    print(alpha.shared(1));\n    print(beta.shared(1, 2));\n    return 0;\n}\n",
+    )
+    .expect("write program");
+
+    for (target, extension) in [("js", "js"), ("rust", "rs"), ("wasm", "wat")] {
+        let output = dir.join(format!("out.{extension}"));
+        let emit = Command::new(compiler())
+            .arg("emit")
+            .arg(&program)
+            .arg("-o")
+            .arg(&output)
+            .arg("--target")
+            .arg(target)
+            .arg("--module-root")
+            .arg(workspace_root().join("stdlib"))
+            .output()
+            .expect("run nova-compiler emit");
+        assert!(
+            emit.status.success(),
+            "emit --target {target} failed:\n{}",
+            String::from_utf8_lossy(&emit.stderr)
+        );
+        let text = fs::read_to_string(&output).expect("read emitted source");
+        // `std::io` is a legal Rust path, so the check is on the mangled names rather than on
+        // every `::` in the file.
+        assert!(
+            !text.contains("alpha::shared") && !text.contains("beta::shared"),
+            "the {target} output kept `::` in a function name:\n{text}"
+        );
+        assert!(
+            text.contains("alpha__shared") && text.contains("beta__shared"),
+            "the {target} output does not mangle both colliding names"
+        );
+    }
+}
+
+#[test]
 fn two_modules_may_declare_one_name() {
     // ADR 0019. Two modules declaring `shared` used to make the import fatal; the second was
     // once dropped silently, then refused by name. Both are now kept: the definition is mangled
