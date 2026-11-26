@@ -1,4 +1,4 @@
-68.91
+69.28
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -218,3 +218,6 @@
 # 68.91% (10,618 of 15,409) when the package path started working. It rose 0.04: the five fixes are
 # small, and the pkg tests that already existed now reach code that used to be skipped — the
 # placeholder path is gone rather than covered.
+# 69.28% (10,709 of 15,457) when the mangled-name fix landed. It rose 0.37: the new test emits all
+# three non-C targets and reads their output, so the JS, Rust and WASM emission paths are covered by
+# a program for the first time.
