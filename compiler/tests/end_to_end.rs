@@ -2913,3 +2913,62 @@ fn emitted_c_links_against_the_generated_runtime() {
     let run = Command::new(&binary).output().expect("run linked binary");
     assert_eq!(String::from_utf8_lossy(&run.stdout), "Hello, NOVA\n");
 }
+
+#[test]
+fn matching_on_an_option_prints_both_branches() {
+    // ADR 0022, step 0. `docs/language/12_errors.md` shows this pattern as the one to copy, and
+    // nothing compiled it: the chapter's block has no `fn main`, so
+    // `every_complete_program_in_the_spec_compiles` skips it. Whether `match` on an `Option` works
+    // end to end was an assumption until this test existed.
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let dir = scratch("option-match");
+    let source = dir.join("option_match.nova");
+    fs::write(
+        &source,
+        "use core;\n\n\
+fn divide(a: int, b: int) -> Option<int> {\n    \
+    if b == 0 {\n        \
+        return None;\n    \
+    }\n    \
+    Some(a / b)\n\
+}\n\n\
+fn main() -> int {\n    \
+    match divide(10, 0) {\n        \
+        Some(value) => print(value),\n        \
+        None => print(-1),\n    \
+    }\n    \
+    match divide(10, 2) {\n        \
+        Some(value) => print(value),\n        \
+        None => print(-1),\n    \
+    }\n    \
+    return 0;\n\
+}\n",
+    )
+    .expect("write source");
+    let binary = dir.join("option_match");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&source)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "the chapter's Option/match pattern does not compile:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run the program");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert_eq!(
+        stdout, "-1\n5\n",
+        "expected the None branch then the Some branch; got {stdout:?}"
+    );
+}
