@@ -42,6 +42,29 @@ It is a **fragment** — no `fn main` — so `every_complete_program_in_the_spec
 this pod has no Rust toolchain to build the compiler and test it by hand. **Whether `match` on an
 `Option` works end to end is, as of this ADR, an assumption.**
 
+## Step 1, measured — 2026-11-26
+
+A test was written before the feature, as this ADR asks: a complete program whose `Ok(n)` binds an
+`int` and whose `Err(reason)` binds a `String`, in one match. It fails, in the compiler's own words:
+
+```
+result_match.nova:5:16: [E0002] undefined name `Err`
+```
+
+Two things that measurement settles:
+
+- **`Result<int, String>` as a return type is accepted** — types are strings, so the annotation
+  passes without `Result` existing. The failure is at the *constructor*, not the annotation.
+- **The gap is exactly where this ADR predicted**: there is no `Ok`, no `Err`, and no struct for a
+  match arm to read. Nothing about the arm-typing problem can be measured until those exist.
+
+The test was not merged: a repository whose checks are all green cannot carry a test that fails. It
+is reproduced in this section so the next attempt starts from the same program.
+
+**Building it needs a toolchain.** The pod that wrote this section has no `cargo`, `rustc`, `zig` or
+`gcc`, so the compiler cannot be built locally and the four layers below cannot be verified without a
+CI round trip each. That is a fact about the environment, not about the design.
+
 ## Why that matters more than the design
 
 `Result<T, E>` would be built on the same machinery: a synthesised struct, two constructors, and a
