@@ -20,7 +20,8 @@ spawns it and speaks JSON-RPC over stdin/stdout.
 | `definition` | exact identifier spans; current document first, then other open documents |
 | `references` | exact identifier spans, `includeDeclaration` honoured |
 | `documentSymbol` | from the item tree; an `impl`'s methods appear as children |
-| `completion`, `hover` | advertised; the quality is not claimed |
+| `completion` | keywords, built-in types, **and the names this file declares** (from the item tree); no standard library, no prefix filtering |
+| `hover` | the identifier under the cursor, as ``Symbol: `name` `` — a name-at-cursor, not a type |
 
 **Navigation is token-level, not resolved.** Two identifiers with the same text are
 treated as one symbol, so shadowing is not distinguished. `docs/adr/0001` explains
