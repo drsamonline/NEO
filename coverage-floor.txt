@@ -1,4 +1,4 @@
-69.25
+70.00
 
 # Line coverage of the workspace, measured by `cargo llvm-cov` and computed from
 # LCOV LF/LH records in `.github/workflows/coverage.yml`.
@@ -226,3 +226,6 @@
 # denominator fell by less than the numerator.
 # 69.25% (10,700 of 15,451) when the privacy claim became a gate. A FALL of 0.02: the new check is
 # Python, which coverage does not measure, and nothing in Rust changed.
+# 70.00% (9,993 of 14,276) when the unused `runtime/` crate was deleted (ADR 0021). A RISE of 0.75:
+# its 2,480 lines were covered less well than the workspace average, so removing them raised the
+# ratio — which is a fact about the crate, not an improvement in testing.
