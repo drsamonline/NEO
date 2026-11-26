@@ -58,10 +58,18 @@ def main() -> int:
     emitted = scan(sema, EMITTED)
     described = scan([main_rs], DESCRIBED)
     documented = scan([docs], DOCUMENTED)
+    # Two documents promise the set, and they are checked separately: a union hides one
+    # of them omitting a code, which is exactly what happened — `COMPATIBILITY.md` had all
+    # four while `FAQ.md` still said three.
     promise_text = (ROOT / "COMPATIBILITY.md").read_text()
     promised = set()
     for match in PROMISED.finditer(promise_text):
         promised |= set(re.findall(r"\b(" + CODE + r")\b", match.group(1)))
+
+    faq_text = (ROOT / "FAQ.md").read_text() if (ROOT / "FAQ.md").is_file() else ""
+    faq_promised = set()
+    for match in re.finditer(r"^`E\d{4}`.*$", faq_text, re.MULTILINE):
+        faq_promised |= set(re.findall(r"\b(" + CODE + r")\b", match.group(0)))
 
     print(f"emitted     ({len(emitted)}): {', '.join(sorted(emitted)) or '-'}")
     print(f"described   ({len(described)}): {', '.join(sorted(described)) or '-'}")
@@ -72,6 +80,10 @@ def main() -> int:
     if promised != emitted:
         problems.append(
             f"COMPATIBILITY.md promises {sorted(promised)}; the compiler emits {sorted(emitted)}"
+        )
+    if faq_promised and faq_promised != emitted:
+        problems.append(
+            f"FAQ.md promises {sorted(faq_promised)}; the compiler emits {sorted(emitted)}"
         )
     for label, a, a_name, b, b_name in [
         ("emitted but not described", emitted - described, "emitted", described, "explain"),
