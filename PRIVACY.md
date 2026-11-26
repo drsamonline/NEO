@@ -16,7 +16,15 @@ It runs on your own device. There is no account, no server and no sign-in.
 **Nothing.** No analytics, no telemetry, no crash reporting, no fingerprinting, no advertising identifier, no
 email capture.
 
-There is no code in it that reaches a host outside your device: no request carries anything you type or store.
+**What that means for each part**, because this repository ships more than one program:
+
+| Part | Reaches the network? |
+|---|---|
+| `nova-compiler`, `nova-lsp`, `nova-dbg` | **No.** No HTTP client, no socket code — checked: no `reqwest`/`hyper`/`ureq` dependency and no `TcpStream`, `UdpSocket` or `std::net` use in their sources. |
+| the landing page (`docs/`) | Only to load its own pages; a service worker caches them on your device so it works offline. |
+| `nova-pkg` | **Only for a `git` dependency**, and only by running `git clone` with your own git configuration and credentials. It contains no HTTP client of its own, and a `path` dependency touches nothing. The host contacted is the one written in your `Nova.toml`, so you choose it. |
+
+No request carries anything you type or store: `nova-pkg` sends the URL in your manifest and nothing else, and the compiler sends nothing at all.
 
 ## What is stored on your device
 

@@ -25,6 +25,7 @@ Each is runnable locally with no toolchain, which is why they are Python.
 | `tools/stdlib-check.py` | the README's function table disagrees with the source, a function calls a builtin the compiler lacks, or two modules declare one name | The library's own claims, checked against the library |
 | `tools/manifest-check.py` | `MANIFEST.json` no longer describes the files it records | Provenance nobody checks drifts into a claim nobody can trust |
 | `tools/workspace-dep-check.py` | `[workspace.dependencies]` names a crate no member opts into | `nova-runtime` sat there reading as "NOVA has a Rust runtime" while nothing used it |
+| `tools/no-network-check.py` | the compiler, language server or debugger gains an HTTP client crate or a socket call | `PRIVACY.md` and `FAQ.md` promise they never reach the network; that is a claim about the dependency graph, so it is checked |
 | `tools/count-check.py` | a document states a number the workspace does not have — tests, chapters, parity programs | Six documents quoted the suite as 199, 316 and 193 while it was 342 |
 
 ## The shell scripts

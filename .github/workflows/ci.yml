@@ -66,6 +66,11 @@ jobs:
       - name: Every number a document states matches the thing it counts
         run: python3 tools/count-check.py
 
+      # PRIVACY.md and FAQ.md promise the compiler never reaches the network. That is a
+      # claim about the dependency graph and the sources, so it can be checked.
+      - name: The compiler, language server and debugger are offline
+        run: python3 tools/no-network-check.py
+
       - name: The stdlib README matches what the stdlib can actually run
         run: python3 tools/stdlib-check.py
 
