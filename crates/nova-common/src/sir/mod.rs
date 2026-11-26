@@ -411,6 +411,23 @@ fn collect_callees_expr(expr: &SirExpr, calls: &mut Vec<String>) {
 }
 
 /// The C struct name for a tuple of `types`, e.g. `NovaTuple_int_string`.
+/// A name a target language will accept as an identifier.
+///
+/// A function two modules both declare is mangled to `module::name` in the SIR (ADR 0019), and
+/// `::` is not an identifier character in C, JavaScript, Rust or WebAssembly. The C backend maps
+/// it in `emitted_name`; the other three emitted `function alpha::shared(x)` — invalid JavaScript
+/// and invalid Rust — until this existed, because the mapping was written once, in one backend.
+///
+/// Every backend must emit a function definition and a call site through this, or a program with a
+/// colliding name compiles to source that does not parse.
+pub fn safe_identifier(name: &str) -> String {
+    if name.contains("::") {
+        name.replace("::", "__")
+    } else {
+        name.to_string()
+    }
+}
+
 pub fn tuple_struct_name(types: &[String]) -> String {
     let mangled: Vec<String> = types
         .iter()

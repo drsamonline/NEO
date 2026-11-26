@@ -229,9 +229,10 @@ impl RustBackend {
         // Rust's `main` may not return a value, so a value-returning NOVA `main`
         // becomes `__nova_main` with a thin wrapper below.
         let emitted_name = if func.name == "main" && returns_value {
-            "__nova_main"
+            "__nova_main".to_string()
         } else {
-            &func.name
+            // A colliding name arrives as `module::name`, which is not a Rust identifier.
+            nova_common::sir::safe_identifier(&func.name)
         };
         self.writeln(&format!("fn {}({}){} {{", emitted_name, params.join(", "), return_type));
         
@@ -442,7 +443,11 @@ impl RustBackend {
                         }
                     })
                     .collect();
-                format!("{}({})", callee, args_str.join(", "))
+                format!(
+                    "{}({})",
+                    nova_common::sir::safe_identifier(callee),
+                    args_str.join(", ")
+                )
             }
             SirExpr::If { condition, then_expr, else_expr } => {
                 let cond_str = self.expr_to_rust(condition);
