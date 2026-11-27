@@ -1730,6 +1730,7 @@ fn escape_wat_string(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nova_common::sir::{SirStruct, SirStructField};
     use nova_common::Span;
 
     #[test]
