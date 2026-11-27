@@ -8,6 +8,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 
 Nothing yet.
 
+## [0.8.1] - 2026-11-27
+
+One fix, and it is the one the previous release found the hard way.
+
+### Fixed
+- **The debugger builds on every platform.** `nova-dbg`'s `attach` was gated `#[cfg(unix)]`, and
+  macOS is unix, so the build there compiled a `PTRACE_ATTACH` that `libc` does not define. The
+  v0.8.0 release stopped on exactly that — `cannot find value PTRACE_ATTACH in crate libc` — and
+  shipped macOS and Windows archives with three binaries instead of four.
+  `attach` now carries the same `target_os = "linux"` gate as its six siblings, with a refusal in
+  words elsewhere: *"attaching is implemented with `ptrace` and is Linux-only in this debugger;
+  nothing was attached"*.
+
+  **Every archive now carries four binaries.** The debugger still does not *work* on macOS or
+  Windows — `ptrace` exists on macOS with a different API, and Windows would need
+  `DebugActiveProcess` — but a program that explains itself beats one that is simply absent.
+
+### Changed
+- The release workflow builds the whole workspace on every platform. It had a `--exclude nova-dbg`
+  branch for the non-Linux targets; that branch is gone, because a dry run of this release built all
+  three platforms green.
+
 ## [0.8.0] - 2026-11-27
 
 The release where the repository started checking what it says about itself. Twenty PRs of

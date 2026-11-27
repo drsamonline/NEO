@@ -52,8 +52,12 @@ sits above the newest release.
 Not on crates.io, not on npm — `Cargo.toml` says `publish = false` on every crate,
 which is what makes that statement checkable rather than aspirational.
 
-**`v0.8.0` is the current release**, published 2026-11-27. Sizes read off the release page, not
-estimated:
+**`v0.8.1` is the current release** — the first whose macOS and Windows archives carry all four
+binaries. Its sizes are read off the release page once it is published; the table below is **v0.8.0's**,
+kept because those numbers were measured, and its macOS and Windows archives hold three binaries
+rather than four for the reason described under "What an artifact needs at run time".
+
+**`v0.8.0`**, published 2026-11-27, at these sizes — read off the release page, not estimated:
 
 | Archive | Size | Binaries |
 |---|---|---|
