@@ -1,11 +1,11 @@
 {
   "version": "0.8.2",
   "tests": {
-    "functions": 322
+    "functions": 320
   },
   "loc": {
     "compiler_src": 15112,
-    "workspace": 33286
+    "workspace": 32906
   },
   "adrs": 23,
   "gates": [
