@@ -7,7 +7,7 @@ is unverified it says so.
 
 | | |
 |---|---|
-| Release | **v0.8.1** — three platform archives with SHA-256, each carrying all four binaries |
+| Release | **v0.8.2** — three platform archives with SHA-256, each carrying all four binaries |
 
 **Numbers are not kept here.** This table used to carry the commit, the test count, the coverage
 figure and the ADR count; all four were stale within a day, because they change on every merge
@@ -61,7 +61,7 @@ What is genuinely left:
 | 3 — harden the front end (G5–G7) | ✅ |
 | 4 — syntax tree, formatter, guard, `trait` | ✅ |
 | 5 — LSP nav, VS Code extension, path/git deps | ✅ |
-| 6 — release and distribution | ✅ v0.8.1 published 2026-11-27 — four binaries in every archive |
+| 6 — release and distribution | ✅ v0.8.2 published 2026-11-27 — four binaries in every archive |
 | 7 — long tail | 🟡 spec **25/25** ✅, stdlib truth ✅, debugger ✅ except `print <name>` |
 
 ### The standard library

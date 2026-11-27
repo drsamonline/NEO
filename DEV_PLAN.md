@@ -38,7 +38,7 @@ the code and a CI run, and the run is named where it matters.
 | JS / Rust / WASM backends | ⚠️ exercised subset; C is the reference | `tests/parity/` in CI |
 | Runtime crate | ✅ compiles and tests; **not linked to generated C** | 33 runtime tests |
 | Standard library | ⚠️ 4 modules, **211 of 249 functions usable** — the other 38 call a builtin the compiler does not implement; `core`, `io` and `math` compile, and **`math`'s float-array functions return wrong answers** (ADR 0006) | `stdlib/README.md`, `tools/stdlib-check.py` |
-| Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry **refuses** rather than mocking; no lockfile, no transitive graph | `pkg` tests, `deps.rs` |
+| Package manager | ⚠️ `init`/`build`/`run` real; **path and git dependencies resolve and are importable**; registry **refuses** rather than mocking; **`nova.lock` pins git dependencies**; **transitive dependencies resolve**, and one name for two places is refused | `pkg` tests, `deps.rs` |
 | Language server | ⚠️ diagnostics real; definition and references return exact identifier spans, but resolve names textually — shadowing is not distinguished | `lsp` tests, `navigation_stdio.rs` |
 | Debugger | ⚠️ **`run` traces, `break <function>` and `break <file:line>` insert a real `int3`, `backtrace` walks the frame chain** — all reporting `.nova` lines (ADR 0016); `print 0xADDRESS` reads memory; PIE binaries need the program started first; **`print <name>` refuses** — a variable needs its stack offset and type, which nothing emits | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
