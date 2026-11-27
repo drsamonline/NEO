@@ -133,23 +133,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
 
       - name: Build
-        # `nova-dbg` attaches with `ptrace`, which is a Linux interface: `libc` has no
-        # `PTRACE_ATTACH` on macOS, so a workspace build there failed on that one crate. The
-        # debugger is therefore left out of the non-Linux artifacts rather than shipped as a
-        # binary that cannot attach, and the packaging step already tolerates a missing binary.
-        #
-        # `attach` was gated `#[cfg(unix)]` — macOS is unix — and now carries the same
-        # `target_os = "linux"` gate as its six siblings, with a refusal elsewhere (PR #203).
-        # **The exclusion stays until a release proves the crate builds on macOS.** A failed
-        # release is safe (it builds before it uploads, and creates only a draft), but it is still
-        # a wasted tag, so the removal belongs to the release that can watch it happen: delete the
-        # `--exclude nova-dbg` branch, tag, and if macOS builds, the archives carry four binaries.
-        run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            cargo build --release --workspace
-          else
-            cargo build --release --workspace --exclude nova-dbg
-          fi
+        # The whole workspace on every platform. `nova-dbg` used to be excluded off Linux because
+        # `attach` was gated `#[cfg(unix)]` and macOS — which is unix — compiled a `PTRACE_ATTACH`
+        # that `libc` does not define there. PR #203 gave it the same `target_os = "linux"` gate as
+        # its six siblings, with a refusal in words elsewhere, and the v0.8.1 dry run on 2026-11-27
+        # built all three platforms green. So the exclusion is gone and every archive carries four
+        # binaries; on macOS and Windows `nova-dbg` says why it cannot attach instead of being
+        # absent.
+        run: cargo build --release --workspace
 
       - name: Package
         run: |

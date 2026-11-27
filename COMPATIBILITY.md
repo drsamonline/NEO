@@ -75,14 +75,21 @@ measured, and they differ from v0.8.0's because the debugger and the compiler bo
 | `nova-v0.7.0-arm64-macos.tar.gz` | 3.5 MB |
 | `nova-v0.7.0-x86_64-windows.zip` | 3.1 MB |
 
-Each has a `.sha256` beside it and contains `nova-compiler`, `nova-pkg`, `nova-lsp` and — **on
-Linux only** — `nova-dbg`, plus `stdlib/`, `examples/`, the licence and the changelog.
+Each has a `.sha256` beside it and contains `stdlib/`, `examples/`, the licence, the changelog and
+the binaries.
 
-**The debugger is Linux-only.** It attaches with `ptrace`, and `libc` has no `PTRACE_ATTACH` on
-macOS, so the workspace build there fails on that one crate. The v0.8.0 release found this: the tag
-was pushed, the macOS build stopped at `cannot find value PTRACE_ATTACH in crate libc`, and nothing
-was published because the workflow builds before it uploads. The macOS and Windows archives now carry
-three binaries rather than a debugger that cannot attach.
+**The v0.8.0 archives carry three binaries on macOS and Windows** — no `nova-dbg` — because `attach`
+was gated `#[cfg(unix)]`, and macOS is unix, so the build there compiled a `PTRACE_ATTACH` that
+`libc` does not define. That release found it the hard way: the tag went up, the macOS build stopped,
+and nothing published because the workflow builds before it uploads.
+
+**Fixed after it:** `attach` carries the same `target_os = "linux"` gate as its six siblings, with a
+refusal in words elsewhere, and the v0.8.1 dry run on 2026-11-27 built all three platforms green. From
+that release on, every archive carries four binaries and `nova-dbg` on macOS and Windows says why it
+cannot attach rather than being absent.
+
+**The debugger itself is still Linux-only.** The refusal is the honest part: `ptrace` exists on macOS
+with a different API, so supporting it is a separate question nobody has needed to answer.
 
 ### What an artifact needs at run time
 
