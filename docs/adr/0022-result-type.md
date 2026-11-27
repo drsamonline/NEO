@@ -1,6 +1,6 @@
 # ADR 0022 — `Result<T, E>`, and the test that must come first
 
-- **Status:** **proposed** (2026-11-26)
+- **Status:** **accepted** (2026-11-27) — implemented as sugar over the enum that already existed
 - **Date:** 2026-11-26
 - **Related:** [0020](0020-concurrency-model.md), [Errors chapter](../language/12_errors.md), `crates/nova-common/src/types.rs`
 
@@ -64,6 +64,31 @@ is reproduced in this section so the next attempt starts from the same program.
 **Building it needs a toolchain.** The pod that wrote this section has no `cargo`, `rustc`, `zig` or
 `gcc`, so the compiler cannot be built locally and the four layers below cannot be verified without a
 CI round trip each. That is a fact about the environment, not about the design.
+
+## What was built — 2026-11-27
+
+Option **A'**, which is not one of the five this ADR listed: **sugar over the existing enum.**
+
+| Source | Becomes |
+|---|---|
+| `Ok(7)` | `Result.Ok(7)` |
+| `Err("bad")` | `Result.Err("bad")` |
+| `match r { Ok(n) => .. }` | `Result.Ok(n)` |
+| — | `enum Result<T, E> { Ok(T), Err(E) }` injected when the sugar is used and `Result` is not declared |
+
+Three small things in `compiler/src/parser/mod.rs`, where the name is still in hand: the call site,
+the pattern site, and the end of `parse()`. A flag rather than a tree walk, so a program that never
+mentions `Result` gets no injected enum and its generated C is unchanged.
+
+**What the five options missed.** Every one of them assumed `Result` had to be *built*. It did not:
+the enum path already binds two payload types in one match, which
+`generic_enum_payloads_and_growable_arrays_run` had been proving for months. The gap was the
+spelling, and a design that starts from "what does the machinery already do" finds that in an hour
+instead of a day.
+
+The struct attempt was reverted in full; `result_struct_name` and `result_payloads_of` remain in
+`nova-common` with their tests, unused by the enum path. Removing them is a separate decision, and
+leaving them is the smaller sin than a second way to express one idea.
 
 ## Found while building it — `Result` already exists as a user enum
 
