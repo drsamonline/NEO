@@ -18,7 +18,7 @@
 //! hand-written parser produces plausible *wrong* answers — a variable read from the wrong slot
 //! looks like a number, not like an error — which is why this does not parse bytes itself.
 
-use object::Object;
+use object::{Object, ObjectSection};
 use std::path::Path;
 
 /// One local variable of a function, as the compiler described it.
@@ -64,6 +64,14 @@ pub fn locals_of_function(path: &Path, function: &str) -> Result<Vec<LocalVariab
         message: error.to_string(),
     })?;
 
+    // "No variables" and "no debug information" are different answers, and the difference is the
+    // one a user acts on: the first says the function has none, the second says the binary was not
+    // built with `-g`. Checked on the section, because `DebugInfoUnitHeadersIter` is not an
+    // `Iterator` and cannot be counted.
+    if object.section_by_name(".debug_info").is_none() {
+        return Err(DwarfError::NoDebugInfo { path: display });
+    }
+
     let endian = if object.is_little_endian() {
         gimli::RunTimeEndian::Little
     } else {
@@ -83,12 +91,6 @@ pub fn locals_of_function(path: &Path, function: &str) -> Result<Vec<LocalVariab
         }
     })?;
     let dwarf = dwarf_cow.borrow(|section| gimli::EndianSlice::new(section, endian));
-
-    // No `.debug_info` means no variables — say so rather than answer "none", which would read as
-    // "this function has no locals".
-    if dwarf.debug_info.units().count() == 0 {
-        return Err(DwarfError::NoDebugInfo { path: display });
-    }
 
     let mut units = dwarf.units();
     while let Some(header) = units.next().map_err(|error| DwarfError::Malformed {
@@ -166,7 +168,7 @@ fn locals_in_unit<R: gimli::Reader>(
             };
             let type_name = child
                 .attr_value(gimli::DW_AT_type)?
-                .and_then(|value| type_name_of(unit, value).ok())
+                .and_then(|value| type_name_of(dwarf, unit, value).ok())
                 .unwrap_or_else(|| "unknown".to_string());
             let location = child
                 .attr_value(gimli::DW_AT_location)?
@@ -185,6 +187,7 @@ fn locals_in_unit<R: gimli::Reader>(
 
 /// The name a `DW_AT_type` points at, following the reference within the unit.
 fn type_name_of<R: gimli::Reader>(
+    dwarf: &gimli::Dwarf<R>,
     unit: &gimli::Unit<R>,
     value: gimli::AttributeValue<R>,
 ) -> Result<String, gimli::Error> {
@@ -192,11 +195,12 @@ fn type_name_of<R: gimli::Reader>(
         gimli::AttributeValue::UnitRef(offset) => offset,
         _ => return Ok("unknown".to_string()),
     };
-    // `unit.entry` in gimli 0.31 — `Dwarf::unit_entry` does not exist.
+    // `unit.entry` in gimli 0.31 — `Dwarf::unit_entry` does not exist, and neither does a `dwarf`
+    // field on `Unit`, so the `Dwarf` is passed in.
     let entry = unit.entry(offset)?;
     let name = entry
         .attr_value(gimli::DW_AT_name)?
-        .and_then(|value| unit.dwarf.attr_string(unit, value).ok())
+        .and_then(|value| dwarf.attr_string(unit, value).ok())
         .and_then(|reader| reader.to_string().ok());
     Ok(name.unwrap_or_else(|| "unknown".to_string()))
 }
@@ -292,8 +296,6 @@ mod tests {
 
     #[test]
     fn a_binary_without_debug_info_says_so_rather_than_answering_none() {
-        // "No variables" and "no debug information" are different answers, and the difference is
-        // the one a user acts on.
         let dir = std::env::temp_dir().join(format!("nova-nodwarf-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("dir");
