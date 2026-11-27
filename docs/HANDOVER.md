@@ -46,6 +46,7 @@ What is genuinely left:
 
 | Item | Blocked by |
 |---|---|
+| `nova-dbg` in the macOS and Windows archives | **the fix is merged, the proof is not**: `attach` is now Linux-gated with a refusal elsewhere (PR #203), so the crate should build on macOS — but the only job that builds macOS is the release workflow, and it cannot be dispatched from this environment (403). The next release should delete `--exclude nova-dbg` from `.github/workflows/release.yml` and watch it; a failure is safe, since the workflow builds before it uploads |
 | `print <name>` in the debugger | a C compiler that emits local-variable DWARF; `zig cc` does not, gcc/clang do |
 | WASM float struct fields, non-`int` closures | rejected by `validate` rather than miscompiled — a decision, not a defect |
 | ~~A release after v0.7.0~~ | **done** — v0.8.0 published 2026-11-27 |
