@@ -8,6 +8,78 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 
 Nothing yet.
 
+## [0.8.0] - 2026-11-27
+
+The release where the repository started checking what it says about itself. Twenty PRs of
+auditing found no missing features and a great many claims that had stopped being true.
+
+### Added
+#### Six gates, each one reading a place nothing was reading
+- **`count-check`** — a document that states a test count, chapter count or parity count the
+  workspace does not have. Six documents said 199, 316 and 193 while the suite was 342.
+- **`workspace-dep-check`** — `[workspace.dependencies]` entries no member opts into. Six were
+  decorative; `cargo build` warned about all of them on every run.
+- **`manifest-check`** — `MANIFEST.json` drift, and it reported what it *cannot* check rather than
+  claiming "none drifted" for files the checker skips.
+- **`no-network-check`** — the compiler, language server and debugger gaining an HTTP client or a
+  socket call, because `PRIVACY.md` promises they never reach the network.
+- **`stale-claim-check`** — a document calling a capability "mocked" after the source made it real.
+- **`docs-check`** grew a rule: a `tools/*-check.py` missing from `docs/tooling.md` is a check
+  nobody can find. The index listed 8 of 13.
+
+#### `Result<T, E>` without a declaration or a prefix
+- `Ok(7)` and `Err("bad")` are sugar for `Result.Ok(7)` / `Result.Err("bad")`, and
+  `enum Result<T, E> { Ok(T), Err(E) }` is injected when a program uses them without declaring one.
+  A program's own `Result` declaration wins — the compiler's version is a default, not a reserved
+  name. [ADR 0022](docs/adr/0022-result-type.md).
+
+#### Language server
+- **`completion` reads the document.** It returned a fixed keyword list and used neither the URI nor
+  the position, so a function defined twenty lines up was invisible. It now offers the names the
+  file declares, from the deferred item tree.
+- `completion` and `hover` are documented, with their narrowness stated: no standard library, no
+  prefix filtering, and hover is a name-at-cursor rather than a type.
+
+### Changed
+- **`test --parity` distinguishes two results it used to conflate**: `parity: FAILED` when a backend
+  ran and disagreed, `parity: INCOMPLETE` when it could not run at all.
+- **A mangled `module::name` is valid in every target.** The mapping lived in the C backend only, so
+  JavaScript emitted `function alpha::shared` — invalid JavaScript — and Rust emitted a path.
+  `nova_common::sir::safe_identifier` now owns it.
+- **`E0002`'s help names the import path**, because `panic` without `use core;` is a standard-library
+  function, not a typo.
+- **`COMPATIBILITY.md` and `FAQ.md` code lists are checked** by `error-code-check`, as a fourth and
+  fifth place the set is written down.
+- **The ABI rule says what it means**: an addition does not bump the version; a change to an existing
+  declaration or a removal does.
+
+### Fixed
+- **`panic` was declared as a compiler builtin** as well as being a stdlib function, so a program
+  without `use core;` passed analysis and emitted a call to a C function that does not exist.
+- **`E0010`'s transcript in `docs/errors.md` had no test behind it**, and the diagnostic harness could
+  not express a warning at all — every annotated case was required to exit non-zero.
+- **Two spec programs did not compile**: the `panic` example was missing its `use core;`, and the
+  package example needs a dependency it does not have (now annotated as such).
+- **`ARCHITECTURE.md` called three capabilities "mocked"** — the package registry, the LSP's
+  `references` and the debugger's stack frames — months after each had been made real.
+- **`PRIVACY.md` promised that nothing reaches the network**, while `nova-pkg` runs `git clone` for a
+  `git` dependency. It now has a table per program.
+- **`docs/index.html` was recorded in `MANIFEST.json` as generated** when it is hand-written; three
+  different shas had disagreed about one file.
+
+### Removed
+- **`runtime/`** — 2,480 lines of Rust describing a garbage collector, threading and async that no
+  crate depended on and no generated program linked. [ADR 0021](docs/adr/0021-delete-runtime-crate.md).
+- **Six decorative `[workspace.dependencies]` entries**, and the branch noise: 118 stale branches on
+  origin reduced to one, with `git cherry` proving none of them held unique work.
+
+### Decided
+- **Concurrency stays absent.** [ADR 0020](docs/adr/0020-concurrency-model.md) records why: the
+  backend contract is one program in and one string out, and a thread does not fit that on JavaScript
+  (a `Worker` is a second file) or WebAssembly (shared memory, an assembly flag, a cooperating host).
+  Two of four targets cannot express it, so the choice was to document the absence rather than ship a
+  `spawn` that means less than the word.
+
 ## [0.7.0] - 2026-11-18
 
 The first release with downloadable artifacts. Everything below accumulated since
