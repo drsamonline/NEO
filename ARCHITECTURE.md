@@ -24,7 +24,7 @@ Transforms source code into tokens:
 
 ---
 
-### 2. Parser (1,513 lines) ✅
+### 2. Parser (1,586 lines) ✅
 **Location**: `compiler/src/parser/mod.rs`
 
 Recursive descent parser building AST:
@@ -192,7 +192,7 @@ diagnostics, and the debugger is **real** — `ptrace`, breakpoints, a frame-cha
 backtrace and `.nova` line numbers through `addr2line` (ADR 0016), with only
 `print <name>` still refusing because this sandbox's C compiler emits no local-variable
 DWARF. Phase 4 is in progress. `DEV_PLAN.md` is authoritative for status and the test
-suite has 316 passing tests.
+suite has 317 passing tests.
 
 **This paragraph said the opposite until 2026-11-26** — that the registry, the LSP's
 `references` and the debugger's stack frames were all mocked. Each had been made real in
