@@ -65,6 +65,26 @@ pub fn validate(program: &SirProgram) -> Result<(), &'static str> {
             validate_statements(&function.body)?;
         }
     }
+
+    // A struct with a floating-point field has no representation here: `emit_struct_value`
+    // stores every field with `i32.store` and `FieldAccess` reads every field with `i32.load`,
+    // so an `f64` field would produce invalid WebAssembly — and before this check the module
+    // doc *claimed* the case was refused while nothing refused it. A comment standing where a
+    // rejection belongs is the defect this repository has found most often.
+    //
+    // No struct in the standard library has a float field, so this refuses only programs that
+    // ask for something the backend cannot express, which is what `BACKEND_API.md` rule 1 says
+    // to do.
+    for structure in &program.structs {
+        for field in &structure.fields {
+            if matches!(field.typ.trim(), "float" | "f32" | "f64") {
+                return Err(
+                    "a struct with a floating-point field: struct fields are stored as i32 in \
+                     this backend",
+                );
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1711,6 +1731,48 @@ fn escape_wat_string(text: &str) -> String {
 mod tests {
     use super::*;
     use nova_common::Span;
+
+    #[test]
+    fn a_struct_with_a_float_field_is_refused_rather_than_miscompiled() {
+        // The module doc claimed this case was refused and nothing refused it: `emit_struct_value`
+        // stores every field with `i32.store` and `FieldAccess` reads every field with `i32.load`,
+        // so an `f64` field produces invalid WebAssembly. A comment standing where a rejection
+        // belongs is worse than no comment, because it reads as a guarantee.
+        let mut program = empty_program();
+        program.structs.push(SirStruct {
+            name: "Point".to_string(),
+            fields: vec![
+                SirStructField {
+                    name: "x".to_string(),
+                    typ: "float".to_string(),
+                },
+                SirStructField {
+                    name: "y".to_string(),
+                    typ: "float".to_string(),
+                },
+            ],
+        });
+        let refusal = validate(&program).expect_err("a float field must be refused");
+        assert!(
+            refusal.contains("floating-point field"),
+            "the refusal should name the reason; got {refusal:?}"
+        );
+    }
+
+    #[test]
+    fn a_struct_of_integers_is_not_refused() {
+        // The guard must be narrow: refusing every struct would break the WASM target for the
+        // programs it does support.
+        let mut program = empty_program();
+        program.structs.push(SirStruct {
+            name: "Point".to_string(),
+            fields: vec![SirStructField {
+                name: "x".to_string(),
+                typ: "int".to_string(),
+            }],
+        });
+        assert!(validate(&program).is_ok());
+    }
 
     fn empty_program() -> SirProgram {
         SirProgram {
