@@ -43,15 +43,6 @@ pub struct StackFrame {
     pub address: u64,
 }
 
-/// Variable information
-#[derive(Debug, Clone)]
-pub struct Variable {
-    pub name: String,
-    pub value: String,
-    pub type_name: String,
-    pub children: Vec<Variable>,
-}
-
 /// Debug session
 pub struct DebugSession {
     target: DebugTarget,
@@ -60,7 +51,6 @@ pub struct DebugSession {
     next_bp_id: u32,
     current_location: Option<String>,
     stack_frames: Vec<StackFrame>,
-    variables: HashMap<String, Variable>,
     /// The process this debugger started under `ptrace`, when it did.
     traced_pid: Option<u32>,
     /// A breakpoint whose `int3` is currently removed, so the next resume must step over it and
@@ -78,7 +68,6 @@ impl DebugSession {
             next_bp_id: 1,
             current_location: None,
             stack_frames: Vec::new(),
-            variables: HashMap::new(),
             traced_pid: None,
             pending_reinsert: None,
         })
@@ -605,10 +594,15 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
             let signed = word as i64;
             return Ok(format!("{signed} (0x{word:016x}) at 0x{address:x}"));
         }
+        // The old message blamed the compiler — "this compiler emits neither" — and that was
+        // false: `compiler/src/main.rs` links with `-g`, so the C compiler writes exactly the
+        // local-variable DWARF this needs. What is missing is a reader in *this* debugger, which
+        // has only ever parsed the line table. ADR 0023 records the options and their cost.
         Err(DebuggerError::Target(format!(
-            "cannot evaluate `{trimmed}`: reading a variable needs its stack offset and its \
-             type, and this compiler emits neither — only line information. `print 0xADDRESS` \
-             reads memory directly"
+            "cannot evaluate `{trimmed}`: this debugger reads only the line table, so it does not \
+             know where a variable lives or what type it has. The information is in the binary — \
+             it is linked with `-g` — but nothing here parses it yet (ADR 0023). \
+             `print 0xADDRESS` reads memory directly"
         )))
     }
     
@@ -731,17 +725,9 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
                         .to_string(),
                 )
             }
-            "variables" => {
-                if self.variables.is_empty() {
-                    Ok("No variables in scope".to_string())
-                } else {
-                    let mut info = String::new();
-                    for (_, var) in &self.variables {
-                        info.push_str(&format!("{}: {} = {}\n", var.name, var.type_name, var.value));
-                    }
-                    Ok(info)
-                }
-            }
+            // `info variables` was removed with the DWARF model it was waiting for: the map
+            // behind it was never filled, so the command could only ever answer "No variables
+            // in scope" — a false affordance rather than a limit.
             _ => Err(DebuggerError::InvalidCommand(
                 format!("Unknown info item: {}", item)
             )),
