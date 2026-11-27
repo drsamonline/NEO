@@ -598,14 +598,106 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
         // false: `compiler/src/main.rs` links with `-g`, so the C compiler writes exactly the
         // local-variable DWARF this needs. What is missing is a reader in *this* debugger, which
         // has only ever parsed the line table. ADR 0023 records the options and their cost.
-        Err(DebuggerError::Target(format!(
-            "cannot evaluate `{trimmed}`: this debugger reads only the line table, so it does not \
-             know where a variable lives or what type it has. The information is in the binary — \
-             it is linked with `-g` — but nothing here parses it yet (ADR 0023). \
-             `print 0xADDRESS` reads memory directly"
-        )))
+        // A name. ADR 0023: the compiler links with `-g`, so the binary carries the variable's
+        // location and type; `dwarf` reads them and `evaluate_location` turns the location into an
+        // address. What this needs and may not have is a *stopped process* and the path to the
+        // binary that produced it.
+        let Some(pid) = pid else {
+            return Err(DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: reading a variable needs a stopped process to know \
+                 where its frame is. `run` a program, or `attach <pid>`. `print 0xADDRESS` reads \
+                 memory directly"
+            )));
+        };
+        let DebugTarget::Binary { path, .. } = &self.target else {
+            return Err(DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: this session is attached to a process, and the path \
+                 to its binary is not known here, so its debug information cannot be read. \
+                 `print 0xADDRESS` reads memory directly"
+            )));
+        };
+        let binary = std::path::PathBuf::from(path);
+
+        // The frame the process is stopped in decides where its variables are.
+        let frames = self.backtrace()?;
+        let Some(frame) = frames.first() else {
+            return Err(DebuggerError::Target(
+                "cannot evaluate `{trimmed}`: the stack has no frames".to_string(),
+            ));
+        };
+        let function = frame.function.clone();
+        let locals = crate::dwarf::locals_of_function(&binary, &function).map_err(|error| {
+            DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
+        })?;
+        let Some(local) = locals.iter().find(|local| local.name == trimmed) else {
+            let available: Vec<&str> = locals.iter().map(|local| local.name.as_str()).collect();
+            return Err(DebuggerError::Target(format!(
+                "no variable named `{trimmed}` in `{function}`{}. `print 0xADDRESS` reads memory \
+                 directly",
+                if available.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — it has {}", available.join(", "))
+                }
+            )));
+        };
+        if local.ops.is_empty() {
+            return Err(DebuggerError::Target(format!(
+                "`{trimmed}` has no location expression: it was optimised away, or it is not a \
+                 local. `print 0xADDRESS` reads memory directly"
+            )));
+        }
+
+        // `DW_OP_fbreg` is relative to the frame base and `DW_OP_call_frame_cfa` is the canonical
+        // frame address. On x86-64 with a frame pointer those are `RBP` and `RBP + 16` — passed
+        // separately so the evaluator cannot use one where the other belongs.
+        let frame_base = crate::target::frame_pointer(pid)?;
+        let cfa = frame_base.wrapping_add(16);
+        let address = crate::dwarf::evaluate_location(&local.ops, frame_base, cfa).map_err(|error| {
+            DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
+        })?;
+
+        let word = crate::target::read_word(pid, address)?;
+        Ok(format!(
+            "{} = {} ({} at 0x{address:x})",
+            local.name,
+            format_scalar(word, &local.type_name),
+            local.type_name
+        ))
     }
     
+    /// A word read from a variable's address, shown as its declared type says to read it.
+    ///
+    /// Pure on purpose: `read_word` returns eight bytes, and how many of them mean anything is the
+    /// type's business. An `int` local occupies four, so its value is the low 32 bits sign-extended
+    /// — reading all eight would pick up the neighbouring slot and look plausible.
+    fn format_scalar(word: u64, type_name: &str) -> String {
+        match type_name.trim() {
+            "int" | "int32_t" => (word as u32 as i32).to_string(),
+            "short" | "int16_t" => (word as u16 as i16).to_string(),
+            "char" | "int8_t" => (word as u8 as i8).to_string(),
+            "unsigned int" | "unsigned" | "uint32_t" => (word as u32).to_string(),
+            "long long" | "long" | "int64_t" | "long int" | "long long int" => {
+                (word as i64).to_string()
+            }
+            "unsigned long long" | "uint64_t" | "unsigned long" => word.to_string(),
+            "float" => f32::from_bits(word as u32).to_string(),
+            "double" => f64::from_bits(word).to_string(),
+            "bool" | "_Bool" => (word & 0xff != 0).to_string(),
+            other => {
+                // A pointer, or a type this debugger does not format. The address is the honest
+                // answer for both, and saying the type makes the difference visible.
+                format!("0x{word:x}")
+                    .to_string()
+                    + if other.ends_with('*') || other.contains('*') {
+                        ""
+                    } else {
+                        ""
+                    }
+            }
+        }
+    }
+
     /// List source code
     /// Source lines around a location, `file:line` or a hexadecimal address.
     ///
@@ -1091,6 +1183,21 @@ mod tests {
             let error = session.set_breakpoint(location).unwrap_err().to_string();
             assert!(error.contains("cannot open"), "{location}: {error}");
         }
+    }
+
+    #[test]
+    fn a_scalar_is_formatted_by_its_declared_type() {
+        // `read_word` returns eight bytes. How many of them mean anything is the type's business:
+        // an `int` occupies four, and reading all eight picks up the neighbouring slot.
+        assert_eq!(DebugSession::format_scalar(7, "int"), "7");
+        assert_eq!(DebugSession::format_scalar(0xffff_ffff, "int"), "-1");
+        assert_eq!(DebugSession::format_scalar(0x1_0000_0007, "int"), "7");
+        assert_eq!(DebugSession::format_scalar(11, "long long"), "11");
+        assert_eq!(DebugSession::format_scalar(0xffff_ffff, "unsigned int"), "4294967295");
+        assert_eq!(DebugSession::format_scalar(0x4040_0000_0000_0000, "double"), "32");
+        assert_eq!(DebugSession::format_scalar(1, "bool"), "true");
+        // A pointer is an address, and says so.
+        assert_eq!(DebugSession::format_scalar(0xdead_beef, "char *"), "0xdeadbeef");
     }
 
     #[test]
