@@ -19,6 +19,30 @@ and nothing measured them in this file. What is stable lives in `docs/status.jso
 | version, source lines, ADR count, gate list, stdlib size | `docs/status.json` — gated |
 | test and coverage counts | CI, on the commit you are looking at; `coverage-floor.txt` holds the ratchet |
 
+## State as of 2026-11-27
+
+Three language questions were open when this file was last rewritten. All three now have an
+accepted ADR, and one of them produced a feature:
+
+| Question | Answer | Where |
+|---|---|---|
+| Concurrency | **absent, by decision** — the backend contract returns one string, and a thread does not fit that on JS or WASM | [ADR 0020](adr/0020-concurrency-model.md) |
+| The unused `runtime/` crate | **deleted** — 2,480 lines nothing depended on | [ADR 0021](adr/0021-delete-runtime-crate.md) |
+| `Result<T, E>` | **built as sugar** over the generic enum the language already had: `Ok(7)` needs no declaration and no `Result.` prefix | [ADR 0022](adr/0022-result-type.md) |
+
+ADR 0022 is worth reading for its "Found while building it" section rather than its decision: the
+first design was wrong, CI proved it by breaking a passing test, and the failure is what revealed
+that the enum path already bound two payload types in one match. **A design that starts from "what
+does the machinery already do" would have found that in an hour.**
+
+What is genuinely left:
+
+| Item | Blocked by |
+|---|---|
+| `print <name>` in the debugger | a C compiler that emits local-variable DWARF; `zig cc` does not, gcc/clang do |
+| WASM float struct fields, non-`int` closures | rejected by `validate` rather than miscompiled — a decision, not a defect |
+| A release after v0.7.0 | nothing; it simply has not been cut |
+
 ## What is done
 
 | Stage | State |
@@ -30,7 +54,7 @@ and nothing measured them in this file. What is stable lives in `docs/status.jso
 | 4 — syntax tree, formatter, guard, `trait` | ✅ |
 | 5 — LSP nav, VS Code extension, path/git deps | ✅ |
 | 6 — release and distribution | ✅ v0.7.0 published |
-| 7 — long tail | 🟡 spec 10/25, stdlib truth ✅, debugger ⬜ |
+| 7 — long tail | 🟡 spec **25/25** ✅, stdlib truth ✅, debugger ✅ except `print <name>` |
 
 ### The standard library
 
