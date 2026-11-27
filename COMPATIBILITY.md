@@ -66,9 +66,14 @@ avoid.
 | `nova-v0.7.0-arm64-macos.tar.gz` | 3.5 MB |
 | `nova-v0.7.0-x86_64-windows.zip` | 3.1 MB |
 
-Each has a `.sha256` beside it and contains the four binaries — `nova-compiler`,
-`nova-pkg`, `nova-lsp`, `nova-dbg` — plus `stdlib/`, `examples/`, the licence and the
-changelog.
+Each has a `.sha256` beside it and contains `nova-compiler`, `nova-pkg`, `nova-lsp` and — **on
+Linux only** — `nova-dbg`, plus `stdlib/`, `examples/`, the licence and the changelog.
+
+**The debugger is Linux-only.** It attaches with `ptrace`, and `libc` has no `PTRACE_ATTACH` on
+macOS, so the workspace build there fails on that one crate. The v0.8.0 release found this: the tag
+was pushed, the macOS build stopped at `cannot find value PTRACE_ATTACH in crate libc`, and nothing
+was published because the workflow builds before it uploads. The macOS and Windows archives now carry
+three binaries rather than a debugger that cannot attach.
 
 ### What an artifact needs at run time
 

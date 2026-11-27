@@ -133,7 +133,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec   # was @stable
 
       - name: Build
-        run: cargo build --release --workspace
+        # `nova-dbg` attaches with `ptrace`, which is a Linux interface: `libc` has no
+        # `PTRACE_ATTACH` on macOS, so a workspace build there fails on that one crate. The
+        # debugger is therefore Linux-only and is left out of the other artifacts rather than
+        # shipped as a binary that cannot attach. The packaging step already tolerates a missing
+        # binary, so the archives simply carry three.
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cargo build --release --workspace
+          else
+            cargo build --release --workspace --exclude nova-dbg
+          fi
 
       - name: Package
         run: |
@@ -146,8 +156,9 @@ jobs:
           esac
           stage="nova-${tag}-${target}"
           mkdir -p "dist/$stage"
-          # The four binaries, the runtime the generated C needs, the licence, the
-          # notices and the docs a user needs to know what they have.
+          # The binaries this platform builds — four on Linux, three elsewhere because
+          # `nova-dbg` is `ptrace`-based and Linux-only — plus the licence, the notices and
+          # the docs a user needs to know what they have.
           for bin in nova-compiler nova-pkg nova-lsp nova-dbg; do
             src="target/release/$bin"
             # `set -e` treats `[ -f x ] && cmd` as a failing statement when the
