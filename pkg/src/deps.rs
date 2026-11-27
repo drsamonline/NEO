@@ -470,10 +470,12 @@ mod tests {
             std::fs::create_dir_all(dir).expect("dir");
         }
 
-        let mut middle: Manifest =
+        // Named apart from the directory `middle`: a manifest called `middle` shadowed the
+        // `PathBuf` of the same name, and `middle.join(..)` then failed to compile.
+        let mut middle_manifest: Manifest =
             toml::from_str("[package]\nname = \"middle\"\nversion = \"0.1.0\"\n")
                 .expect("a minimal manifest parses");
-        middle.dependencies.insert(
+        middle_manifest.dependencies.insert(
             "utils".to_string(),
             DependencySpec::Detailed(DependencyDetails {
                 path: Some(PathBuf::from("../two")),
@@ -482,7 +484,7 @@ mod tests {
         );
         std::fs::write(
             middle.join("Nova.toml"),
-            toml::to_string_pretty(&middle).expect("serialise"),
+            toml::to_string_pretty(&middle_manifest).expect("serialise"),
         )
         .expect("write");
 
