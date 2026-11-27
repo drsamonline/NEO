@@ -184,24 +184,69 @@ impl fmt::Display for Type {
 /// was read as a `long long`. Fixing it meant fixing it twice, and two copies of one rule is
 /// the defect this project has found more often than any other.
 pub fn option_struct_name(payload: &str) -> String {
+    // One mangler for both types: `Result` needs the identical rule for each of its two
+    // payloads, and a second copy of "arrays keep a marker" is how `[int]` and `int` collided
+    // in the first place.
+    format!("Option_{}", mangle_payload(payload))
+}
+
+/// The C struct name for `Result<ok, error>`.
+///
+/// `Result` needs **two** payload types where `Option` needs one, so the name carries both:
+/// `Result_int_String`. The same reasoning as `option_struct_name` applies — the name is built
+/// here, once, because the lowerer and the backend must agree about it, and two copies of one
+/// rule is the defect this project has found more often than any other.
+///
+/// The separator is `_` and each half is mangled the way an `Option` payload is, so `[int]` and
+/// `int` stay distinct: `Result<[int], String>` is `Result_array_int_String`.
+pub fn result_struct_name(ok: &str, error: &str) -> String {
+    format!("Result_{}_{}", mangle_payload(ok), mangle_payload(error))
+}
+
+/// A payload type as one identifier fragment. `[int]` keeps an `array_` marker so it cannot
+/// collide with `int`, which is the bug `option_struct_name` was written to fix.
+fn mangle_payload(payload: &str) -> String {
     let trimmed = payload.trim();
-    // Arrays keep a marker of their own, so `[int]` and `int` cannot collide.
     if let Some(inner) = trimmed
         .strip_prefix('[')
         .and_then(|rest| rest.strip_suffix(']'))
     {
-        return format!("Option_array_{}", inner.trim());
+        return format!("array_{}", inner.trim());
     }
     let mangled: String = trimmed
         .chars()
         .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
         .collect();
-    format!("Option_{}", mangled.trim_matches('_'))
+    mangled.trim_matches('_').to_string()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::option_struct_name;
+    use super::{option_struct_name, result_struct_name};
+
+    #[test]
+    fn a_result_name_carries_both_payloads() {
+        // `Result` differs from `Option` in exactly one way that matters here: two payloads.
+        // The name has to carry both, or `Result<int, String>` and `Result<String, int>` would
+        // be one C struct with the fields in the wrong order.
+        assert_eq!(result_struct_name("int", "String"), "Result_int_String");
+        assert_ne!(
+            result_struct_name("int", "String"),
+            result_struct_name("String", "int")
+        );
+    }
+
+    #[test]
+    fn a_result_payload_keeps_an_array_marker() {
+        assert_eq!(
+            result_struct_name("[int]", "String"),
+            "Result_array_int_String"
+        );
+        assert_ne!(
+            result_struct_name("[int]", "String"),
+            result_struct_name("int", "String")
+        );
+    }
 
     #[test]
     fn an_array_payload_does_not_collide_with_its_element() {
