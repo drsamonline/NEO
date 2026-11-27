@@ -143,7 +143,7 @@ fn locals_in_unit<R: gimli::Reader>(
         let name = entry
             .attr_value(gimli::DW_AT_name)?
             .and_then(|value| dwarf.attr_string(unit, value).ok())
-            .and_then(|reader| reader.to_string().ok()).map(|text| text.into_owned());
+            .and_then(|reader| reader.to_string().ok().map(|text| text.into_owned()));
         if name.as_deref() != Some(function) {
             continue;
         }
@@ -162,7 +162,7 @@ fn locals_in_unit<R: gimli::Reader>(
             let Some(name) = child
                 .attr_value(gimli::DW_AT_name)?
                 .and_then(|value| dwarf.attr_string(unit, value).ok())
-                .and_then(|reader| reader.to_string().ok()).map(|text| text.into_owned())
+                .and_then(|reader| reader.to_string().ok().map(|text| text.into_owned()))
             else {
                 continue;
             };
@@ -201,7 +201,7 @@ fn type_name_of<R: gimli::Reader>(
     let name = entry
         .attr_value(gimli::DW_AT_name)?
         .and_then(|value| dwarf.attr_string(unit, value).ok())
-        .and_then(|reader| reader.to_string().ok()).map(|text| text.into_owned());
+        .and_then(|reader| reader.to_string().ok().map(|text| text.into_owned()));
     Ok(name.unwrap_or_else(|| "unknown".to_string()))
 }
 
