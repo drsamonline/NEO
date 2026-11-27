@@ -466,7 +466,10 @@ mod tests {
         let project = root.join("project");
         let one = root.join("one");
         let two = root.join("two");
-        for dir in [&project, &one, &two] {
+        // `middle` is a dependency directory in its own right — the manifest below is written
+        // into it — so it has to exist before the write, and before `resolve` reads it.
+        let middle = root.join("middle");
+        for dir in [&project, &one, &two, &middle] {
             std::fs::create_dir_all(dir).expect("dir");
         }
 
