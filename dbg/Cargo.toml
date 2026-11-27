@@ -17,6 +17,11 @@ rustyline = "13.0"
 # `ptrace` and the x86_64 register set. The only crate in the workspace that needs a C-level
 # dependency, and the reason `target.rs` carries `unsafe` blocks with SAFETY comments.
 libc = "0.2"
+# Reading `.debug_info`. ADR 0023 option A: the compiler links with `-g`, so the C compiler
+# writes the local-variable DWARF the debugger needs; these read it. Both are pure Rust, read-only,
+# and reach nothing at run time — the `no-network-check` gate covers the second claim.
+gimli = "0.31"
+object = "0.36"
 
 [[bin]]
 name = "nova-dbg"

@@ -12,6 +12,7 @@
 mod target;
 mod commands;
 mod session;
+mod dwarf;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
