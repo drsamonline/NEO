@@ -429,10 +429,10 @@ pub fn frame_base_of_function(
                     message: error.to_string(),
                 })?
                 .and_then(|value| dwarf.attr_string(&unit, value).ok())
-                // `.to_string()` rather than `.into_owned()`: `attr_string` yields a reader whose
-                // `to_string` is not the `Reader` method in every position, and a `String` is what the
-                // caller needs either way.
-                .map(|reader| reader.to_string());
+                // `attr_string` yields a reader whose `to_string` is `Result<&str>` here, not the
+                // `Reader` method's `Cow`, so `.ok()` then a `String` is what the caller needs.
+                .and_then(|reader| reader.to_string().ok())
+                .map(|text| text.to_string());
             if name.as_deref() != Some(function) {
                 continue;
             }
