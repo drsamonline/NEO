@@ -73,7 +73,11 @@ pub fn load_binary(path: &Path) -> Result<DebugTarget, DebuggerError> {
 
 /// Attach to a running process
 pub fn attach(pid: u32) -> Result<DebugTarget, DebuggerError> {
-    #[cfg(unix)]
+    // `target_os = "linux"`, not `unix`: macOS is unix and has no `PTRACE_ATTACH`, so the `unix`
+    // gate compiled a `ptrace` call that `libc` does not define there. Every other function in
+    // this file was already gated on Linux; this one was the exception, and it is the one the
+    // v0.8.0 release failed on.
+    #[cfg(target_os = "linux")]
     {
         // Check if process exists
         let proc_path = std::path::Path::new("/proc").join(pid.to_string());
@@ -128,6 +132,18 @@ pub fn attach(pid: u32) -> Result<DebugTarget, DebuggerError> {
         Ok(DebugTarget::Attached { pid, process_name })
     }
     
+    // The same refusal for every other unix: macOS has `ptrace` but not the Linux request
+    // constants, and a debugger that cannot attach should say so rather than fail to build.
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        let _ = pid;
+        Err(DebuggerError::AttachFailed(
+            "attaching is implemented with `ptrace` and is Linux-only in this debugger; \
+             nothing was attached"
+                .to_string(),
+        ))
+    }
+
     #[cfg(windows)]
     {
         // Windows would need `DebugActiveProcess`. Refused rather than reported as done.
