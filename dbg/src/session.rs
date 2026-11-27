@@ -1208,16 +1208,15 @@ mod tests {
         };
         let session = DebugSession::new(target).unwrap();
 
-        // A name needs the variable's location and type, which this debugger cannot read. The
-        // refusal must say that rather than guess, and must point at what does work.
+        // A name is now read from the binary's DWARF — so with no stopped process the refusal is
+        // about the frame it cannot see, not about a missing reader. Asserted on the substance:
+        // what is missing, and what does work instead.
         //
-        // The assertions are on the *substance* — a name is refused, the reason names the missing
-        // reader, and an address is offered as the way through. They used to match the exact
-        // sentence, which broke when the sentence was corrected: it had blamed the compiler for
-        // not emitting DWARF, and the compiler has always linked with `-g`.
+        // This assertion has now changed twice for the same reason: it matched a sentence, and the
+        // sentence got truer. First the message blamed the compiler for not emitting DWARF; then it
+        // blamed a missing reader; now there is a reader and the missing thing is a process.
         let error = session.evaluate("counter").unwrap_err().to_string();
-        assert!(error.contains("line table"), "{error}");
-        assert!(error.contains("ADR 0023"), "{error}");
+        assert!(error.contains("stopped process"), "{error}");
         assert!(error.contains("print 0xADDRESS"), "{error}");
 
         // An address needs a process to read from.
