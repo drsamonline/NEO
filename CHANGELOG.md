@@ -8,6 +8,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 
 Nothing yet.
 
+## [0.8.2] - 2026-11-27
+
+The package manager stops being a promise. Both halves of the gap `DEV_PLAN.md` named are closed,
+and the WebAssembly target stops claiming a refusal it did not make.
+
+### Added
+- **`nova.lock`.** A `git` dependency is pinned to the commit that was checked out, and the next
+  resolve uses the pin instead of following the branch. Before this, *"two machines can currently
+  resolve the same `nova.toml` to different revisions"* — the plan's own words. A `path` dependency
+  is not pinned: its content is the directory, not a revision. A pin from another day is fetched by
+  name, since a `--depth 1` clone does not hold it.
+- **Transitive dependencies.** A dependency with its own `Nova.toml` brings its own dependencies.
+  A cycle stops where a name is already resolved from the same source, and a depth limit turns a
+  pathological manifest into a message rather than a stack overflow.
+
+### Changed
+- **One name for two places is refused**, naming both sources. NOVA has one flat namespace — the
+  compiler takes module roots and could only pick one — so this is the rule ADR 0019 applied to
+  modules, applied to packages.
+- **A transitive `path` resolves relative to the manifest that declared it**, not the root project.
+  Fetched git dependencies all land in the root project's `.nova/deps`, one flat directory.
+
+### Fixed
+- **The WASM backend claimed to refuse structs with float fields and did not.** `emit_struct_value`
+  stores every field with `i32.store` and `FieldAccess` reads every field with `i32.load`, so an
+  `f64` field produced invalid WebAssembly — refused by the assembler rather than the compiler. The
+  refusal is now real and names its reason. This is the shape the project has found most often: a
+  comment standing where a rejection belongs.
+
 ## [0.8.1] - 2026-11-27
 
 One fix, and it is the one the previous release found the hard way.

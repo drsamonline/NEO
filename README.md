@@ -232,7 +232,7 @@ with `wc -l` rather than by hand; a stale table is how this one drifted from
 | Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
 | Tests | 247 passing, 0 failing, 0 ignored (`cargo test --workspace`); 7 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
 | License | MIT (see [LICENSE](LICENSE)) |
-| Releases | [`v0.8.1`](https://github.com/drsamonline/NEO/releases/tag/v0.8.1) — three platform archives with SHA-256 checksums, each carrying all four binaries. `nova-dbg` builds everywhere and refuses in words off Linux, where `ptrace` is not the same interface. The two earliest releases (`v0.6.0`, `v0.6.1`) are empty: both tagged on one commit with no artifacts. |
+| Releases | [`v0.8.2`](https://github.com/drsamonline/NEO/releases/tag/v0.8.2) — three platform archives with SHA-256 checksums, each carrying all four binaries. `nova-dbg` builds everywhere and refuses in words off Linux, where `ptrace` is not the same interface. The two earliest releases (`v0.6.0`, `v0.6.1`) are empty: both tagged on one commit with no artifacts. |
 
 ### Suggested GitHub topics
 
