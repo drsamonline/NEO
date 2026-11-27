@@ -51,9 +51,39 @@ That prints `-1`. Change the argument to `2` and it prints `5`. The standard lib
 way: `io.read_file`, `parse_int` and the other fallible functions return `Option<T>`, and the
 whole library is asserted to be usable, so this is the pattern to copy.
 
-**`Option<T>` carries no reason.** It says a thing did not happen; it cannot say why. A caller
-that needs to distinguish "file missing" from "permission denied" has to return something wider
-itself, and there is no standard type for that yet.
+**`Option<T>` carries no reason.** It says a thing did not happen; it cannot say why.
+
+## `Result<T, E>` — absence with a reason
+
+When the caller needs to distinguish "file missing" from "permission denied", return `Result<T, E>`.
+You do not declare it and you do not write a prefix — `Ok(..)` and `Err(..)` are the whole spelling:
+
+```nova
+fn parse_positive(text: String) -> Result<int, String> {
+    if text == "" {
+        return Err("empty");
+    }
+    Ok(1)
+}
+```
+
+```nova
+match parse_positive("") {
+    Ok(n) => print(n),
+    Err(reason) => print(reason),
+}
+```
+
+That prints `empty`. `Ok(n)` binds an `int` and `Err(reason)` binds a `String` — **two different
+types in one match**, which is what separates `Result` from `Option`.
+
+`Result` is an ordinary generic enum, `enum Result<T, E> { Ok(T), Err(E) }`, that the compiler
+supplies when a program uses the sugar and does not declare one itself. **Declare your own and yours
+is used** — the compiler's version is a default, not a reserved name. Write `Result.Ok(7)` if you
+prefer the long form; it means the same thing.
+
+Until 2026-11-27 this chapter said there was no standard type for failure-with-reason. That was true
+when it was written and stopped being true when the sugar landed (ADR 0022).
 
 ## `panic` stops the program
 
