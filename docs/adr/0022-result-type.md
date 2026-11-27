@@ -65,6 +65,36 @@ is reproduced in this section so the next attempt starts from the same program.
 `gcc`, so the compiler cannot be built locally and the four layers below cannot be verified without a
 CI round trip each. That is a fact about the environment, not about the design.
 
+## The implementation map — 2026-11-27
+
+Step 2 is merged: `result_struct_name(ok, error)` in `crates/nova-common/src/types.rs`, sharing one
+`mangle_payload` with `option_struct_name`, with four unit tests.
+
+What remains, located exactly. **`Option` is the template for every one of these**, which is why the
+list is short:
+
+| Layer | `Option` does this | `Result` needs |
+|---|---|---|
+| sema, `check_identifier` | `compiler/src/sema/mod.rs:815` admits `Some`/`None` | admit `Ok`/`Err` |
+| sema, call check | `:940` skips signature checking for `Some` | skip for `Ok`/`Err` |
+| sema, `infer_expr_type` | `:1182` returns `None` for a `Some` call | `None` for `Ok`/`Err` |
+| lowerer, field | `option_payloads: BTreeSet<String>` (line 66) | `result_payloads: BTreeSet<(String, String)>` |
+| lowerer, registration | `note_option_payload` from declared types (826, 871) | the same, parsing `Result<A, B>` |
+| lowerer, struct emission | one `Option_<T>` per payload, fields `tag`/`payload` (625) | one `Result_A_B` per pair, fields `tag`/`ok`/`error` |
+| lowerer, `Ok(x)` | `Some(x)` builds a struct literal with tag 0 | tag 0, field `ok` |
+| lowerer, `Err(e)` | — | tag 1, field `error` |
+| lowerer, match arm | `Pattern::EnumVariant` at 3468: `Some` → tag 0, payload from `option_payload_type` | `Ok`/`Err` → tag, and **the field and type differ per arm** |
+| backend | `compiler/src/backend/mod.rs:388` maps a payload to `option_struct_name` | map a pair to `result_struct_name` |
+
+**The last two rows are the work.** Everything above them is mechanical repetition of a pattern that
+already exists; the arm binding is the one place where `Result` genuinely differs, because the
+binding's type must come from the arm's pattern rather than from the scrutinee's single payload.
+
+**It was not written in the same session as this map, on purpose.** Each of those rows needs the
+compiler to build, and this pod cannot build Rust — `static.rust-lang.org` is not on the egress
+allowlist. Merging `Ok`/`Err` half-wired would mean a compiler that accepts a constructor and
+mis-lowers it, which is the one failure this repository treats as worse than a refusal.
+
 ## Why that matters more than the design
 
 `Result<T, E>` would be built on the same machinery: a synthesised struct, two constructors, and a
