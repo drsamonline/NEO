@@ -18,6 +18,7 @@
 //! hand-written parser produces plausible *wrong* answers — a variable read from the wrong slot
 //! looks like a number, not like an error — which is why this does not parse bytes itself.
 
+use object::Object;
 use std::path::Path;
 
 /// One local variable of a function, as the compiler described it.
@@ -69,7 +70,7 @@ pub fn locals_of_function(path: &Path, function: &str) -> Result<Vec<LocalVariab
         gimli::RunTimeEndian::Big
     };
     let load_section = |id: gimli::SectionId| -> Result<std::borrow::Cow<[u8]>, DwarfError> {
-        let bytes = object
+        let bytes: &[u8] = object
             .section_by_name(id.name())
             .and_then(|section| section.data().ok())
             .unwrap_or(&[]);
@@ -165,11 +166,11 @@ fn locals_in_unit<R: gimli::Reader>(
             };
             let type_name = child
                 .attr_value(gimli::DW_AT_type)?
-                .and_then(|value| type_name_of(dwarf, unit, value).ok())
+                .and_then(|value| type_name_of(unit, value).ok())
                 .unwrap_or_else(|| "unknown".to_string());
             let location = child
                 .attr_value(gimli::DW_AT_location)?
-                .map(render_location)
+                .map(|value| render_location(value, unit.encoding()))
                 .unwrap_or_else(|| "no location (optimised away, or a global)".to_string());
             locals.push(LocalVariable {
                 name,
@@ -182,9 +183,8 @@ fn locals_in_unit<R: gimli::Reader>(
     Ok(None)
 }
 
-/// The name a `DW_AT_type` points at, following references through the unit's DIE tree.
+/// The name a `DW_AT_type` points at, following the reference within the unit.
 fn type_name_of<R: gimli::Reader>(
-    dwarf: &gimli::Dwarf<R>,
     unit: &gimli::Unit<R>,
     value: gimli::AttributeValue<R>,
 ) -> Result<String, gimli::Error> {
@@ -192,10 +192,11 @@ fn type_name_of<R: gimli::Reader>(
         gimli::AttributeValue::UnitRef(offset) => offset,
         _ => return Ok("unknown".to_string()),
     };
-    let entry = dwarf.unit_entry(unit, offset)?;
+    // `unit.entry` in gimli 0.31 — `Dwarf::unit_entry` does not exist.
+    let entry = unit.entry(offset)?;
     let name = entry
         .attr_value(gimli::DW_AT_name)?
-        .and_then(|value| dwarf.attr_string(unit, value).ok())
+        .and_then(|value| unit.dwarf.attr_string(unit, value).ok())
         .and_then(|reader| reader.to_string().ok());
     Ok(name.unwrap_or_else(|| "unknown".to_string()))
 }
@@ -203,14 +204,17 @@ fn type_name_of<R: gimli::Reader>(
 /// A location expression, rendered for a human.
 ///
 /// Rendered rather than evaluated: running it needs the frame base from a live process, which is the
-/// step this module does not take.
-fn render_location<R: gimli::Reader>(value: gimli::AttributeValue<R>) -> String {
+/// step this module does not take. `Encoding` has no `Default`, so the unit's own is passed in.
+fn render_location<R: gimli::Reader>(
+    value: gimli::AttributeValue<R>,
+    encoding: gimli::Encoding,
+) -> String {
     match value {
         gimli::AttributeValue::Exprloc(expression) => {
-            let mut operations = expression.operations(Default::default());
+            let mut operations = expression.operations(encoding);
             let mut parts = Vec::new();
             while let Ok(Some(operation)) = operations.next() {
-                parts.push(format!("{:?}", operation));
+                parts.push(format!("{operation:?}"));
             }
             if parts.is_empty() {
                 "empty location expression".to_string()
