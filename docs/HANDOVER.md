@@ -7,7 +7,7 @@ is unverified it says so.
 
 | | |
 |---|---|
-| Release | **v0.7.0** — three platform archives with SHA-256, verified by downloading and running one |
+| Release | **v0.8.0** — three platform archives with SHA-256, verified by downloading and running one |
 
 **Numbers are not kept here.** This table used to carry the commit, the test count, the coverage
 figure and the ADR count; all four were stale within a day, because they change on every merge
@@ -35,13 +35,20 @@ first design was wrong, CI proved it by breaking a passing test, and the failure
 that the enum path already bound two payload types in one match. **A design that starts from "what
 does the machinery already do" would have found that in an hour.**
 
+The v0.8.0 release failed once before it published: the macOS build stopped at
+`cannot find value PTRACE_ATTACH in crate libc`, because `nova-dbg` attaches with `ptrace` and that is
+a Linux interface. Nothing was published — the workflow builds before it uploads, and the release it
+had created was a draft — and the fix was to build `--exclude nova-dbg` off Linux, plus the sentence
+in `COMPATIBILITY.md` that would have prevented the failure. **A release failed on something the code
+had always known**, which is the same defect shape as everything else in this file.
+
 What is genuinely left:
 
 | Item | Blocked by |
 |---|---|
 | `print <name>` in the debugger | a C compiler that emits local-variable DWARF; `zig cc` does not, gcc/clang do |
 | WASM float struct fields, non-`int` closures | rejected by `validate` rather than miscompiled — a decision, not a defect |
-| A release after v0.7.0 | nothing; it simply has not been cut |
+| ~~A release after v0.7.0~~ | **done** — v0.8.0 published 2026-11-27 |
 
 ## What is done
 
@@ -53,7 +60,7 @@ What is genuinely left:
 | 3 — harden the front end (G5–G7) | ✅ |
 | 4 — syntax tree, formatter, guard, `trait` | ✅ |
 | 5 — LSP nav, VS Code extension, path/git deps | ✅ |
-| 6 — release and distribution | ✅ v0.7.0 published |
+| 6 — release and distribution | ✅ v0.8.0 published 2026-11-27 |
 | 7 — long tail | 🟡 spec **25/25** ✅, stdlib truth ✅, debugger ✅ except `print <name>` |
 
 ### The standard library
