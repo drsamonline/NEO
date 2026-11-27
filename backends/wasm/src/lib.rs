@@ -54,6 +54,27 @@ pub struct WasmBackend {
 /// Reject programs this backend cannot represent faithfully, so `emit --target
 /// wasm` fails with a reason instead of writing placeholder code.
 pub fn validate(program: &SirProgram) -> Result<(), &'static str> {
+    // A struct with a floating-point field has no representation here: `emit_struct_value`
+    // stores every field with `i32.store` and `FieldAccess` reads every field with `i32.load`,
+    // so an `f64` field produces invalid WebAssembly — and before this check the module doc
+    // *claimed* the case was refused while nothing refused it. A comment standing where a
+    // rejection belongs is the defect this repository has found most often.
+    //
+    // It sits **above** the reachability test on purpose. A struct's layout is wrong whether or
+    // not a reachable function happens to touch it, and the first version of this check lived
+    // after the early return for a program with no functions — which the test caught, not a
+    // reading of the code.
+    for structure in &program.structs {
+        for field in &structure.fields {
+            if matches!(field.typ.trim(), "float" | "f32" | "f64") {
+                return Err(
+                    "a struct with a floating-point field: struct fields are stored as i32 in \
+                     this backend",
+                );
+            }
+        }
+    }
+
     // Only functions reachable from the entry point matter: a `use core;`
     // program imports the whole module, including helpers this backend cannot
     // compile, and it must still run if none of them are called.
@@ -66,25 +87,6 @@ pub fn validate(program: &SirProgram) -> Result<(), &'static str> {
         }
     }
 
-    // A struct with a floating-point field has no representation here: `emit_struct_value`
-    // stores every field with `i32.store` and `FieldAccess` reads every field with `i32.load`,
-    // so an `f64` field would produce invalid WebAssembly — and before this check the module
-    // doc *claimed* the case was refused while nothing refused it. A comment standing where a
-    // rejection belongs is the defect this repository has found most often.
-    //
-    // No struct in the standard library has a float field, so this refuses only programs that
-    // ask for something the backend cannot express, which is what `BACKEND_API.md` rule 1 says
-    // to do.
-    for structure in &program.structs {
-        for field in &structure.fields {
-            if matches!(field.typ.trim(), "float" | "f32" | "f64") {
-                return Err(
-                    "a struct with a floating-point field: struct fields are stored as i32 in \
-                     this backend",
-                );
-            }
-        }
-    }
     Ok(())
 }
 
