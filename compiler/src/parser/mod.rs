@@ -5,6 +5,43 @@
 use nova_common::{Token, TokenKind, Span, AstNode, Program, Item, Function, Param, TypeExpr, Block, Statement, LetStmt, Pattern, Expr, BinOp, UnOp, Literal, StructDef, EnumDef, EnumVariant, Field, ConstDef, UseDecl, ModuleDecl, ImplBlock, MatchArm, Diagnostic, Diagnostics};
 
 /// Parser state
+/// Set when the source used `Ok(..)` or `Err(..)` without the `Result.` prefix.
+///
+/// The prelude enum is injected only for a program that asked for it: adding an unused `Result`
+/// to every program would change generated C for programs that never mention it. ADR 0022.
+pub static USES_RESULT_SUGAR: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// `enum Result<T, E> { Ok(T), Err(E) }`, as the parser would have read it.
+///
+/// A span of `default()` puts it nowhere in particular, which is right: the user did not write it,
+/// and a diagnostic pointing at it would point at a line that does not exist.
+fn result_enum() -> EnumDef {
+    let param = |name: &str| TypeExpr {
+        name: name.to_string(),
+        generics: Vec::new(),
+        span: Span::default(),
+    };
+    EnumDef {
+        name: "Result".to_string(),
+        generics: vec!["T".to_string(), "E".to_string()],
+        variants: vec![
+            EnumVariant {
+                name: "Ok".to_string(),
+                fields: Some(vec![param("T")]),
+                span: Span::default(),
+            },
+            EnumVariant {
+                name: "Err".to_string(),
+                fields: Some(vec![param("E")]),
+                span: Span::default(),
+            },
+        ],
+        is_pub: true,
+        span: Span::default(),
+    }
+}
+
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
@@ -100,6 +137,19 @@ impl Parser {
         }
         
         program.span = Span::new(start_span.start, self.peek().span.end);
+
+        // Inject `enum Result<T, E> { Ok(T), Err(E) }` when the program used the sugar and did
+        // not declare its own. A program that declares `Result` keeps its declaration — the
+        // compiler's version is a default, not a reserved name.
+        if USES_RESULT_SUGAR.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            let declares_result = program
+                .items
+                .iter()
+                .any(|item| matches!(item, Item::Enum(def) if def.name == "Result"));
+            if !declares_result {
+                program.items.push(Item::Enum(result_enum()));
+            }
+        }
         
         if self.diagnostics.has_errors() {
             Err(&self.diagnostics)
@@ -1111,6 +1161,19 @@ impl Parser {
                 }
                 self.expect(TokenKind::RParen, "Expected ')' after arguments")?;
                 
+                // `Ok(1)` is sugar for `Result.Ok(1)`. The rewrite happens here, where the
+                // callee is still in hand, rather than as a pass over the whole tree: `Result`
+                // already exists as a user-declarable enum, and this adds no second way to
+                // express it — only a shorter spelling. ADR 0022.
+                if let Expr::Identifier(name) = &expr {
+                    if name == "Ok" || name == "Err" {
+                        USES_RESULT_SUGAR.store(true, std::sync::atomic::Ordering::SeqCst);
+                        expr = Expr::Field(
+                            Box::new(Expr::Identifier("Result".to_string())),
+                            name.clone(),
+                        );
+                    }
+                }
                 expr = Expr::Call(Box::new(expr), args);
             } else if self.match_token(TokenKind::Dot) {
                 let name = if self.check(TokenKind::Identifier(String::new())) {
@@ -1279,6 +1342,16 @@ impl Parser {
                 Some(Box::new(self.parse_pattern()?))
             };
             self.expect(TokenKind::RParen, "Expected ')' after variant pattern")?;
+            // The same sugar on the pattern side, so `match r { Ok(n) => .. }` reads like the
+            // expression form.
+            if path.len() == 1 && (path[0] == "Ok" || path[0] == "Err") {
+                USES_RESULT_SUGAR.store(true, std::sync::atomic::Ordering::SeqCst);
+                return Ok(Pattern::EnumVariant(
+                    "Result".to_string(),
+                    path[0].clone(),
+                    inner,
+                ));
+            }
             return Ok(Pattern::EnumVariant(
                 path[0].clone(),
                 path[1..].join("."),

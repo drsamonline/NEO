@@ -2972,3 +2972,62 @@ fn main() -> int {\n    \
         "expected the None branch then the Some branch; got {stdout:?}"
     );
 }
+
+#[test]
+fn a_result_needs_no_enum_declaration_and_no_prefix() {
+    // ADR 0022, corrected 2026-11-27. `Result<T, E>` already works as a **user enum** —
+    // `generic_enum_payloads_and_growable_arrays_run` proves a match binds an `int` in one arm and
+    // a `String` in the other. What was missing is smaller: the declaration and the `Result.`
+    // prefix. This program is written the way a user would write it.
+    if !c_compiler_available() {
+        eprintln!("skipping: no host C compiler available (set CC)");
+        return;
+    }
+    let dir = scratch("result-sugar");
+    let source = dir.join("result_sugar.nova");
+    fs::write(
+        &source,
+        "use core;\n\n\
+fn parse_positive(text: String) -> Result<int, String> {\n    \
+    if text == \"\" {\n        \
+        return Err(\"empty\");\n    \
+    }\n    \
+    Ok(1)\n\
+}\n\n\
+fn main() -> int {\n    \
+    match parse_positive(\"\") {\n        \
+        Ok(n) => print(n),\n        \
+        Err(reason) => print(reason),\n    \
+    }\n    \
+    match parse_positive(\"x\") {\n        \
+        Ok(n) => print(n),\n        \
+        Err(reason) => print(reason),\n    \
+    }\n    \
+    return 0;\n\
+}\n",
+    )
+    .expect("write source");
+    let binary = dir.join("result_sugar");
+
+    let build = Command::new(compiler())
+        .arg("build")
+        .arg(&source)
+        .arg("-o")
+        .arg(&binary)
+        .arg("--module-root")
+        .arg(workspace_root().join("stdlib"))
+        .output()
+        .expect("run nova-compiler build");
+    assert!(
+        build.status.success(),
+        "`Result` sugar does not compile:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&binary).output().expect("run the program");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "empty\n1\n",
+        "expected the Err branch then the Ok branch"
+    );
+}
