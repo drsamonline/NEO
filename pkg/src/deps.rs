@@ -115,33 +115,120 @@ impl Lock {
 /// Returns them in name order so two runs on the same manifest produce the same
 /// `--module-root` arguments.
 pub fn resolve(manifest: &Manifest, project: &Path) -> Result<Vec<Resolved>, CommandError> {
-    let mut names: Vec<&String> = manifest.dependencies.keys().collect();
-    names.sort();
-
     let mut lock = Lock::read(project);
+    let deps_dir = project.join(DEPENDENCY_DIR);
+    // One flat namespace, the same rule the language has (ADR 0019): a name must mean one thing,
+    // so a second dependency with the same name is accepted only if it resolves to the same place.
+    let mut seen: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     let mut resolved = Vec::new();
     let mut wrote_pin = false;
-    for name in names {
-        let spec = &manifest.dependencies[name];
-        let (entry, pin) = resolve_one(name, spec, project, &lock)?;
-        if let Some((url, commit)) = pin {
-            lock.pins.insert(name.clone(), (url, commit));
-            wrote_pin = true;
-        }
-        resolved.push(entry);
-    }
+    resolve_graph(
+        manifest,
+        project,
+        &deps_dir,
+        &mut lock,
+        &mut seen,
+        &mut resolved,
+        &mut wrote_pin,
+        0,
+    )?;
     // Only written when there is something to pin, so a project with path dependencies only
     // does not acquire a lock file it has no use for.
     if wrote_pin {
         lock.write(project)?;
     }
+    resolved.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(resolved)
+}
+
+/// Walk the dependency graph, not just its first level.
+///
+/// `DEV_PLAN.md` named this as the other half of the package manager's gap: "a transitive graph,
+/// so a dependency's own dependencies are still invisible". A dependency that has a `Nova.toml`
+/// of its own is resolved the same way the root project is, and everything it pulls in lands in
+/// the root project's `.nova/deps` — one flat directory, because the compiler takes module roots
+/// and NOVA has one namespace.
+///
+/// Two things follow from that, and both are errors rather than silent choices:
+///
+/// - **a cycle** stops at the point where a name is already resolved, because a second visit with
+///   the same source is not new work;
+/// - **a name used twice for different things** is refused, naming both sources, because the
+///   compiler could only pick one.
+#[allow(clippy::too_many_arguments)]
+fn resolve_graph(
+    manifest: &Manifest,
+    relative_to: &Path,
+    deps_dir: &Path,
+    lock: &mut Lock,
+    seen: &mut std::collections::BTreeMap<String, String>,
+    resolved: &mut Vec<Resolved>,
+    wrote_pin: &mut bool,
+    depth: usize,
+) -> Result<(), CommandError> {
+    // A dependency graph deeper than this is a mistake rather than a program; the limit turns a
+    // pathological manifest into a message instead of a stack overflow.
+    const MAX_DEPTH: usize = 16;
+    if depth > MAX_DEPTH {
+        return Err(CommandError::BuildFailed(format!(
+            "dependency graph is more than {MAX_DEPTH} levels deep at `{}` — is there a cycle \
+             through path dependencies?",
+            relative_to.display()
+        )));
+    }
+
+    let mut names: Vec<&String> = manifest.dependencies.keys().collect();
+    names.sort();
+
+    for name in names {
+        let spec = &manifest.dependencies[name];
+        let (entry, pin) = resolve_one(name, spec, relative_to, deps_dir, lock)?;
+        if let Some((url, commit)) = pin {
+            lock.pins.insert(name.clone(), (url, commit));
+            *wrote_pin = true;
+        }
+
+        if let Some(existing) = seen.get(name) {
+            if existing != &entry.source {
+                return Err(CommandError::BuildFailed(format!(
+                    "two dependencies are named `{name}`: one from {}, another from {}. \
+                     NOVA has one flat namespace, so a name has to mean one thing — rename one \
+                     of them.",
+                    existing, entry.source
+                )));
+            }
+            // Already resolved, and to the same place. This is also where a cycle stops.
+            continue;
+        }
+        seen.insert(name.clone(), entry.source.clone());
+
+        let root = entry.root.clone();
+        resolved.push(entry);
+
+        // A dependency with its own manifest brings its own dependencies.
+        if root.join("Nova.toml").is_file() {
+            let inner = crate::manifest::load_manifest(&root).map_err(|error| {
+                CommandError::BuildFailed(format!(
+                    "dependency `{name}` has a Nova.toml that cannot be read: {error}"
+                ))
+            })?;
+            resolve_graph(
+                &inner, &root, deps_dir, lock, seen, resolved, wrote_pin, depth + 1,
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn resolve_one(
     name: &str,
     spec: &DependencySpec,
-    project: &Path,
+    // The directory of the manifest that declared this dependency: a `path` is relative to it,
+    // which is not the root project once the graph is deeper than one level.
+    relative_to: &Path,
+    // Where fetched git dependencies live. Always the *root* project's `.nova/deps`, so a
+    // transitive dependency is not buried inside its parent's checkout.
+    deps_dir: &Path,
     lock: &Lock,
 ) -> Result<(Resolved, Option<(String, String)>), CommandError> {
     let details = match spec {
@@ -152,7 +239,7 @@ fn resolve_one(
     };
 
     if let Some(path) = &details.path {
-        let root = normalise(&project.join(path));
+        let root = normalise(&relative_to.join(path));
         if !root.is_dir() {
             return Err(CommandError::BuildFailed(format!(
                 "dependency `{name}` points at {}, which is not a directory",
@@ -172,7 +259,7 @@ fn resolve_one(
     }
 
     if let Some(url) = &details.git {
-        let root = project.join(DEPENDENCY_DIR).join(name);
+        let root = deps_dir.join(name);
         // A pin from `nova.lock` wins over the manifest's `rev`/`tag`/`branch`: that is the
         // whole point of a lock file, and a build that quietly used the branch instead would
         // be the non-reproducibility this file exists to remove.
@@ -325,6 +412,101 @@ mod tests {
         assert!(message.contains("registry is not implemented"), "{message}");
         assert!(message.contains("path = "), "must suggest path: {message}");
         assert!(message.contains("git = "), "must suggest git: {message}");
+    }
+
+    #[test]
+    fn a_dependencys_own_dependencies_are_resolved() {
+        // `DEV_PLAN.md` called this the other half of the gap: a dependency's own dependencies
+        // were invisible. A path dependency whose directory has a `Nova.toml` brings its own.
+        let root = std::env::temp_dir().join(format!("nova-graph-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("project");
+        let middle = root.join("middle");
+        let leaf = root.join("leaf");
+        for dir in [&project, &middle, &leaf] {
+            std::fs::create_dir_all(dir).expect("dir");
+        }
+
+        // leaf <- middle <- project
+        let mut inner: Manifest =
+            toml::from_str("[package]\nname = \"middle\"\nversion = \"0.1.0\"\n")
+                .expect("a minimal manifest parses");
+        inner.dependencies.insert(
+            "leaf".to_string(),
+            DependencySpec::Detailed(DependencyDetails {
+                path: Some(PathBuf::from("../leaf")),
+                ..DependencyDetails::default()
+            }),
+        );
+        std::fs::write(
+            middle.join("Nova.toml"),
+            toml::to_string_pretty(&inner).expect("serialise"),
+        )
+        .expect("write middle manifest");
+
+        let outer = manifest_with(
+            "middle",
+            DependencySpec::Detailed(DependencyDetails {
+                path: Some(PathBuf::from("../middle")),
+                ..DependencyDetails::default()
+            }),
+        );
+
+        let resolved = resolve(&outer, &project).expect("the graph resolves");
+        let names: Vec<&str> = resolved.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(names, vec!["leaf", "middle"], "got {names:?}");
+    }
+
+    #[test]
+    fn one_name_for_two_places_is_refused() {
+        // The flat-namespace rule the language has (ADR 0019), applied to packages: the compiler
+        // takes module roots and cannot pick between two `utils`.
+        let root = std::env::temp_dir().join(format!("nova-clash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("project");
+        let one = root.join("one");
+        let two = root.join("two");
+        for dir in [&project, &one, &two] {
+            std::fs::create_dir_all(dir).expect("dir");
+        }
+
+        let mut middle: Manifest =
+            toml::from_str("[package]\nname = \"middle\"\nversion = \"0.1.0\"\n")
+                .expect("a minimal manifest parses");
+        middle.dependencies.insert(
+            "utils".to_string(),
+            DependencySpec::Detailed(DependencyDetails {
+                path: Some(PathBuf::from("../two")),
+                ..DependencyDetails::default()
+            }),
+        );
+        std::fs::write(
+            middle.join("Nova.toml"),
+            toml::to_string_pretty(&middle).expect("serialise"),
+        )
+        .expect("write");
+
+        let mut outer = manifest_with(
+            "utils",
+            DependencySpec::Detailed(DependencyDetails {
+                path: Some(PathBuf::from("../one")),
+                ..DependencyDetails::default()
+            }),
+        );
+        outer.dependencies.insert(
+            "middle".to_string(),
+            DependencySpec::Detailed(DependencyDetails {
+                path: Some(PathBuf::from("../middle")),
+                ..DependencyDetails::default()
+            }),
+        );
+
+        let error = resolve(&outer, &project).expect_err("two utils must be refused");
+        let message = format!("{error}");
+        assert!(
+            message.contains("two dependencies are named `utils`"),
+            "the error should name the clash; got {message}"
+        );
     }
 
     #[test]

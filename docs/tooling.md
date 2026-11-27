@@ -42,7 +42,7 @@ Each is runnable locally with no toolchain, which is why they are Python.
 
 | Workflow | Guards | Blocking? |
 |---|---|---|
-| `ci.yml` | Build, 320 tests, every example runs, stdlib emits C, generated JS and Rust run, `test --parity`, docs check | **yes** |
+| `ci.yml` | Build, 322 tests, every example runs, stdlib emits C, generated JS and Rust run, `test --parity`, docs check | **yes** |
 | `accuracy.yml` | **G1** generated C under ASan+UBSan; **G2** emitted WASM validated by `wasm-tools` | **yes** |
 | `diagnostics.yml` | **G3** eight diagnostic goldens plus the JSON contract; error-code agreement | **yes** |
 | `corpus.yml` | **G4** 20 generated programs, each compared to an independent Python oracle *and* across four backends | **yes** |
