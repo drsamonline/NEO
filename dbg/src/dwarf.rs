@@ -28,8 +28,11 @@ pub struct LocalVariable {
     pub name: String,
     /// The declared type, as DWARF spells it (`int`, `long long`, `char *`).
     pub type_name: String,
-    /// The location expression, rendered for a human. Not evaluated: see the module docs.
+    /// The location expression, rendered for a human.
     pub location: String,
+    /// The same expression as operations `evaluate_location` can run. Empty when the variable has
+    /// no location (optimised away, or a global).
+    pub ops: Vec<LocationOp>,
 }
 
 /// What can go wrong reading a binary's debug information.
@@ -170,14 +173,27 @@ fn locals_in_unit<R: gimli::Reader>(
                 .attr_value(gimli::DW_AT_type)?
                 .and_then(|value| type_name_of(dwarf, unit, value).ok())
                 .unwrap_or_else(|| "unknown".to_string());
-            let location = child
-                .attr_value(gimli::DW_AT_location)?
+            let location_value = child.attr_value(gimli::DW_AT_location)?;
+            let location = location_value
+                .clone()
                 .map(|value| render_location(value, unit.encoding()))
                 .unwrap_or_else(|| "no location (optimised away, or a global)".to_string());
+            let ops = location_value
+                .and_then(|value| match value {
+                    gimli::AttributeValue::Exprloc(expression) => {
+                        Some(location_ops(expression, unit.encoding()))
+                    }
+                    // A variable at a fixed address or in a register is a shape this debugger
+                    // does not read; empty means "no location to evaluate", which the caller
+                    // refuses rather than guessing.
+                    _ => None,
+                })
+                .unwrap_or_default();
             locals.push(LocalVariable {
                 name,
                 type_name,
                 location,
+                ops,
             });
         }
         return Ok(Some(locals));
@@ -346,6 +362,99 @@ fn add_signed(base: u64, offset: i64) -> Result<u64, DwarfError> {
     })
 }
 
+/// The operations that compute a function's frame base.
+///
+/// gcc emits `DW_AT_frame_base = DW_OP_call_frame_cfa` for an unoptimised function, so this usually
+/// comes back as `[Cfa]`. Returned as operations rather than a number because the number depends on
+/// the stopped frame, which only the caller has.
+pub fn frame_base_of_function(
+    path: &Path,
+    function: &str,
+) -> Result<Vec<LocationOp>, DwarfError> {
+    let display = path.display().to_string();
+    let data = std::fs::read(path).map_err(|source| DwarfError::Io {
+        path: display.clone(),
+        source,
+    })?;
+    let object = object::File::parse(&*data).map_err(|error| DwarfError::Malformed {
+        path: display.clone(),
+        message: error.to_string(),
+    })?;
+    if object.section_by_name(".debug_info").is_none() {
+        return Err(DwarfError::NoDebugInfo { path: display });
+    }
+    let endian = if object.is_little_endian() {
+        gimli::RunTimeEndian::Little
+    } else {
+        gimli::RunTimeEndian::Big
+    };
+    let load_section = |id: gimli::SectionId| -> Result<std::borrow::Cow<[u8]>, DwarfError> {
+        let bytes: &[u8] = object
+            .section_by_name(id.name())
+            .and_then(|section| section.data().ok())
+            .unwrap_or(&[]);
+        Ok(std::borrow::Cow::Owned(bytes.to_vec()))
+    };
+    let dwarf_cow = gimli::DwarfSections::load(&load_section).map_err(|error| {
+        DwarfError::Malformed {
+            path: display.clone(),
+            message: error.to_string(),
+        }
+    })?;
+    let dwarf = dwarf_cow.borrow(|section| gimli::EndianSlice::new(section, endian));
+
+    let mut units = dwarf.units();
+    while let Some(header) = units.next().map_err(|error| DwarfError::Malformed {
+        path: display.clone(),
+        message: error.to_string(),
+    })? {
+        let unit = dwarf
+            .unit(header)
+            .map_err(|error| DwarfError::Malformed {
+                path: display.clone(),
+                message: error.to_string(),
+            })?;
+        let mut entries = unit.entries();
+        while let Some((_, entry)) = entries.next_dfs().map_err(|error| DwarfError::Malformed {
+            path: display.clone(),
+            message: error.to_string(),
+        })? {
+            if entry.tag() != gimli::DW_TAG_subprogram {
+                continue;
+            }
+            let name = entry
+                .attr_value(gimli::DW_AT_name)
+                .map_err(|error| DwarfError::Malformed {
+                    path: display.clone(),
+                    message: error.to_string(),
+                })?
+                .and_then(|value| dwarf.attr_string(&unit, value).ok())
+                .and_then(|reader| reader.to_string().ok().map(|text| text.into_owned()));
+            if name.as_deref() != Some(function) {
+                continue;
+            }
+            let value = entry
+                .attr_value(gimli::DW_AT_frame_base)
+                .map_err(|error| DwarfError::Malformed {
+                    path: display.clone(),
+                    message: error.to_string(),
+                })?;
+            return match value {
+                Some(gimli::AttributeValue::Exprloc(expression)) => {
+                    Ok(location_ops(expression, unit.encoding()))
+                }
+                Some(other) => Ok(vec![LocationOp::Unsupported(format!("{other:?}"))]),
+                // No frame base: the caller refuses rather than assuming the frame pointer.
+                None => Ok(Vec::new()),
+            };
+        }
+    }
+    Err(DwarfError::NoSuchFunction {
+        name: function.to_string(),
+        path: display,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,6 +495,38 @@ mod tests {
             return None;
         }
         Some(binary)
+    }
+
+    #[test]
+    fn a_functions_frame_base_is_read_from_a_debug_build() {
+        let Some(binary) = build_fixture() else {
+            eprintln!("skipping: no host C compiler that can build with -g");
+            return;
+        };
+        let ops = frame_base_of_function(&binary, "main").expect("main has a frame base");
+        // gcc emits `DW_AT_frame_base = DW_OP_call_frame_cfa` for an unoptimised function, which is
+        // the one shape the evaluator runs without needing a register it was not given.
+        assert_eq!(ops, vec![LocationOp::Cfa], "got {ops:?}");
+    }
+
+    #[test]
+    fn a_local_carries_the_operations_that_name_its_address() {
+        let Some(binary) = build_fixture() else {
+            eprintln!("skipping: no host C compiler that can build with -g");
+            return;
+        };
+        let locals = locals_of_function(&binary, "main").expect("locals");
+        let counter = locals
+            .iter()
+            .find(|local| local.name == "counter")
+            .expect("counter");
+        assert!(!counter.ops.is_empty(), "counter should have operations");
+        // A stack local is a frame offset; the exact number is gcc's business, not this test's.
+        assert!(
+            matches!(counter.ops[0], LocationOp::FrameOffset(_)),
+            "got {:?}",
+            counter.ops
+        );
     }
 
     #[test]
