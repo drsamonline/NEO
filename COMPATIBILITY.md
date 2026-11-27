@@ -52,13 +52,22 @@ sits above the newest release.
 Not on crates.io, not on npm — `Cargo.toml` says `publish = false` on every crate,
 which is what makes that statement checkable rather than aspirational.
 
-**`v0.8.0` is the current release.** The table below describes **v0.7.0**, the first release that
-shipped binaries, and is kept as it was measured: its sizes are that release's, and v0.8.0's differ.
-Filling in v0.8.0's numbers from the published artifacts is a job for whoever reads them off the
-release page — writing them here from expectation would be the kind of claim this file exists to
-avoid.
+**`v0.8.0` is the current release**, published 2026-11-27. Sizes read off the release page, not
+estimated:
 
-**`v0.7.0` was the first release that ships binaries:**
+| Archive | Size | Binaries |
+|---|---|---|
+| `nova-v0.8.0-x86_64-linux.tar.gz` | 3,983,473 B (3.8 MB) | four |
+| `nova-v0.8.0-arm64-macos.tar.gz` | 3,030,060 B (2.9 MB) | three — no `nova-dbg` |
+| `nova-v0.8.0-x86_64-windows.zip` | 2,790,355 B (2.7 MB) | three — no `nova-dbg` |
+
+**Verified by downloading the published `x86_64-linux` archive**, checking its SHA-256 against the
+published `.sha256` (`7561fb55…66031c` — they match), running `nova-compiler --version`
+(`nova-compiler 0.8.0`) and emitting C for a hello-world, which produced `nova_print_str("Hello,
+NOVA");` and wrote `nova_runtime.h` and `nova_runtime.c` beside it.
+
+**`v0.7.0` was the first release that shipped binaries**, at these sizes — kept because they were
+measured, and they differ from v0.8.0's because the debugger and the compiler both grew:
 
 | Archive | Size |
 |---|---|
