@@ -65,6 +65,53 @@ is reproduced in this section so the next attempt starts from the same program.
 `gcc`, so the compiler cannot be built locally and the four layers below cannot be verified without a
 CI round trip each. That is a fact about the environment, not about the design.
 
+## Found while building it — `Result` already exists as a user enum
+
+**2026-11-27.** A step-3 attempt (constructors, struct emission, backend mapping) was written and CI
+failed on a test that already existed:
+
+```
+generic_enum.c:18:11: error: unknown type name 'Result_int_String'
+```
+
+That test declares this, and it **passed before the change**:
+
+```nova
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+fn show(r: Result<int, String>) {
+    match r {
+        Result.Ok(v) => { print(v); },
+        Result.Err(e) => { print(e); },
+    }
+}
+```
+
+So the language **already has** a two-payload generic enum, and its `match` **already binds a
+different type per arm** — `Result.Ok(v)` binds an `int`, `Result.Err(e)` binds a `String`, in one
+match, today, in a passing test.
+
+**This ADR's central claim was wrong.** "The cost `Result` carries that `Option` does not is arm
+typing" is false: arm typing for two payloads is the *enum* path, and it works. The attempt to give
+`Result` its own struct was not just unnecessary, it **broke the existing enum** by hijacking the
+type name.
+
+What is actually missing is smaller and different: **the `Result.` prefix**. A user must write
+`Result.Ok(7)`; the chapter and this ADR assume `Ok(7)`. The work is sugar — recognise a bare `Ok`/`Err`
+call and a bare `Ok(x)` pattern as `Result.Ok`/`Result.Err`, and inject the enum definition when a
+program uses them without declaring it.
+
+That is a much smaller change than the map below describes, and it reuses machinery that is already
+proven rather than building a second way to express the same thing.
+
+The step-3 attempt was reverted in full: `backend/mod.rs`, `lowerer/mod.rs` and `sema/mod.rs` are
+back at `origin/master`. `result_struct_name` and `result_payloads_of` remain in `nova-common` with
+their tests — they are correct functions that the enum path does not need, and removing them is a
+separate decision rather than a side effect of this one.
+
 ## The implementation map — 2026-11-27
 
 Step 2 is merged: `result_struct_name(ok, error)` in `crates/nova-common/src/types.rs`, sharing one
