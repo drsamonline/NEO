@@ -468,6 +468,10 @@ impl RustBackend {
             }
             SirExpr::Closure { name, .. } => format!("Rc::new({name})"),
             SirExpr::EnvAccess { field, .. } => format!("__env.{}", field),
+            // Unreachable here: `SizeOf` is produced only by the C closure constructor, which
+            // wraps `nova_env_new`, and this backend has no `nova_env_new` (grep: 0 occurrences).
+            // The arm is defensive. If Rust closures are ever lowered through the C-shaped
+            // environment struct, this returns a silent zero — make it compute a size or refuse.
             SirExpr::SizeOf(_) => "0".to_string(),
             SirExpr::Cast { value, typ } => {
                 format!("({} as {})", self.expr_to_rust(value), self.type_to_rust(typ))

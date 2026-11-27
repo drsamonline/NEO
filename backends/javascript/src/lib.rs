@@ -333,6 +333,11 @@ impl JsBackend {
                 format!("{}.bind(null, {})", name, environment)
             }
             SirExpr::EnvAccess { field, .. } => format!("__env.{}", field),
+            // `SizeOf` reaches this backend only as the second argument to `nova_env_new`, and
+            // the JavaScript `nova_env_new(value, _size)` ignores it — a JS object carries its
+            // own size. So `0` is correct **today because the value is unused**, not because a
+            // size is being computed. If that helper ever allocates from the size, this becomes
+            // a silent zero: give it a real value then, or refuse the construct.
             SirExpr::SizeOf(_) => "0".to_string(),
             SirExpr::Cast { value, .. } => self.expr_to_js(value),
             SirExpr::CallValue { callee, args, .. } => {
