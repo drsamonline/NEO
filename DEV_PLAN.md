@@ -43,7 +43,7 @@ the code and a CI run, and the run is named where it matters.
 | Debugger | ⚠️ **`run` traces, `break <function>` and `break <file:line>` insert a real `int3`, `backtrace` walks the frame chain** — all reporting `.nova` lines (ADR 0016); `print 0xADDRESS` reads memory; PIE binaries need the program started first; **`print <name>` refuses** — a variable needs its stack offset and type, which nothing emits | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
 | Language spec | ✅ 25 of 25 chapters written | `docs/language/README.md` |
-| **Test suite** | **319 `#[test]` functions, 0 failing** — counted by `tools/status.py`, not typed here | `docs/status.json` |
+| **Test suite** | **320 `#[test]` functions, 0 failing** — counted by `tools/status.py`, not typed here | `docs/status.json` |
 
 ---
 
@@ -285,9 +285,10 @@ represented.
   `rev`/`tag`/`branch`; a version-only one fails with a message naming the registry
   as unimplemented. The compiler still reads no manifest and fetches nothing.
 
-  **Not done:** a lockfile, and a transitive graph. Both are named in
-  `PACKAGE_ARCHITECTURE.md` rather than implied — two machines can currently resolve
-  the same `nova.toml` to different revisions.
+  **A lockfile now exists** (`nova.lock`): each `git` dependency is pinned to the commit
+  that was checked out, and a later resolve uses the pin instead of following the branch.
+  A `path` dependency is not pinned — its content is the directory, not a revision. **Not
+  done:** a transitive graph, so a dependency's own dependencies are still invisible.
 
 ### Stage 6 — Release and distribution (in progress)
 
