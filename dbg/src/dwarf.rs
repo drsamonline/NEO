@@ -230,6 +230,122 @@ fn render_location<R: gimli::Reader>(
     }
 }
 
+/// One step of a DWARF location expression, in the form this debugger can act on.
+///
+/// `gimli` parses the bytes into `Operation`s; this is the subset that names an address. Anything
+/// else becomes `Unsupported` and is refused **by name** rather than guessed at, because a location
+/// evaluated wrongly reads a real number from the wrong place — the failure mode that looks like
+/// success.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LocationOp {
+    /// `DW_OP_fbreg n` — an offset from the frame base.
+    FrameOffset(i64),
+    /// `DW_OP_addr a` — a fixed address.
+    Address(u64),
+    /// `DW_OP_call_frame_cfa` — the canonical frame address.
+    Cfa,
+    /// `DW_OP_plus_uconst n` — add to what the previous step produced.
+    PlusConstant(u64),
+    /// `DW_OP_plus` — pop two, add.
+    Plus,
+    /// Anything this debugger does not evaluate, kept so the refusal can say what it was.
+    Unsupported(String),
+}
+
+/// Translate `gimli`'s operations into the subset above.
+///
+/// Rendering happens in the same pass as evaluation's input so the two cannot disagree about what a
+/// location means: `render_location` prints these, and `evaluate_location` runs them.
+pub fn location_ops<R: gimli::Reader>(
+    expression: gimli::Expression<R>,
+    encoding: gimli::Encoding,
+) -> Vec<LocationOp> {
+    let mut operations = expression.operations(encoding);
+    let mut ops = Vec::new();
+    while let Ok(Some(operation)) = operations.next() {
+        ops.push(match operation {
+            gimli::Operation::FrameOffset { offset } => LocationOp::FrameOffset(offset),
+            gimli::Operation::Address { address } => LocationOp::Address(address),
+            gimli::Operation::CallFrameCFA => LocationOp::Cfa,
+            gimli::Operation::PlusConstant { value } => LocationOp::PlusConstant(value),
+            gimli::Operation::Plus => LocationOp::Plus,
+            other => LocationOp::Unsupported(format!("{other:?}")),
+        });
+    }
+    ops
+}
+
+/// Where a variable lives, given the frame it is being read in.
+///
+/// `frame_base` is the function's `DW_AT_frame_base` resolved for the current PC — on x86_64 with a
+/// frame pointer that is `RBP`. `cfa` is the canonical frame address, which is `RBP + 16` on the same
+/// architecture; both are passed in rather than assumed, so a caller that has the registers cannot
+/// accidentally get the other one.
+///
+/// The expression is a tiny stack machine. Only the shapes gcc emits for an unoptimised local are
+/// implemented — a frame offset, an address, the CFA, and constant addition — and everything else is
+/// refused with the operation named.
+pub fn evaluate_location(
+    ops: &[LocationOp],
+    frame_base: u64,
+    cfa: u64,
+) -> Result<u64, DwarfError> {
+    let mut stack: Vec<u64> = Vec::new();
+    for op in ops {
+        match op {
+            LocationOp::FrameOffset(offset) => {
+                stack.push(add_signed(frame_base, *offset)?);
+            }
+            LocationOp::Address(address) => stack.push(*address),
+            LocationOp::Cfa => stack.push(cfa),
+            LocationOp::PlusConstant(value) => {
+                let top = stack.pop().ok_or_else(|| DwarfError::Malformed {
+                    path: "location expression".to_string(),
+                    message: "`DW_OP_plus_uconst` with nothing on the stack".to_string(),
+                })?;
+                stack.push(top.wrapping_add(*value));
+            }
+            LocationOp::Plus => {
+                let right = stack.pop().ok_or_else(|| DwarfError::Malformed {
+                    path: "location expression".to_string(),
+                    message: "`DW_OP_plus` with fewer than two values on the stack".to_string(),
+                })?;
+                let left = stack.pop().ok_or_else(|| DwarfError::Malformed {
+                    path: "location expression".to_string(),
+                    message: "`DW_OP_plus` with fewer than two values on the stack".to_string(),
+                })?;
+                stack.push(left.wrapping_add(right));
+            }
+            LocationOp::Unsupported(operation) => {
+                return Err(DwarfError::Malformed {
+                    path: "location expression".to_string(),
+                    message: format!(
+                        "`{operation}` is not evaluated by this debugger; \
+                         `print 0xADDRESS` reads memory directly"
+                    ),
+                });
+            }
+        }
+    }
+    stack.pop().ok_or_else(|| DwarfError::Malformed {
+        path: "location expression".to_string(),
+        message: "the location expression produced no address".to_string(),
+    })
+}
+
+/// `base + offset`, where the offset may be negative and the result must stay in range.
+fn add_signed(base: u64, offset: i64) -> Result<u64, DwarfError> {
+    let result = if offset >= 0 {
+        base.checked_add(offset as u64)
+    } else {
+        base.checked_sub(offset.unsigned_abs())
+    };
+    result.ok_or_else(|| DwarfError::Malformed {
+        path: "location expression".to_string(),
+        message: format!("{base:#x} {offset:+} does not fit in an address"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +386,60 @@ mod tests {
             return None;
         }
         Some(binary)
+    }
+
+    #[test]
+    fn a_frame_offset_is_added_to_the_frame_base() {
+        // `DW_OP_fbreg -8` is what gcc emits for the first local in an unoptimised function: the
+        // variable sits 8 bytes below the frame base.
+        let address = evaluate_location(&[LocationOp::FrameOffset(-8)], 0x1000, 0x1010).unwrap();
+        assert_eq!(address, 0x0ff8);
+    }
+
+    #[test]
+    fn a_constant_offset_follows_a_frame_offset() {
+        // `DW_OP_fbreg -16; DW_OP_plus_uconst 8` names the second word of a struct local.
+        let address = evaluate_location(
+            &[LocationOp::FrameOffset(-16), LocationOp::PlusConstant(8)],
+            0x1000,
+            0x1010,
+        )
+        .unwrap();
+        assert_eq!(address, 0x0ff8);
+    }
+
+    #[test]
+    fn a_fixed_address_and_the_cfa_are_both_understood() {
+        assert_eq!(
+            evaluate_location(&[LocationOp::Address(0x4040)], 0, 0).unwrap(),
+            0x4040
+        );
+        assert_eq!(
+            evaluate_location(&[LocationOp::Cfa], 0, 0x2000).unwrap(),
+            0x2000
+        );
+    }
+
+    #[test]
+    fn an_operation_this_debugger_cannot_evaluate_is_refused_by_name() {
+        // Refused, not guessed: a location evaluated wrongly reads a real number from the wrong
+        // place, and that looks like success.
+        let error = evaluate_location(
+            &[LocationOp::Unsupported("Piece { .. }".to_string())],
+            0x1000,
+            0x1010,
+        )
+        .expect_err("must refuse");
+        let message = format!("{error}");
+        assert!(message.contains("Piece"), "{message}");
+        assert!(message.contains("print 0xADDRESS"), "{message}");
+    }
+
+    #[test]
+    fn an_offset_that_would_underflow_is_refused() {
+        let error =
+            evaluate_location(&[LocationOp::FrameOffset(-1)], 0, 0).expect_err("must refuse");
+        assert!(format!("{error}").contains("does not fit"), "{error}");
     }
 
     #[test]
