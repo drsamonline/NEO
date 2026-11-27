@@ -1101,10 +1101,16 @@ mod tests {
         };
         let session = DebugSession::new(target).unwrap();
 
-        // A name needs the variable's stack offset and type. Neither is emitted, so the refusal
-        // must say so rather than guess — and must point at what does work.
+        // A name needs the variable's location and type, which this debugger cannot read. The
+        // refusal must say that rather than guess, and must point at what does work.
+        //
+        // The assertions are on the *substance* — a name is refused, the reason names the missing
+        // reader, and an address is offered as the way through. They used to match the exact
+        // sentence, which broke when the sentence was corrected: it had blamed the compiler for
+        // not emitting DWARF, and the compiler has always linked with `-g`.
         let error = session.evaluate("counter").unwrap_err().to_string();
-        assert!(error.contains("stack offset"), "{error}");
+        assert!(error.contains("line table"), "{error}");
+        assert!(error.contains("ADR 0023"), "{error}");
         assert!(error.contains("print 0xADDRESS"), "{error}");
 
         // An address needs a process to read from.
