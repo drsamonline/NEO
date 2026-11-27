@@ -96,7 +96,7 @@ coverage, and `DEV_PLAN.md` says which feature stops where.
 **Location**: `compiler/src/backend/mod.rs`
 - The generator the CLI uses, and the only one whose output is compiled and run
 - Emits C99 plus `nova_runtime.h/.c` (ABI v3)
-- Covered by `compiler/tests/end_to_end.rs` — 52 tests
+- Covered by `compiler/tests/end_to_end.rs` — 78 tests
 - There used to be a second, unused C generator in `backends/c/`. It was 756
   lines, nothing depended on it, and it had drifted from this one. It was
   deleted rather than wired up.
