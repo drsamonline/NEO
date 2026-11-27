@@ -661,7 +661,7 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
         Ok(format!(
             "{} = {} ({} at 0x{address:x})",
             local.name,
-            format_scalar(word, &local.type_name),
+            Self::format_scalar(word, &local.type_name),
             local.type_name
         ))
     }
