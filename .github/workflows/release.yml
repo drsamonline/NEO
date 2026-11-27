@@ -134,10 +134,16 @@ jobs:
 
       - name: Build
         # `nova-dbg` attaches with `ptrace`, which is a Linux interface: `libc` has no
-        # `PTRACE_ATTACH` on macOS, so a workspace build there fails on that one crate. The
-        # debugger is therefore Linux-only and is left out of the other artifacts rather than
-        # shipped as a binary that cannot attach. The packaging step already tolerates a missing
-        # binary, so the archives simply carry three.
+        # `PTRACE_ATTACH` on macOS, so a workspace build there failed on that one crate. The
+        # debugger is therefore left out of the non-Linux artifacts rather than shipped as a
+        # binary that cannot attach, and the packaging step already tolerates a missing binary.
+        #
+        # `attach` was gated `#[cfg(unix)]` — macOS is unix — and now carries the same
+        # `target_os = "linux"` gate as its six siblings, with a refusal elsewhere (PR #203).
+        # **The exclusion stays until a release proves the crate builds on macOS.** A failed
+        # release is safe (it builds before it uploads, and creates only a draft), but it is still
+        # a wasted tag, so the removal belongs to the release that can watch it happen: delete the
+        # `--exclude nova-dbg` branch, tag, and if macOS builds, the archives carry four binaries.
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
             cargo build --release --workspace
