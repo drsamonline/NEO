@@ -31,7 +31,15 @@ STATUS = ROOT / "docs" / "status.json"
 # Documents that are allowed to state a number from their own past, because they are
 # archives of a moment rather than descriptions of the workspace. Each is named here so
 # the exemption is a decision rather than an oversight.
-ARCHIVES = {"CHANGELOG.md"}
+ARCHIVES = {
+    # Dated records. A number in one of these is a statement about the day it was written,
+    # not about the workspace: a release note describes that release, an ADR describes the
+    # state that justified the decision, and a phase summary describes the phase.
+    "CHANGELOG.md",
+    "PHASE2_SUMMARY.md",
+    "IMPLEMENTATION_PLAN.md",
+    "MILESTONES.md",
+}
 
 
 def measured() -> dict[str, int]:
@@ -51,6 +59,13 @@ def measured() -> dict[str, int]:
 PATTERNS = [
     (re.compile(r"(\d+)\s+`#\[test\]`\s+functions"), "tests"),
     (re.compile(r"(\d+)\s+passing tests"), "tests"),
+    # The landing page states it as "247 tests" and, in a stat block, as "<b>247</b>...
+    # tests passing". Neither matched the two patterns above, which is why the public page
+    # carried a count 70 behind for two releases. Scoped to HTML on purpose: in Markdown,
+    # "N tests" usually means one file's tests ("end_to_end.rs — 78 tests"), and a gate that
+    # cannot tell a per-file count from the workspace total would flag correct sentences.
+    (re.compile(r"(\d+)\s+tests\b"), "tests", (".html",)),
+    (re.compile(r"<b>(\d+)</b><span>tests passing</span>"), "tests", (".html",)),
     (re.compile(r"(\d+)\s+of\s+(\d+)\s+chapters"), None),
     (re.compile(r"parity-(\d+)%20programs"), "parity"),
 ]
@@ -60,13 +75,21 @@ def main() -> int:
     values = measured()
     problems: list[str] = []
 
-    for path in sorted(ROOT.rglob("*.md")):
+    for path in sorted(list(ROOT.rglob("*.md")) + list(ROOT.rglob("*.html"))):
         if "target" in path.parts or path.name in ARCHIVES:
+            continue
+        # ADRs are dated records too — "the 285 tests passed" is true of the commit it
+        # describes, and rewriting it would falsify the history the ADR exists to keep.
+        if path.parent.name == "adr":
             continue
         if "node_modules" in path.parts:
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
-        for pattern, key in PATTERNS:
+        for entry in PATTERNS:
+            pattern, key = entry[0], entry[1]
+            extensions = entry[2] if len(entry) > 2 else None
+            if extensions is not None and path.suffix not in extensions:
+                continue
             for match in pattern.finditer(text):
                 if key is None:
                     written, total = int(match.group(1)), int(match.group(2))
