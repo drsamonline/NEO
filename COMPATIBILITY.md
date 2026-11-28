@@ -59,9 +59,9 @@ compiles and misbehaves. This table is the list of those refusals, and
 | **C** | nothing: it is the reference backend and every construct in the spec lowers to it |
 | **JavaScript** | nothing at `validate` time; `sizeof` is reported as `0`, which is correct only because the JavaScript `nova_env_new` ignores its size argument |
 | **Rust** | nothing at `validate` time; the same `sizeof` arm exists and is unreachable, since this backend has no `nova_env_new` |
-| **WebAssembly** | the nine constructs below |
+| **WebAssembly** | the eight constructs below |
 
-**WebAssembly refuses:**
+**WebAssembly refuses** —  of a  used to be on this list and is now supported, through a `print_f64` host import that formats with `printf("%g")` to match the C runtime:
 
 | Construct | Message |
 |---|---|
@@ -69,7 +69,6 @@ compiles and misbehaves. This table is the list of those refusals, and
 | a `for` over something that is not a range | *a for-loop over a non-range iterable* |
 | a range used outside a `for` | *a range outside a for-loop* |
 | a standard-library call this backend does not implement | *runtime calls this backend does not implement* |
-| printing a `float` | *printing a float* |
 | slicing a string | *string slicing* |
 | field access on an unknown struct type | *a field access with no known struct type* |
 | field assignment on an unknown struct type | *a field assignment with no known struct type* |

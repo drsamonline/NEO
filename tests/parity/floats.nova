@@ -1,0 +1,15 @@
+// Floats, printed. This program exists because the WebAssembly backend could not print a float
+// until it had a `print_f64` import, which meant a float was unobservable there — and a construct
+// nobody can observe is one nobody can test.
+//
+// The values are chosen for what they say about formatting: `%g` uses scientific notation below
+// 1e-4 and at 1e6 and above, and strips trailing zeros everywhere else.
+fn main() -> int {
+    print(1.5);
+    print(0.1);
+    print(100.0);
+    print(0.0001);
+    print(1000000.0);
+    print(3.14159265);
+    return 0;
+}

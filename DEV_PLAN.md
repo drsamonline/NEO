@@ -55,7 +55,7 @@ the compiler more **trustworthy**, and a compiler is trusted or it is nothing.
 
 A transpiler has a specific failure mode: it can produce output that compiles,
 runs, prints the right answer on the programs you tried, and is still wrong on the
-program you did not try. The seven parity programs in this repository cannot
+program you did not try. The eight parity programs in this repository cannot
 detect that. Nineteen more features cannot either.
 
 So the plan is reordered around one question: **what evidence would let a stranger
