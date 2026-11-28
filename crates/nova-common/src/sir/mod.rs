@@ -479,6 +479,28 @@ pub enum SirLiteral {
     Unit,
 }
 
+/// Whether an expression carries a floating-point type, as far as the SIR says.
+///
+/// Shared by the backends because all of them need the same answer: the C runtime prints a float with
+/// `printf("%g")`, and a backend that prints one differently disagrees with the reference — which is
+/// what `test --parity` measures. The SIR annotates with `Typed` where the lowerer knew the type,
+/// which covers a variable, a field and any arithmetic result.
+pub fn is_float_expr(expr: &SirExpr) -> bool {
+    match expr {
+        SirExpr::Typed { typ, .. } => is_float_type(typ),
+        SirExpr::Cast { typ, .. } => is_float_type(typ),
+        SirExpr::BinOp { left, right, .. } => is_float_expr(left) || is_float_expr(right),
+        SirExpr::UnaryOp { operand, .. } => is_float_expr(operand),
+        SirExpr::Literal(literal) => matches!(literal, SirLiteral::Float(_)),
+        _ => false,
+    }
+}
+
+/// The three spellings of a floating-point type in this compiler.
+pub fn is_float_type(typ: &str) -> bool {
+    matches!(typ.trim(), "float" | "f32" | "f64")
+}
+
 /// SIR Binary Operators
 #[derive(Debug, Clone, Copy)]
 pub enum SirBinOp {

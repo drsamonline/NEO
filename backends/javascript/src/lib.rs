@@ -10,6 +10,26 @@
 use nova_common::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp};
 use nova_common::sir::SirBinOp::*;
 
+/// `printf("%g")` in JavaScript: six significant digits, scientific notation below 1e-4 and at 1e6
+/// and above, trailing zeros stripped. Written out because the two obvious alternatives are wrong —
+/// `String(x)` never uses `%g`'s exponent rule, and `toPrecision(6)` keeps the zeros `%g` removes.
+const JS_FORMAT_G: &str = r#"function formatG(value) {
+  if (Number.isNaN(value)) return "nan";
+  if (!Number.isFinite(value)) return value > 0 ? "inf" : "-inf";
+  if (value === 0) return "0";
+  const exponent = Math.floor(Math.log10(Math.abs(value)));
+  if (exponent < -4 || exponent >= 6) {
+    const [mantissa, power] = value.toExponential(5).split("e");
+    const stripped = mantissa.includes(".") ? mantissa.replace(/\.?0+$/, "") : mantissa;
+    const sign = power.startsWith("-") ? "-" : "+";
+    const digits = Math.abs(Number(power)).toString().padStart(2, "0");
+    return `${stripped}e${sign}${digits}`;
+  }
+  const decimals = Math.max(0, 5 - exponent);
+  const fixed = value.toFixed(decimals);
+  return fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed;
+}"#;
+
 pub struct JsBackend {
     output: String,
     indent_level: usize,
@@ -31,6 +51,12 @@ impl JsBackend {
         self.writeln("");
         // `print` is the language's line-at-a-time output, as in the C runtime.
         self.writeln("function print(value) { console.log(value); }");
+        // A float is printed the way the C runtime prints one — `printf("%g")` — because
+        // `test --parity` compares this backend's output with C's, and `String(1000000.0)` is
+        // `1000000` where C writes `1e+06`. JavaScript has one number type, so the *emitter*
+        // decides which call to make rather than the runtime guessing from the value.
+        self.writeln("function print_float(value) { console.log(formatG(value)); }");
+        self.writeln(JS_FORMAT_G);
         self.writeln("function println(value) { print(value); }");
         // Arrays are native JS arrays; the runtime helpers are thin wrappers.
         self.writeln("function nova_array_len(array) { return array.length; }");
@@ -272,11 +298,18 @@ impl JsBackend {
             }
             SirExpr::Call { callee, args } => {
                 let args_str: Vec<String> = args.iter().map(|a| self.expr_to_js(a)).collect();
-                format!(
-                    "{}({})",
-                    nova_common::sir::safe_identifier(callee),
-                    args_str.join(", ")
-                )
+                // A float goes to `print_float`, which formats like the C runtime's `%g`. The
+                // emitter decides rather than the runtime, because JavaScript has one number type:
+                // `print(1000000)` and `print(1000000.0)` are the same value there and must print
+                // differently here.
+                let name = if (callee == "print" || callee == "println")
+                    && args.first().map(nova_common::sir::is_float_expr).unwrap_or(false)
+                {
+                    "print_float"
+                } else {
+                    nova_common::sir::safe_identifier(callee)
+                };
+                format!("{}({})", name, args_str.join(", "))
             }
             SirExpr::Assign { target, value } => {
                 format!("{} = {}", target, self.expr_to_js(value))

@@ -58,7 +58,7 @@ Performs:
 
 ---
 
-### 4. SIR - Semantic Intermediate Representation (506 lines) ✅
+### 4. SIR - Semantic Intermediate Representation (528 lines) ✅
 **Location**: `crates/nova-common/src/sir/mod.rs`
 
 Language-agnostic intermediate representation:
