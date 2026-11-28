@@ -46,7 +46,7 @@ What is genuinely left:
 
 | Item | Blocked by |
 |---|---|
-| **closure types in sema** | the one piece left. Sema never records a closure's type — `Expr::Closure` discards its parameter types and `infer_expr_type` has no arm for it — so a call through a closure value cannot be checked, and an unannotated parameter stays `int`. **Proven by attempt**: PR #233 added the call-site check and it never fired (ADR 0024 records the correction). Teach sema `Type::Function` for a closure and both the check and the inference fall out of one pass |
+| **closure types in sema** | **two attempts, both closed unmerged.** Adding `Type::Function` for a closure expression plus the call-site check makes the check fire (proven: the float-argument test passes), but it also refuses calls inside `stdlib/` and **25 end-to-end tests fail** with `semantic analysis failed inside an imported module`. The inferred parameter type differs from the declared `fn(...)` type somewhere in the standard library. **Start from the corpus, not the change**: run the analyser over `stdlib/` with the type arm in, list what it now refuses, and that list is the work. ADR 0024 records both attempts |
 |---|---|
 | ~~`nova-dbg` in the macOS and Windows archives~~ | **done** — PR #203 gated `attach` on `target_os = "linux"`; the v0.8.1 dry run on 2026-11-27 built all three platforms green; the `--exclude nova-dbg` branch is gone, so every archive from v0.8.1 on carries four binaries |
 | ~~`print <name>` in the debugger~~ | **done** — reads a local by name and type from a stopped process, with a live test that asserts the value; see ADR 0023 |

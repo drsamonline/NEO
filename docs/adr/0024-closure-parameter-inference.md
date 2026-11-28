@@ -100,6 +100,31 @@ is the false-success shape this project keeps removing, so the PR was closed rat
 The single piece of work is: sema learns `Type::Function` for a closure — parameter types from the
 annotations, return type from the body. Then C is a dozen lines and A falls out of the same pass.
 
+## Second attempt — 2026-11-28, closed for the same reason
+
+A second attempt added both halves: the `Closure` arm in `infer_expr_type` (so a closure expression
+has `Type::Function`) and the call-site check. **25 end-to-end tests failed**, all with
+
+    error: semantic analysis failed inside an imported module — please report this
+
+The stdlib stopped analysing. With the type arm in place the call-site check *does* fire — the
+float-argument test passes — so the design is sound and the coverage is not: closures passed to
+stdlib functions are now compared against declared `fn(...)` parameter types, and where the inferred
+parameter type differs from the declared one the call is refused. Whether that is a real mismatch the
+language used to ignore, or an inference too coarse to compare, is not yet known.
+
+Three things learned, worth keeping:
+
+- `type_scopes` is a **stack**, popped as scopes close, so a test cannot read a binding's type after
+  analysis. The assertion has to be behavioural.
+- sema does **not** check a `let` annotation against its initialiser's type: `let wrong: int =
+  twice(1.5);` reports nothing. A separate gap.
+- the check fires once there is a type to compare against, which is the part of this design that was
+  in doubt.
+
+**The next attempt starts from the corpus, not the change**: run the analyser over `stdlib/` with the
+type arm in and list what it now refuses. That list is the work.
+
 ## Recommendation
 
 **C, then A.**
