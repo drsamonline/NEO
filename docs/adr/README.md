@@ -57,6 +57,7 @@ about a decision are about a reading of it that nobody chose.
 | [0021](0021-delete-runtime-crate.md) | Delete the Rust runtime crate — 2,480 lines nothing depends on | accepted |
 | [0022](0022-result-type.md) | `Result<T, E>` — sugar over the enum that already existed | accepted |
 | [0023](0023-print-variable.md) | `print <name>` — the DWARF model is dead weight, and the information is already in the binary | accepted (C, then A: works) |
+| [0024](0024-closure-parameter-inference.md) | closure parameter types are not inferred, and the default is `int` | **proposed** |
 
 ## Writing one
 
