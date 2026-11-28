@@ -940,6 +940,38 @@ impl SemanticAnalyzer {
         if name.starts_with("__builtin_") || name == "Some" {
             return;
         }
+        // A call through a *value* — a closure held in a local or a parameter — has no entry in
+        // `signatures`, so it used to fall out here with nothing checked. That is how a float
+        // argument reached an `int` closure parameter and the C backend truncated it silently.
+        if !self.signatures.contains_key(name) {
+            if let Some(Type::Function { params, .. }) = self.lookup_variable_type(name) {
+                for (index, (arg, expected)) in args.iter().zip(params.iter()).enumerate() {
+                    let Some(found) = self.infer_expr_type(arg) else {
+                        continue;
+                    };
+                    if !self.types_compatible(&found, expected) {
+                        let mut diagnostic = Diagnostic::error(format!(
+                            "argument {} of `{}` is `{}`, but the closure's parameter is `{}`",
+                            index + 1,
+                            name,
+                            found,
+                            expected
+                        ))
+                        .with_code("E0308")
+                        .with_help(
+                            "a closure's parameter type comes from its annotation — write \
+                             `|x: float| ...` — because an unannotated parameter is typed `int`, \
+                             and a float argument to it truncates",
+                        );
+                        if let Some(span) = span_of(arg).or(call_span) {
+                            diagnostic = diagnostic.with_span(span);
+                        }
+                        self.diagnostics.push(diagnostic);
+                    }
+                }
+            }
+            return;
+        }
         let Some(signature) = self.signatures.get(name).cloned() else {
             return;
         };
@@ -999,7 +1031,45 @@ impl SemanticAnalyzer {
         }
     }
 
-    /// The type recorded for a local variable or parameter, if any.
+    #[test]
+    fn a_float_argument_to_an_int_closure_parameter_is_refused() {
+        // The C backend truncated a `double` argument to an `int` closure parameter and printed a
+        // wrong number. Nothing checked the call because a call through a *value* has no entry in
+        // `signatures` — the check only knew named functions.
+        let source = r#"
+fn main() -> int {
+    let twice = |x: int| x * 2;
+    print(twice(1.5));
+    return 0;
+}
+"#;
+        let analyzer = analyze(source);
+        let messages = messages(&analyzer);
+        assert!(
+            messages.iter().any(|message| message.contains("closure's parameter is")),
+            "expected a closure argument type error, got {messages:?}"
+        );
+    }
+
+    #[test]
+    fn a_matching_closure_argument_is_not_refused() {
+        // The guard has to be narrow: a float closure called with a float must stay quiet.
+        let source = r#"
+fn main() -> int {
+    let twice = |x: float| x * 2.5;
+    print(twice(1.5));
+    return 0;
+}
+"#;
+        let analyzer = analyze(source);
+        let messages = messages(&analyzer);
+        assert!(
+            !messages.iter().any(|message| message.contains("closure's parameter is")),
+            "a float closure called with a float should not be refused: {messages:?}"
+        );
+    }
+
+#[cfg(test)]    /// The type recorded for a local variable or parameter, if any.
     fn lookup_variable_type(&self, name: &str) -> Option<Type> {
         self.type_scopes
             .iter()
