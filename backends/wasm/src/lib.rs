@@ -57,6 +57,11 @@ pub struct WasmBackend {
     structs: HashMap<String, Vec<FieldSlot>>,
     /// The size each struct occupies, so a literal allocates what its fields need.
     struct_sizes: HashMap<String, usize>,
+    /// Lifted closure function name -> the key of its `call_indirect` type.
+    ///
+    /// A closure's parameters and result can be `f64` as well as `i32`, so one type per arity is not
+    /// enough: the type is named by the *shape* of the signature.
+    closure_keys: HashMap<String, String>,
     /// Lifted closure function name -> table slot.
     closures: HashMap<String, u32>,
     /// Current indirect-call nesting depth, used to pick scratch locals.
@@ -442,13 +447,9 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
             for arg in args {
                 validate_expr(arg)?;
             }
-            if params
-                .iter()
-                .any(|param| matches!(param.as_str(), "float" | "f32" | "f64"))
-                || matches!(return_type.as_str(), "float" | "f32" | "f64")
-            {
-                return Err("closure signatures with floating-point parameters/results");
-            }
+            // A closure with a float parameter or result is supported now: the table's types are
+            // keyed by signature shape rather than by arity, so `(i32, f64) -> f64` has a type of
+            // its own and `call_indirect` can name it.
             Ok(())
         }
         // WASM values for arrays/structs are already pointers, so `&` and `*`
@@ -472,6 +473,7 @@ impl WasmBackend {
             heap_start: DATA_BASE,
             structs: HashMap::new(),
             struct_sizes: HashMap::new(),
+            closure_keys: HashMap::new(),
             closures: HashMap::new(),
             call_depth: 0,
             string_vars: HashSet::new(),
@@ -485,10 +487,16 @@ impl WasmBackend {
         self.functions.clear();
 
         self.closures.clear();
+        self.closure_keys.clear();
         for function in &program.functions {
             if function.env_type.is_some() {
                 let index = self.closures.len() as u32;
                 self.closures.insert(function.name.clone(), index);
+                // The key comes from the *lifted function*, not from the call site: the call site
+                // knows the argument expressions, and a `call_indirect` must name exactly the type
+                // the function was defined with or the module does not validate.
+                self.closure_keys
+                    .insert(function.name.clone(), closure_signature_key(function));
             }
         }
 
@@ -626,6 +634,41 @@ impl WasmBackend {
             ));
             self.writeln(&format!(
                 "(type $closure_{arity}_v (func (param {params})))"
+            ));
+        }
+        // And one per signature *shape*: a closure can take or return an `f64`, and a
+        // `call_indirect` must name the exact type the function was defined with. Declared from the
+        // lifted functions themselves, so the two cannot disagree.
+        let mut declared: Vec<String> = self.closure_keys.values().cloned().collect();
+        declared.sort();
+        declared.dedup();
+        for key in &declared {
+            let Some(function) = program
+                .functions
+                .iter()
+                .find(|f| f.env_type.is_some() && &closure_signature_key(f) == key)
+            else {
+                continue;
+            };
+            let params: Vec<String> = std::iter::once("i32".to_string())
+                .chain(
+                    function
+                        .params
+                        .iter()
+                        .map(|p| self.type_to_wasm(&p.typ).to_string()),
+                )
+                .collect();
+            let result = if returns_value(function) {
+                format!(
+                    "(result {})",
+                    self.type_to_wasm(function.return_type.as_deref().unwrap_or("int"))
+                )
+            } else {
+                String::new()
+            };
+            self.writeln(&format!(
+                "(type $closure_{key} (func (param {}){result}))",
+                params.join(" ")
             ));
         }
         if !self.closures.is_empty() {
@@ -1312,10 +1355,12 @@ impl WasmBackend {
                 } else {
                     "r"
                 };
-                self.writeln(&format!(
-                    "(call_indirect (type $closure_{}_{suffix}))",
-                    args.len()
-                ));
+                // The key comes from the lifted function this closure value points at. Falling
+                // back to the arity type would name a signature the function may not have.
+                let key = closure_name_of(callee)
+                    .and_then(|name| self.closure_keys.get(name).cloned())
+                    .unwrap_or_else(|| format!("{}_{suffix}", args.len()));
+                self.writeln(&format!("(call_indirect (type $closure_{key}))"));
             }
             SirExpr::If {
                 condition,
@@ -1719,6 +1764,46 @@ fn wat_instruction(op: &SirBinOp) -> &'static str {
             // Ranges are handled by `for`; a standalone range has no value.
             SirBinOp::Range => "drop",
         }
+}
+
+/// The name of the lifted function a closure value refers to, if the expression is one.
+fn closure_name_of(expr: &SirExpr) -> Option<&String> {
+    match expr {
+        SirExpr::Closure { name, .. } => Some(name),
+        SirExpr::Typed { expr, .. } => closure_name_of(expr),
+        _ => None,
+    }
+}
+
+/// A name for a closure's signature shape: one character per parameter (`i` or `f`), then `_`, then
+/// the result (`i`, `f`, or `v` for none). `n` stands in for "no parameters", so a key is never just
+/// `_v`.
+///
+/// One type per arity was enough while every closure was `(i32 ...) -> i32`; a float parameter or
+/// result needs its own type, and a `call_indirect` that names the wrong one does not validate.
+fn closure_signature_key(function: &SirFunction) -> String {
+    let mut key = String::new();
+    for param in &function.params {
+        key.push(if nova_common::sir::is_float_type(&param.typ) {
+            'f'
+        } else {
+            'i'
+        });
+    }
+    if key.is_empty() {
+        key.push('n');
+    }
+    key.push('_');
+    key.push(if returns_value(function) {
+        if nova_common::sir::is_float_type(function.return_type.as_deref().unwrap_or("int")) {
+            'f'
+        } else {
+            'i'
+        }
+    } else {
+        'v'
+    });
+    key
 }
 
 fn unspanned_literal(expr: &SirExpr) -> Option<&SirLiteral> {
