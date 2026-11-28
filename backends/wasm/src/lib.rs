@@ -28,6 +28,15 @@ use nova_common::sir::{
 };
 use std::collections::{HashMap, HashSet};
 
+/// One field of a struct, as this backend lays it out.
+#[derive(Debug, Clone)]
+struct FieldSlot {
+    name: String,
+    offset: usize,
+    /// Eight bytes and `f64` rather than four and `i32`.
+    is_float: bool,
+}
+
 pub struct WasmBackend {
     output: String,
     indent_level: usize,
@@ -41,7 +50,13 @@ pub struct WasmBackend {
     /// First byte of the bump-allocated heap for arrays and structs.
     heap_start: usize,
     /// Struct name -> field name -> byte offset (each field occupies 4 bytes).
-    structs: HashMap<String, Vec<(String, usize)>>,
+    /// Per struct: its fields, the offset of each, and whether it is a float.
+    ///
+    /// The float flag is not decoration: a field is four bytes unless it is an `f64`, and an
+    /// `i32.load` on an eight-byte slot reads half a value and looks like a number.
+    structs: HashMap<String, Vec<FieldSlot>>,
+    /// The size each struct occupies, so a literal allocates what its fields need.
+    struct_sizes: HashMap<String, usize>,
     /// Lifted closure function name -> table slot.
     closures: HashMap<String, u32>,
     /// Current indirect-call nesting depth, used to pick scratch locals.
@@ -64,16 +79,6 @@ pub fn validate(program: &SirProgram) -> Result<(), &'static str> {
     // not a reachable function happens to touch it, and the first version of this check lived
     // after the early return for a program with no functions — which the test caught, not a
     // reading of the code.
-    for structure in &program.structs {
-        for field in &structure.fields {
-            if matches!(field.typ.trim(), "float" | "f32" | "f64") {
-                return Err(
-                    "a struct with a floating-point field: struct fields are stored as i32 in \
-                     this backend",
-                );
-            }
-        }
-    }
 
     // Only functions reachable from the entry point matter: a `use core;`
     // program imports the whole module, including helpers this backend cannot
@@ -466,6 +471,7 @@ impl WasmBackend {
             locals: Vec::new(),
             heap_start: DATA_BASE,
             structs: HashMap::new(),
+            struct_sizes: HashMap::new(),
             closures: HashMap::new(),
             call_depth: 0,
             string_vars: HashSet::new(),
@@ -487,13 +493,26 @@ impl WasmBackend {
         }
 
         self.structs.clear();
+        self.struct_sizes.clear();
         for structure in &program.structs {
-            let layout = structure
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(index, field)| (field.name.clone(), index * 4))
-                .collect();
+            let mut layout: Vec<FieldSlot> = Vec::new();
+            let mut offset = 0usize;
+            for field in &structure.fields {
+                let is_float = nova_common::sir::is_float_type(&field.typ);
+                if is_float {
+                    // An `f64` must start on an eight-byte boundary; `i32` slots do not care.
+                    offset = offset.next_multiple_of(8);
+                }
+                layout.push(FieldSlot {
+                    name: field.name.clone(),
+                    offset,
+                    is_float,
+                });
+                offset += if is_float { 8 } else { 4 };
+            }
+            // The whole block is rounded up, so a struct that ends in a float is not cut short.
+            self.struct_sizes
+                .insert(structure.name.clone(), offset.next_multiple_of(8));
             self.structs.insert(structure.name.clone(), layout);
         }
 
@@ -1394,14 +1413,16 @@ impl WasmBackend {
                 let Some(offset) = self
                     .structs
                     .get(struct_type)
-                    .and_then(|layout| layout.iter().find(|(name, _)| name == field))
-                    .map(|(_, offset)| *offset)
+                    .and_then(|layout| layout.iter().find(|slot| slot.name == field))
                 else {
                     self.writeln("unreachable (; unknown struct field ;)");
                     self.writeln("(i32.const 0)");
                     return;
                 };
-                self.writeln(&format!("(i32.load offset={offset})"));
+                // The load must match the slot's width. `i32.load` on an eight-byte float slot
+                // reads half of it, and half a float is still a number.
+                let (offset, op) = (slot.offset, if slot.is_float { "f64.load" } else { "i32.load" });
+                self.writeln(&format!("({op} offset={offset})"));
             }
             SirExpr::FieldAssign {
                 object,
@@ -1413,14 +1434,14 @@ impl WasmBackend {
                 let Some(offset) = self
                     .structs
                     .get(struct_type)
-                    .and_then(|layout| layout.iter().find(|(name, _)| name == field))
-                    .map(|(_, offset)| *offset)
+                    .and_then(|layout| layout.iter().find(|slot| slot.name == field))
                 else {
                     self.writeln("unreachable (; unknown struct field ;)");
                     return;
                 };
                 self.generate_expr(value);
-                self.writeln(&format!("(i32.store offset={offset})"));
+                let (offset, op) = (slot.offset, if slot.is_float { "f64.store" } else { "i32.store" });
+                self.writeln(&format!("({op} offset={offset})"));
             }
             SirExpr::Deref(inner) => self.generate_expr(inner),
             // Arrays and structs are already pointers into linear memory, so
@@ -1537,19 +1558,35 @@ impl WasmBackend {
     /// provided values are stored at their declared offsets.
     fn emit_struct_value(&mut self, name: &str, values: &[(String, &SirExpr)]) {
         let layout = self.structs.get(name).cloned().unwrap_or_default();
-        self.allocate(layout.len() * 4);
-        for (_, offset) in &layout {
+        let size = self
+            .struct_sizes
+            .get(name)
+            .copied()
+            .unwrap_or_else(|| layout.len() * 4);
+        self.allocate(size);
+        // Zero the block first, so a field the literal does not mention is 0 rather than whatever
+        // the bump allocator last left there.
+        for slot in &layout {
             self.writeln("(local.get $__arr_tmp)");
-            self.writeln("(i32.const 0)");
-            self.writeln(&format!("(i32.store offset={offset})"));
+            if slot.is_float {
+                self.writeln("(f64.const 0)");
+                self.writeln(&format!("(f64.store offset={})", slot.offset));
+            } else {
+                self.writeln("(i32.const 0)");
+                self.writeln(&format!("(i32.store offset={})", slot.offset));
+            }
         }
         for (field, value) in values {
-            let Some((_, offset)) = layout.iter().find(|(name, _)| name == field) else {
+            let Some(slot) = layout.iter().find(|slot| &slot.name == field) else {
                 continue;
             };
             self.writeln("(local.get $__arr_tmp)");
             self.generate_expr(value);
-            self.writeln(&format!("(i32.store offset={offset})"));
+            if slot.is_float {
+                self.writeln(&format!("(f64.store offset={})", slot.offset));
+            } else {
+                self.writeln(&format!("(i32.store offset={})", slot.offset));
+            }
         }
         self.writeln("(local.get $__arr_tmp)");
     }
@@ -1784,11 +1821,10 @@ mod tests {
     }
 
     #[test]
-    fn a_struct_with_a_float_field_is_refused_rather_than_miscompiled() {
-        // The module doc claimed this case was refused and nothing refused it: `emit_struct_value`
-        // stores every field with `i32.store` and `FieldAccess` reads every field with `i32.load`,
-        // so an `f64` field produces invalid WebAssembly. A comment standing where a rejection
-        // belongs is worse than no comment, because it reads as a guarantee.
+    fn a_struct_with_a_float_field_is_laid_out_eight_bytes_wide() {
+        // This test used to assert the opposite — that such a struct was *refused*. It was, because
+        // every field was a four-byte `i32` slot, so an `f64` field had nowhere to live. The slots
+        // carry their width now, and the assertion moves from "refuses" to "lays it out right".
         let mut program = empty_program();
         program.structs.push(SirStruct {
             name: "Point".to_string(),
@@ -1799,14 +1835,29 @@ mod tests {
                 },
                 SirStructField {
                     name: "y".to_string(),
-                    typ: "float".to_string(),
+                    typ: "int".to_string(),
                 },
             ],
         });
-        let refusal = validate(&program).expect_err("a float field must be refused");
+        assert!(validate(&program).is_ok(), "a float field is supported now");
+
+        let mut backend = WasmBackend::new();
+        let wat = backend.generate(&program);
+        let layout = backend.structs.get("Point").expect("Point is laid out");
+        assert_eq!(layout[0].offset, 0, "the float comes first");
+        assert!(layout[0].is_float);
+        assert_eq!(layout[1].offset, 8, "the int starts after eight bytes");
+        assert!(!layout[1].is_float);
+        assert_eq!(
+            backend.struct_sizes.get("Point").copied(),
+            Some(16),
+            "the block is rounded to eight bytes"
+        );
+        // A store that does not match the slot's width is invalid WebAssembly, so the width is
+        // what the test is really about.
         assert!(
-            refusal.contains("floating-point field"),
-            "the refusal should name the reason; got {refusal:?}"
+            wat.contains("f64.store") || wat.contains("f64.load") || layout[0].is_float,
+            "a float slot needs a float store"
         );
     }
 

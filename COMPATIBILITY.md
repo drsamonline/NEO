@@ -59,13 +59,12 @@ compiles and misbehaves. This table is the list of those refusals, and
 | **C** | nothing: it is the reference backend and every construct in the spec lowers to it |
 | **JavaScript** | nothing at `validate` time; `sizeof` is reported as `0`, which is correct only because the JavaScript `nova_env_new` ignores its size argument |
 | **Rust** | nothing at `validate` time; the same `sizeof` arm exists and is unreachable, since this backend has no `nova_env_new` |
-| **WebAssembly** | the eight constructs below |
+| **WebAssembly** | the seven constructs below |
 
-**WebAssembly refuses** —  of a  used to be on this list and is now supported, through a `print_f64` host import that formats with `printf("%g")` to match the C runtime:
+**WebAssembly refuses.** Two constructs have left this list: `print` of a `float`, through a `print_f64` host import that formats with `printf("%g")` to match the C runtime, and a struct with a `float` field, now that a slot carries its width and an `f64` takes eight bytes on an eight-byte boundary.
 
 | Construct | Message |
 |---|---|
-| a struct with a `float` field | *a struct with a floating-point field: struct fields are stored as i32 in this backend* |
 | a `for` over something that is not a range | *a for-loop over a non-range iterable* |
 | a range used outside a `for` | *a range outside a for-loop* |
 | a standard-library call this backend does not implement | *runtime calls this backend does not implement* |
