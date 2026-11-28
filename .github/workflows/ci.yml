@@ -80,6 +80,11 @@ jobs:
       - name: The stdlib README matches what the stdlib can actually run
         run: python3 tools/stdlib-check.py
 
+      # A backend's refusals lived only in a source comment. A user met them by hitting one, with
+      # nothing to look up first.
+      - name: Every construct a backend refuses is documented
+        run: python3 tools/backend-limits-check.py
+
       - name: The grammar still describes the compiler
         run: python3 tools/grammar-check.py
       - name: Every shipped example is a NOVA program
