@@ -123,3 +123,54 @@ fn a_name_that_is_not_a_local_is_refused_with_the_ones_that_are() {
 fn describe(path: &Path) -> String {
     path.display().to_string()
 }
+
+#[test]
+fn info_variables_lists_the_locals_of_the_current_frame() {
+    let Some(binary) = fixture("info") else {
+        return;
+    };
+
+    let target = target::load_binary(&binary).expect("the binary loads");
+    let mut session = DebugSession::new(target).expect("a session starts");
+    session.run(&[]).expect("starts");
+    session.set_breakpoint("fixture.c:4").expect("the printf line");
+    session.continue_execution().expect("stops there");
+
+    let listed = session.get_info("variables").expect("the frame has locals");
+    // The command was deleted once because its map was never filled and it could only answer
+    // "No variables in scope". It reads `.debug_info` now, so the list has to be real.
+    assert!(listed.contains("counter"), "got {listed:?}");
+    assert!(listed.contains("= 7"), "got {listed:?}");
+}
+
+#[test]
+fn info_registers_reads_them_rather_than_printing_zeros() {
+    let Some(binary) = fixture("regs") else {
+        return;
+    };
+
+    let target = target::load_binary(&binary).expect("the binary loads");
+    let mut session = DebugSession::new(target).expect("a session starts");
+    session.run(&[]).expect("starts");
+
+    let printed = session.get_info("registers").expect("registers are readable");
+    // It used to print four fixed lines of zeros and a made-up `RIP`. A real reading has a
+    // stack pointer and an instruction pointer that are neither zero nor equal.
+    assert!(printed.contains("rsp"), "got {printed:?}");
+    assert!(printed.contains("rip"), "got {printed:?}");
+    assert!(
+        !printed.contains("0x0000000000000000\nrip: 0x0000000000000000"),
+        "the table should not be zeros: {printed:?}"
+    );
+}
+
+#[test]
+fn info_threads_refuses_rather_than_inventing_one() {
+    let target = target::DebugTarget::Binary {
+        path: "/bin/true".to_string(),
+        symbols_loaded: false,
+    };
+    let session = DebugSession::new(target).expect("a session starts");
+    let error = session.get_info("threads").expect_err("no thread list").to_string();
+    assert!(error.contains("one process"), "{error}");
+}

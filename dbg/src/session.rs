@@ -634,27 +634,7 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
         // position-independent, so a runtime address is the file's address plus a base the kernel
         // chose, and `addr2line` reads the file. Without the subtraction it answers `??` — which is
         // how the first version of this produced "no function named 0x5bdaa1088149".
-        let instruction = crate::target::instruction_pointer(pid)?;
-        let bias = crate::target::load_bias(pid, path).unwrap_or(0);
-        let file_address = instruction.wrapping_sub(bias);
-        let symbolized = self.symbolize(&format!("0x{file_address:x}")).map_err(|error| {
-            DebuggerError::Target(format!(
-                "cannot evaluate `{trimmed}`: the frame at 0x{instruction:x} could not be \
-                 attributed to a function ({error}). `print 0xADDRESS` reads memory directly"
-            ))
-        })?;
-        let function = symbolized
-            .lines()
-            .next()
-            .unwrap_or("??")
-            .trim()
-            .to_string();
-        if function == "??" {
-            return Err(DebuggerError::Target(format!(
-                "cannot evaluate `{trimmed}`: the frame at 0x{instruction:x} has no function name \
-                 in the debug information. `print 0xADDRESS` reads memory directly"
-            )));
-        }
+        let function = self.current_function()?;
         let locals = crate::dwarf::locals_of_function(&binary, &function).map_err(|error| {
             DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
         })?;
@@ -746,6 +726,76 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
                     }
             }
         }
+    }
+
+    /// The function the process is stopped in.
+    ///
+    /// The address must be made relative to the load base first: the binary is position-independent,
+    /// so a runtime address is the file's address plus a base the kernel chose, and `addr2line` reads
+    /// the file. Without the subtraction it answers `??` — which is how the first version of
+    /// `print x` produced "no function named 0x5bdaa1088149".
+    ///
+    /// Shared by `evaluate` and `info variables` so the two cannot disagree about which function's
+    /// locals are in scope.
+    fn current_function(&self) -> Result<String, DebuggerError> {
+        let Some(pid) = self.pid() else {
+            return Err(DebuggerError::Target(
+                "no current function: nothing is running or stopped. `run` a program, or \
+                 `attach <pid>`"
+                    .to_string(),
+            ));
+        };
+        let instruction = crate::target::instruction_pointer(pid)?;
+        let bias = match &self.target {
+            DebugTarget::Binary { path, .. } => crate::target::load_bias(pid, path).unwrap_or(0),
+            _ => 0,
+        };
+        let file_address = instruction.wrapping_sub(bias);
+        let symbolized = self.symbolize(&format!("0x{file_address:x}")).map_err(|error| {
+            DebuggerError::Target(format!(
+                "the frame at 0x{instruction:x} could not be attributed to a function ({error})"
+            ))
+        })?;
+        let function = symbolized.lines().next().unwrap_or("??").trim().to_string();
+        if function == "??" {
+            return Err(DebuggerError::Target(format!(
+                "the frame at 0x{instruction:x} has no function name in the debug information"
+            )));
+        }
+        Ok(function)
+    }
+
+    /// The pid of the process this session is stopped in, if there is one.
+    fn pid(&self) -> Option<u32> {
+        match &self.target {
+            DebugTarget::Attached { pid, .. } => Some(*pid),
+            _ => self.traced_pid,
+        }
+    }
+
+    /// The names of the locals in the current frame.
+    ///
+    /// Shared with `evaluate`, so `info variables` cannot disagree with `print <name>` about what
+    /// is in scope — the two answers come from the same read of `.debug_info`.
+    fn local_names(&self) -> Result<Vec<String>, DebuggerError> {
+        let Some(_) = self.pid() else {
+            return Err(DebuggerError::Target(
+                "no variables: nothing is running or stopped, so there is no frame to describe. \
+                 `run` a program, or `attach <pid>`"
+                    .to_string(),
+            ));
+        };
+        let DebugTarget::Binary { path, .. } = &self.target else {
+            return Err(DebuggerError::Target(
+                "no variables: this session is attached to a process, and the path to its binary \
+                 is not known here, so its debug information cannot be read"
+                    .to_string(),
+            ));
+        };
+        let function = self.current_function()?;
+        let locals = crate::dwarf::locals_of_function(std::path::Path::new(path), &function)
+            .map_err(|error| DebuggerError::Target(format!("no variables: {error}")))?;
+        Ok(locals.into_iter().map(|local| local.name).collect())
     }
 
     /// List source code
@@ -855,21 +905,46 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
                     Ok(info)
                 }
             }
-            "threads" => {
-                Ok("Thread 1 (main): running".to_string())
-            }
+            // `info threads` used to answer "Thread 1 (main): running" — a sentence nothing had
+            // measured. This debugger traces one process and has never followed a thread, so it
+            // says that instead of inventing one.
+            "threads" => Err(DebuggerError::Target(
+                "this debugger follows one process, not its threads: it has no thread list to \
+                 report. `info registers` and `backtrace` describe the thread it is stopped in"
+                    .to_string(),
+            )),
+            // `info registers` used to print four lines of zeros and a fixed `RIP` — invented
+            // state, indistinguishable from a real reading. It reads the registers now, and
+            // refuses when there is no process rather than filling the table with zeros.
             "registers" => {
-                Ok(
-                    "RAX: 0x0000000000000000  RBX: 0x0000000000000000\n\
-                     RCX: 0x0000000000000000  RDX: 0x0000000000000000\n\
-                     RSP: 0x00007fff5fbff000  RBP: 0x00007fff5fbff010\n\
-                     RIP: 0x0000000000400100"
-                        .to_string(),
-                )
+                let Some(pid) = self.pid() else {
+                    return Err(DebuggerError::Target(
+                        "no registers to report: nothing is running or stopped. `run` a program, \
+                         or `attach <pid>`"
+                            .to_string(),
+                    ));
+                };
+                let registers = crate::target::registers(pid)?;
+                let mut text = String::new();
+                for (name, value) in registers {
+                    text.push_str(&format!("{name:>6}: 0x{value:016x}\n"));
+                }
+                Ok(text.trim_end().to_string())
             }
-            // `info variables` was removed with the DWARF model it was waiting for: the map
-            // behind it was never filled, so the command could only ever answer "No variables
-            // in scope" — a false affordance rather than a limit.
+            // The command that was removed with the DWARF model it was waiting for. The model is
+            // real now, so the command is too: the current function's locals, read the same way
+            // `print <name>` reads one.
+            "variables" => {
+                let names = self.local_names()?;
+                if names.is_empty() {
+                    return Ok("No locals in this frame".to_string());
+                }
+                let mut text = String::new();
+                for name in names {
+                    text.push_str(&format!("{}\n", self.evaluate(&name)?));
+                }
+                Ok(text.trim_end().to_string())
+            }
             _ => Err(DebuggerError::InvalidCommand(
                 format!("Unknown info item: {}", item)
             )),

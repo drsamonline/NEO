@@ -648,6 +648,44 @@ pub fn resume(pid: u32, single_step: bool) -> Result<Stop, DebuggerError> {
 /// x86-64 frame layout: `[rbp]` is the caller's `rbp`, `[rbp+8]` is the return address. Walking
 /// that chain is the simplest backtrace there is, and it works only because the compiler was
 /// told to keep a frame pointer (`-fno-omit-frame-pointer`).
+/// The general-purpose registers of a stopped process, in the order `info registers` prints them.
+///
+/// Public because `info registers` needs all of them, and a caller should not have to reach for
+/// `ptrace` to print what the debugger already knows how to read.
+pub fn registers(pid: u32) -> Result<Vec<(&'static str, u64)>, DebuggerError> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        let registers = read_registers(pid)?;
+        Ok(vec![
+            ("rax", registers.rax),
+            ("rbx", registers.rbx),
+            ("rcx", registers.rcx),
+            ("rdx", registers.rdx),
+            ("rsi", registers.rsi),
+            ("rdi", registers.rdi),
+            ("rbp", registers.rbp),
+            ("rsp", registers.rsp),
+            ("r8", registers.r8),
+            ("r9", registers.r9),
+            ("r10", registers.r10),
+            ("r11", registers.r11),
+            ("r12", registers.r12),
+            ("r13", registers.r13),
+            ("r14", registers.r14),
+            ("r15", registers.r15),
+            ("rip", registers.rip),
+            ("rflags", registers.eflags),
+        ])
+    }
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    {
+        let _ = pid;
+        Err(DebuggerError::Target(
+            "reading registers is implemented on Linux x86-64 only".to_string(),
+        ))
+    }
+}
+
 pub fn frame_pointer(pid: u32) -> Result<u64, DebuggerError> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
