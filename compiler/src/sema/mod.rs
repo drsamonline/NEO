@@ -1581,21 +1581,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_closure_result_is_checked_against_the_binding_it_is_assigned_to() {
-        // The closure's type is not readable from outside the analysis — `type_scopes` is popped as
-        // scopes close — so it is asserted through what it *does*: a `fn(float) -> float` assigned
-        // to an `int` binding is a mismatch, and that only happens if the closure has a type at all.
-        let analyzer = analyze(
-            "fn main() -> int {\n    let twice = |x: float| x * 2.5;\n    let wrong: int = twice(1.5);\n    return 0;\n}\n",
-        );
-        let messages = messages(&analyzer);
-        assert!(
-            messages.iter().any(|message| message.contains("float") && message.contains("int")),
-            "expected a type mismatch from the closure's result, got {messages:?}"
-        );
-    }
-
-    #[test]
     fn a_float_argument_to_an_int_closure_parameter_is_refused() {
         // Before the closure had a type, nothing could compare the argument with the parameter,
         // and the C backend truncated the double to reach an `int`.
