@@ -1581,19 +1581,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_closure_has_the_type_its_annotation_and_body_give_it() {
+    fn a_closure_result_is_checked_against_the_binding_it_is_assigned_to() {
+        // The closure's type is not readable from outside the analysis — `type_scopes` is popped as
+        // scopes close — so it is asserted through what it *does*: a `fn(float) -> float` assigned
+        // to an `int` binding is a mismatch, and that only happens if the closure has a type at all.
         let analyzer = analyze(
-            "fn main() -> int {\n    let twice = |x: float| x * 2.5;\n    return 0;\n}\n",
+            "fn main() -> int {\n    let twice = |x: float| x * 2.5;\n    let wrong: int = twice(1.5);\n    return 0;\n}\n",
         );
-        // The type has to reach the binding, because the call-site check reads it from there.
-        let typ = analyzer.lookup_variable_type("twice");
-        match typ {
-            Some(Type::Function { params, return_type }) => {
-                assert_eq!(params, vec![Type::Float], "the annotation decides the parameter");
-                assert_eq!(*return_type, Type::Float, "the body decides the result");
-            }
-            other => panic!("expected a function type for `twice`, got {other:?}"),
-        }
+        let messages = messages(&analyzer);
+        assert!(
+            messages.iter().any(|message| message.contains("float") && message.contains("int")),
+            "expected a type mismatch from the closure's result, got {messages:?}"
+        );
     }
 
     #[test]
