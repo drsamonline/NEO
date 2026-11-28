@@ -70,12 +70,15 @@ fn print_reads_a_live_variable_from_a_stopped_program() {
     // this when a breakpoint is set first, and reads the base from `/proc/<pid>/maps` once there is
     // a process to ask.
     session.run(&[]).expect("the program starts under trace");
+    // Line 4 is the `printf`, one line after `int counter = 7;`. Stopping at `main` itself would
+    // read the slot *before* the assignment, and 0 is the honest answer there — the first version
+    // of this test asserted 7 at entry and was wrong about the program, not about the debugger.
     session
-        .set_breakpoint("main")
-        .expect("main is a breakpoint location once the base is known");
+        .set_breakpoint("fixture.c:4")
+        .expect("the printf line is a breakpoint location");
     session
         .continue_execution()
-        .expect("it runs to the breakpoint at main");
+        .expect("it runs to the breakpoint after the assignment");
 
     // The assertion is on the value the program was written to hold: `counter = 7`. A wrong slot, a
     // wrong width or a wrong frame base all produce a number, which is why the number matters.
@@ -98,10 +101,13 @@ fn a_name_that_is_not_a_local_is_refused_with_the_ones_that_are() {
 
     let target = target::load_binary(&binary).expect("the binary loads");
     let mut session = DebugSession::new(target).expect("a session starts");
-    // Same order, same reason: `run`, then `break`.
+    // Same order and the same stopping point: `run`, then `break` on the line after the
+    // assignment, so the frame is a real one with a known function.
     session.run(&[]).expect("starts");
-    session.set_breakpoint("main").expect("main");
-    session.continue_execution().expect("stops at main");
+    session
+        .set_breakpoint("fixture.c:4")
+        .expect("the printf line");
+    session.continue_execution().expect("stops there");
 
     let error = session
         .evaluate("nonexistent")
