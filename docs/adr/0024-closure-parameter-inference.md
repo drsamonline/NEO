@@ -76,6 +76,30 @@ still does not *work*, but it stops producing four answers.
 
 **Cost:** the trap stays. **Benefit:** nothing breaks, and nobody is misled who reads the table.
 
+## Correction — C was attempted alone, and it does not work
+
+An attempt to do **C** by itself was made and closed unmerged (PR #233). It added the call-site check,
+and the check never fired: `check_call_arguments` looks the callee's type up, and sema never records
+one for a closure.
+
+```rust
+nova_common::Expr::Closure(params, body) => {
+    for (name, _typ) in params {          // the type is discarded
+        let symbol = Symbol::new(name.clone(), SymbolKind::Parameter, Span::default());
+        let _ = self.symbol_table.insert(symbol);
+    }
+```
+
+`infer_expr_type` has no `Closure` arm either, so `let twice = |x: float| ...` leaves `twice` with no
+type at all.
+
+**The estimate below was right and the plan was wrong.** C is not a smaller first step; it is the same
+work with nothing to check against. A guard that compiles, passes narrow tests and silently never fires
+is the false-success shape this project keeps removing, so the PR was closed rather than merged.
+
+The single piece of work is: sema learns `Type::Function` for a closure — parameter types from the
+annotations, return type from the body. Then C is a dozen lines and A falls out of the same pass.
+
 ## Recommendation
 
 **C, then A.**
