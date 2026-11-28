@@ -74,6 +74,15 @@ impl DebugSession {
     }
     
     /// Get current state
+    /// The pid of the process this session started, if it started one.
+    ///
+    /// Public because reading a variable needs the registers, and the registers are read by pid:
+    /// a caller that can `evaluate` should not have to reach into a private field to do the same
+    /// work a level down.
+    pub fn traced_pid(&self) -> Option<u32> {
+        self.traced_pid
+    }
+
     pub fn state(&self) -> &State {
         &self.state
     }
