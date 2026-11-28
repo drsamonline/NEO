@@ -117,7 +117,7 @@ pub fn parse(line: &str) -> Result<Command, DebuggerError> {
             let item = rest
                 .first()
                 .ok_or_else(|| DebuggerError::InvalidCommand(
-                    "usage: info <threads|breakpoints|registers>".to_string(),
+                    "usage: info <threads|breakpoints|registers|variables>".to_string(),
                 ))?
                 .to_string();
             Command::Info { item }
