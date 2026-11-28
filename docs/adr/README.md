@@ -56,7 +56,7 @@ about a decision are about a reading of it that nobody chose.
 | [0020](0020-concurrency-model.md) | A concurrency model, and why the one-string backend contract cannot carry a thread on two of four targets | accepted (E) |
 | [0021](0021-delete-runtime-crate.md) | Delete the Rust runtime crate — 2,480 lines nothing depends on | accepted |
 | [0022](0022-result-type.md) | `Result<T, E>` — sugar over the enum that already existed | accepted |
-| [0023](0023-print-variable.md) | `print <name>` — the DWARF model is dead weight, and the information is already in the binary | accepted (C) |
+| [0023](0023-print-variable.md) | `print <name>` — the DWARF model is dead weight, and the information is already in the binary | accepted (C, then A: works) |
 
 ## Writing one
 
