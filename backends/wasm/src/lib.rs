@@ -1410,10 +1410,10 @@ impl WasmBackend {
                 struct_type,
             } => {
                 self.generate_expr(object);
-                let Some(offset) = self
+                let Some(slot) = self
                     .structs
                     .get(struct_type)
-                    .and_then(|layout| layout.iter().find(|slot| slot.name == field))
+                    .and_then(|layout| layout.iter().find(|slot| &slot.name == field))
                 else {
                     self.writeln("unreachable (; unknown struct field ;)");
                     self.writeln("(i32.const 0)");
@@ -1431,10 +1431,10 @@ impl WasmBackend {
                 struct_type,
             } => {
                 self.generate_expr(object);
-                let Some(offset) = self
+                let Some(slot) = self
                     .structs
                     .get(struct_type)
-                    .and_then(|layout| layout.iter().find(|slot| slot.name == field))
+                    .and_then(|layout| layout.iter().find(|slot| &slot.name == field))
                 else {
                     self.writeln("unreachable (; unknown struct field ;)");
                     return;
