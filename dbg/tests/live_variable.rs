@@ -65,10 +65,14 @@ fn print_reads_a_live_variable_from_a_stopped_program() {
 
     let target = target::load_binary(&binary).expect("the binary loads");
     let mut session = DebugSession::new(target).expect("a session starts");
+    // `run` **before** `break`, in this order on purpose: the fixture is position-independent, so
+    // `main`'s symbol is an offset from a load base the kernel chooses. The debugger says exactly
+    // this when a breakpoint is set first, and reads the base from `/proc/<pid>/maps` once there is
+    // a process to ask.
+    session.run(&[]).expect("the program starts under trace");
     session
         .set_breakpoint("main")
-        .expect("main is a breakpoint location");
-    session.run(&[]).expect("the program starts under trace");
+        .expect("main is a breakpoint location once the base is known");
     session
         .continue_execution()
         .expect("it runs to the breakpoint at main");
@@ -94,8 +98,9 @@ fn a_name_that_is_not_a_local_is_refused_with_the_ones_that_are() {
 
     let target = target::load_binary(&binary).expect("the binary loads");
     let mut session = DebugSession::new(target).expect("a session starts");
-    session.set_breakpoint("main").expect("main");
+    // Same order, same reason: `run`, then `break`.
     session.run(&[]).expect("starts");
+    session.set_breakpoint("main").expect("main");
     session.continue_execution().expect("stops at main");
 
     let error = session
