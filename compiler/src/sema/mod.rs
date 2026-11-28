@@ -1031,45 +1031,7 @@ impl SemanticAnalyzer {
         }
     }
 
-    #[test]
-    fn a_float_argument_to_an_int_closure_parameter_is_refused() {
-        // The C backend truncated a `double` argument to an `int` closure parameter and printed a
-        // wrong number. Nothing checked the call because a call through a *value* has no entry in
-        // `signatures` — the check only knew named functions.
-        let source = r#"
-fn main() -> int {
-    let twice = |x: int| x * 2;
-    print(twice(1.5));
-    return 0;
-}
-"#;
-        let analyzer = analyze(source);
-        let messages = messages(&analyzer);
-        assert!(
-            messages.iter().any(|message| message.contains("closure's parameter is")),
-            "expected a closure argument type error, got {messages:?}"
-        );
-    }
-
-    #[test]
-    fn a_matching_closure_argument_is_not_refused() {
-        // The guard has to be narrow: a float closure called with a float must stay quiet.
-        let source = r#"
-fn main() -> int {
-    let twice = |x: float| x * 2.5;
-    print(twice(1.5));
-    return 0;
-}
-"#;
-        let analyzer = analyze(source);
-        let messages = messages(&analyzer);
-        assert!(
-            !messages.iter().any(|message| message.contains("closure's parameter is")),
-            "a float closure called with a float should not be refused: {messages:?}"
-        );
-    }
-
-#[cfg(test)]    /// The type recorded for a local variable or parameter, if any.
+    /// The type recorded for a local variable or parameter, if any.
     fn lookup_variable_type(&self, name: &str) -> Option<Type> {
         self.type_scopes
             .iter()
@@ -1591,6 +1553,45 @@ fn span_of(expr: &nova_common::Expr) -> Option<Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_float_argument_to_an_int_closure_parameter_is_refused() {
+        // The C backend truncated a `double` argument to an `int` closure parameter and printed a
+        // wrong number. Nothing checked the call because a call through a *value* has no entry in
+        // `signatures` — the check only knew named functions.
+        let source = r#"
+fn main() -> int {
+    let twice = |x: int| x * 2;
+    print(twice(1.5));
+    return 0;
+}
+"#;
+        let analyzer = analyze(source);
+        let messages = messages(&analyzer);
+        assert!(
+            messages.iter().any(|message| message.contains("closure's parameter is")),
+            "expected a closure argument type error, got {messages:?}"
+        );
+    }
+
+    #[test]
+    fn a_matching_closure_argument_is_not_refused() {
+        // The guard has to be narrow: a float closure called with a float must stay quiet.
+        let source = r#"
+fn main() -> int {
+    let twice = |x: float| x * 2.5;
+    print(twice(1.5));
+    return 0;
+}
+"#;
+        let analyzer = analyze(source);
+        let messages = messages(&analyzer);
+        assert!(
+            !messages.iter().any(|message| message.contains("closure's parameter is")),
+            "a float closure called with a float should not be refused: {messages:?}"
+        );
+    }
+
 
     #[test]
     fn a_scalar_is_copy_and_a_string_is_not() {
