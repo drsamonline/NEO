@@ -80,27 +80,6 @@ fn print_reads_a_live_variable_from_a_stopped_program() {
         .continue_execution()
         .expect("it runs to the breakpoint after the assignment");
 
-    // The compiler's own numbers, printed before the assertion. A wrong slot produces a number, so
-    // the number alone cannot say *why* it is wrong; these four lines can. The location expression
-    // says what gcc thinks the offset is, and the two addresses say where this debugger looked.
-    let pid = session.traced_pid().expect("a traced pid");
-    let rbp = nova_dbg::target::frame_pointer(pid).expect("rbp");
-    let locals = nova_dbg::dwarf::locals_of_function(&binary, "main").expect("locals");
-    if let Some(counter) = locals.iter().find(|local| local.name == "counter") {
-        eprintln!("DIAG location = {}", counter.location);
-        eprintln!("DIAG ops      = {:?}", counter.ops);
-    }
-    eprintln!("DIAG rbp      = 0x{rbp:x}");
-    eprintln!("DIAG cfa      = 0x{:x}", rbp.wrapping_add(16));
-    for delta in [-24i64, -20, -16, -12, -8, -4] {
-        let address = (rbp as i64 + delta) as u64;
-        let word = nova_dbg::target::read_word(pid, address).unwrap_or(0);
-        eprintln!(
-            "DIAG rbp{delta:+} = 0x{address:x} holds {}",
-            word as u32 as i32
-        );
-    }
-
     // The assertion is on the value the program was written to hold: `counter = 7`. A wrong slot, a
     // wrong width or a wrong frame base all produce a number, which is why the number matters.
     let printed = session.evaluate("counter").expect("counter is readable");

@@ -677,11 +677,32 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
             )));
         }
 
-        // `DW_OP_fbreg` is relative to the frame base and `DW_OP_call_frame_cfa` is the canonical
-        // frame address. On x86-64 with a frame pointer those are `RBP` and `RBP + 16` — passed
-        // separately so the evaluator cannot use one where the other belongs.
-        let frame_base = crate::target::frame_pointer(pid)?;
-        let cfa = frame_base.wrapping_add(16);
+        // `DW_OP_fbreg` is relative to the function's **frame base**, which is a DWARF attribute of
+        // its own — not to `RBP`. On x86-64 with a frame pointer gcc sets
+        // `DW_AT_frame_base = DW_OP_call_frame_cfa`, so the base is the CFA, `RBP + 16`.
+        //
+        // This was wrong in the first version and the wrongness was invisible: it passed `RBP` as
+        // the frame base, so `fbreg -20` became `rbp - 20` instead of `rbp - 4` and read the
+        // neighbouring slot. The slot was confirmed by reading the frame: `rbp - 4` holds 7, and
+        // `fbreg -20` from a base of `RBP + 16` is exactly `RBP - 4`.
+        let rbp = crate::target::frame_pointer(pid)?;
+        let cfa = rbp.wrapping_add(16);
+        let frame_base_ops = crate::dwarf::frame_base_of_function(&binary, &function).map_err(
+            |error| DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}")),
+        )?;
+        let frame_base = if frame_base_ops.is_empty() {
+            // No `DW_AT_frame_base`: refuse rather than assume the frame pointer, because a wrong
+            // assumption here reads a plausible number from the wrong place.
+            return Err(DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: `{function}` has no `DW_AT_frame_base`, so the \
+                 frame its variables are relative to is not known. `print 0xADDRESS` reads memory \
+                 directly"
+            )));
+        } else {
+            crate::dwarf::evaluate_location(&frame_base_ops, rbp, cfa).map_err(|error| {
+                DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
+            })?
+        };
         let address = crate::dwarf::evaluate_location(&local.ops, frame_base, cfa).map_err(|error| {
             DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
         })?;
