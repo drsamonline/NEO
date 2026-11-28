@@ -59,7 +59,7 @@ compiles and misbehaves. This table is the list of those refusals, and
 | **C** | nothing: it is the reference backend and every construct in the spec lowers to it |
 | **JavaScript** | nothing at `validate` time; `sizeof` is reported as `0`, which is correct only because the JavaScript `nova_env_new` ignores its size argument |
 | **Rust** | nothing at `validate` time; the same `sizeof` arm exists and is unreachable, since this backend has no `nova_env_new` |
-| **WebAssembly** | the seven constructs below |
+| **WebAssembly** | the six constructs below |
 
 **WebAssembly refuses.** Two constructs have left this list: `print` of a `float`, through a `print_f64` host import that formats with `printf("%g")` to match the C runtime, and a struct with a `float` field, now that a slot carries its width and an `f64` takes eight bytes on an eight-byte boundary.
 
@@ -71,24 +71,24 @@ compiles and misbehaves. This table is the list of those refusals, and
 | slicing a string | *string slicing* |
 | field access on an unknown struct type | *a field access with no known struct type* |
 | field assignment on an unknown struct type | *a field assignment with no known struct type* |
-| a closure taking or returning a `float` | *closure signatures with floating-point parameters/results* — **and this one stays refused**, see below |
 
-**Why a float closure is still refused — measured, not assumed.** A parity program was written to
-support it, and it showed the construct is broken in three of four backends:
+**A closure's parameters must be annotated when they are floats.** `|x: float| x * scale` is
+`fn(float) -> float` in every backend and all four agree. `|x| x * scale` defaults the parameter to
+`int`, and then:
 
-| Backend | A closure `|x| x * 2.5` called with `2.0`, `0.5`, `1.5` |
+| Backend | `|x| x * 2.5` called with `2.0`, `0.5`, `1.5` |
 |---|---|
-| **C** (the reference) | prints `5`, `0`, `25` — it truncates the `f64` to an `i32` |
-| **JavaScript** | prints `5`, `1.25`, `3.75` — correct |
-| **Rust** | does not compile: `expected i32, found f64`, `Rc<dyn Fn(f64) -> f64>` against `Rc<dyn Fn(i32) -> f64>` |
-| **WebAssembly** | refuses |
+| **C** (the reference) | prints `5`, `0`, `25` — the `int` return truncates the `double` |
+| **JavaScript** | prints `5`, `1.25`, `3.75` |
+| **Rust** | does not compile |
+| **WebAssembly** | refuses the module: `i32.mul` on `f64` operands |
 
-So the refusal was the only honest behaviour, and the WebAssembly backend was right to have it. Making
-this construct work means fixing the **reference** first — its output defines what the other three are
-compared against — and that is a separate piece of work with a program that already fails. Until then
-the refusal stays, and it now says why.
+**The default is the problem, not the closure.** An unannotated parameter is typed `int` rather than
+inferred from the body, so a float closure written without annotations means four different things.
+Annotating it makes the four agree, which `tests/parity/float_closure.nova` checks on every push.
+Inferring the parameter type from the body is the real fix and is not done.
 
-**Why the WebAssembly gaps exist rather than being fixed:** struct fields are four-byte `i32` slots
+**Why the WebAssembly gaps exist rather than being fixed:****Why the WebAssembly gaps exist rather than being fixed:** struct fields are four-byte `i32` slots
 in this backend's linear memory, so an `f64` field would need a different layout — alignment,
 offsets, and the host bridge all change. Nothing in `examples/`, `tests/parity/` or the standard
 library uses one, so it is refused rather than built for a construct nothing asks for. The closures
