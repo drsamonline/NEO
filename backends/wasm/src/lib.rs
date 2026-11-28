@@ -329,15 +329,10 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
             if callee == "print" || callee == "println" {
                 // Only integers and string literals have a host representation.
                 if let Some(arg) = args.first() {
-                    // A float literal was the only shape refused here, so `print(x)` on a float
-                    // *variable* passed validation and pushed an `f64` into `print_i32` — invalid
-                    // WebAssembly, refused by `wat2wasm` rather than by the compiler. The type is
-                    // checked now as well as the literal.
-                    if matches!(unspanned_literal(arg), Some(SirLiteral::Float(_)))
-                        || is_float_expr(arg)
-                    {
-                        return Err("printing a float");
-                    }
+                    // Floats are printed now, through their own host import — see `emit_print`.
+                    // The check that used to refuse them looked at the literal alone, which is why
+                    // `print(1.5)` was refused and `print(x)` was not: a refusal that covers one
+                    // spelling of a construct is not a refusal.
                     if !matches!(unspanned_literal(arg), Some(SirLiteral::String(_))) {
                         validate_expr(arg)?;
                     }
@@ -550,6 +545,9 @@ impl WasmBackend {
         self.indent_level += 1;
 
         self.writeln("(import \"env\" \"print_i32\" (func $print_i32 (param i32)))");
+        // Floats get their own import: `print_i32` takes an `i32`, so passing an `f64` to it is
+        // invalid WebAssembly. The host formats with `printf("%g")` to match the C runtime.
+        self.writeln("(import \"env\" \"print_f64\" (func $print_f64 (param f64)))");
         self.writeln("(import \"env\" \"print_str\" (func $print_str (param i32 i32)))");
         self.writeln("(import \"env\" \"print_cstr\" (func $print_cstr (param i32)))");
         // Growable arrays: [len, capacity, data]; push copies into a larger
@@ -1591,6 +1589,15 @@ impl WasmBackend {
                 // reads the NUL-terminated bytes instead.
                 self.generate_expr(arg);
                 self.writeln("(call $print_cstr)");
+            }
+            // A float goes to `print_f64`, which takes an `f64`. Sending it to `print_i32` is
+            // invalid WebAssembly rather than a wrong number, so this is the difference between
+            // the backend working and the assembler complaining.
+            _ if is_float_expr(arg)
+                || matches!(unspanned_literal(arg), Some(SirLiteral::Float(_))) =>
+            {
+                self.generate_expr(arg);
+                self.writeln("(call $print_f64)");
             }
             _ => {
                 self.generate_expr(arg);
