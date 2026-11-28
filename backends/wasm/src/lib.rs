@@ -1770,11 +1770,11 @@ mod tests {
     use nova_common::Span;
 
     #[test]
-    fn printing_a_float_variable_is_refused_not_only_a_float_literal() {
-        // The check used to look at the literal alone, so `print(x)` on a float variable passed
-        // validation and pushed an `f64` into `print_i32` — invalid WebAssembly, refused by
-        // `wat2wasm` instead of by the compiler. A refusal that covers one spelling of a construct
-        // is not a refusal.
+    fn printing_a_float_calls_the_float_import() {
+        // This test used to assert the opposite: that `print(x)` on a float was *refused*. It was,
+        // because the only check looked at a float literal and the emitter sent everything to
+        // `print_i32` — invalid WebAssembly. There is a `print_f64` import now, so the assertion
+        // moves from "refuses" to "calls the right one", which is the stronger statement.
         let mut program = empty_program();
         program.functions.push(SirFunction {
             name: "main".to_string(),
@@ -1790,8 +1790,18 @@ mod tests {
             env_type: None,
             span: Span::default(),
         });
-        let refusal = validate(&program).expect_err("a float variable must be refused");
-        assert_eq!(refusal, "printing a float");
+        assert!(validate(&program).is_ok(), "printing a float is supported");
+
+        let mut backend = WasmBackend::new();
+        let wat = backend.generate(&program);
+        assert!(
+            wat.contains("(call $print_f64)"),
+            "a float should go to the float import:\n{wat}"
+        );
+        assert!(
+            !wat.contains("(call $print_i32)"),
+            "and not to the integer one:\n{wat}"
+        );
     }
 
     #[test]
