@@ -47,6 +47,40 @@ One version for the whole workspace (`Cargo.toml` → `[workspace.package]`), an
 `VERSION` must match it. `CHANGELOG.md` records what changed; `[Unreleased]` always
 sits above the newest release.
 
+## What each backend refuses
+
+NOVA has four backends and they are not equally capable. **A backend that cannot express something
+refuses it**, with a message naming the construct — never by lowering it to a placeholder that
+compiles and misbehaves. This table is the list of those refusals, and
+`tools/backend-limits-check.py` fails if a backend gains one that is not here.
+
+| Backend | Refuses |
+|---|---|
+| **C** | nothing: it is the reference backend and every construct in the spec lowers to it |
+| **JavaScript** | nothing at `validate` time; `sizeof` is reported as `0`, which is correct only because the JavaScript `nova_env_new` ignores its size argument |
+| **Rust** | nothing at `validate` time; the same `sizeof` arm exists and is unreachable, since this backend has no `nova_env_new` |
+| **WebAssembly** | the nine constructs below |
+
+**WebAssembly refuses:**
+
+| Construct | Message |
+|---|---|
+| a struct with a `float` field | *a struct with a floating-point field: struct fields are stored as i32 in this backend* |
+| a `for` over something that is not a range | *a for-loop over a non-range iterable* |
+| a range used outside a `for` | *a range outside a for-loop* |
+| a standard-library call this backend does not implement | *runtime calls this backend does not implement* |
+| printing a `float` | *printing a float* |
+| slicing a string | *string slicing* |
+| field access on an unknown struct type | *a field access with no known struct type* |
+| field assignment on an unknown struct type | *a field assignment with no known struct type* |
+| a closure taking or returning a `float` | *closure signatures with floating-point parameters/results* |
+
+**Why the WebAssembly gaps exist rather than being fixed:** struct fields are four-byte `i32` slots
+in this backend's linear memory, so an `f64` field would need a different layout — alignment,
+offsets, and the host bridge all change. Nothing in `examples/`, `tests/parity/` or the standard
+library uses one, so it is refused rather than built for a construct nothing asks for. The closures
+and string-slicing refusals are the same kind of statement: a limit that is named, not a bug.
+
 ## Installable from a release, not from a package manager
 
 Not on crates.io, not on npm — `Cargo.toml` says `publish = false` on every crate,

@@ -10,6 +10,7 @@
   "adrs": 23,
   "gates": [
     "architecture",
+    "backend-limits",
     "count",
     "diagnostic",
     "docs",
