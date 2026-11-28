@@ -59,9 +59,9 @@ compiles and misbehaves. This table is the list of those refusals, and
 | **C** | nothing: it is the reference backend and every construct in the spec lowers to it |
 | **JavaScript** | nothing at `validate` time; `sizeof` is reported as `0`, which is correct only because the JavaScript `nova_env_new` ignores its size argument |
 | **Rust** | nothing at `validate` time; the same `sizeof` arm exists and is unreachable, since this backend has no `nova_env_new` |
-| **WebAssembly** | the seven constructs below |
+| **WebAssembly** | the six constructs below |
 
-**WebAssembly refuses.** Two constructs have left this list: `print` of a `float`, through a `print_f64` host import that formats with `printf("%g")` to match the C runtime, and a struct with a `float` field, now that a slot carries its width and an `f64` takes eight bytes on an eight-byte boundary.
+**WebAssembly refuses.** Three constructs have left this list: `print` of a `float`, through a `print_f64` host import that formats with `printf("%g")` to match the C runtime, and a struct with a `float` field, now that a slot carries its width and an `f64` takes eight bytes on an eight-byte boundary.
 
 | Construct | Message |
 |---|---|
@@ -71,7 +71,6 @@ compiles and misbehaves. This table is the list of those refusals, and
 | slicing a string | *string slicing* |
 | field access on an unknown struct type | *a field access with no known struct type* |
 | field assignment on an unknown struct type | *a field assignment with no known struct type* |
-| a closure taking or returning a `float` | *closure signatures with floating-point parameters/results* |
 
 **Why the WebAssembly gaps exist rather than being fixed:** struct fields are four-byte `i32` slots
 in this backend's linear memory, so an `f64` field would need a different layout — alignment,

@@ -1,0 +1,20 @@
+// A closure that takes and returns a float.
+//
+// The WebAssembly backend refused this until the table's types were keyed by signature shape: one
+// type per arity assumed every parameter was an `i32`, so an `f64` closure had no type to name in
+// `call_indirect`. A wrong key is a module that does not validate, so this program is the check.
+fn main() -> int {
+    let scale = 2.5;
+    let twice = |x: float| -> float { x * scale };
+
+    print(twice(2.0));
+    print(twice(0.5));
+
+    let add = |a: float, b: float| -> float { a + b };
+    print(add(1.25, 2.75));
+
+    // And an integer closure in the same program, so both shapes coexist in one table.
+    let bump = |n: int| -> int { n + 1 };
+    print(bump(41));
+    return 0;
+}

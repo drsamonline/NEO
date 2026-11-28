@@ -27,7 +27,7 @@
 <a href="backends/"><img src="https://img.shields.io/badge/Backends-4%20targets-orange?style=flat-square" alt="4 backend targets"></a>
 <a href="https://img.shields.io/badge/language-Rust-dea584"><img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square" alt="Rust"></a>
 <a href="docs/manifest.webmanifest"><img src="https://img.shields.io/badge/PWA-offline%20ready-5b9dff?style=flat-square" alt="Offline PWA"></a>
-<a href="tests/parity/"><img src="https://img.shields.io/badge/parity-9%20programs-48d597?style=flat-square" alt="9 parity programs"></a>
+<a href="tests/parity/"><img src="https://img.shields.io/badge/parity-10%20programs-48d597?style=flat-square" alt="10 parity programs"></a>
 
 **[Landing page](https://drsamonline.github.io/NEO/)** · **[Examples](examples/)** · **[Language spec](docs/language/)** · **[Development plan](DEV_PLAN.md)** · **[Architecture](ARCHITECTURE.md)** · **[All projects](https://drsamonline.github.io/)**
 
@@ -230,7 +230,7 @@ with `wc -l` rather than by hand; a stale table is how this one drifted from
 | Live demo | [drsamonline.github.io/NEO](https://drsamonline.github.io/NEO/) |
 | Author | [Dr Sohil Momin](https://drsamonline.github.io/) |
 | Status | Pre-release: Phase 1 complete, Phase 3 partial, Phase 4 in progress |
-| Tests | 247 passing, 0 failing, 0 ignored (`cargo test --workspace`); 9 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
+| Tests | 247 passing, 0 failing, 0 ignored (`cargo test --workspace`); 10 parity programs in `tests/parity/` plus the 3 root examples, all compared across four backends by `test --parity` |
 | License | MIT (see [LICENSE](LICENSE)) |
 | Releases | [`v0.8.3`](https://github.com/drsamonline/NEO/releases/tag/v0.8.3) — three platform archives with SHA-256 checksums, each carrying all four binaries. `nova-dbg` builds everywhere and refuses in words off Linux, where `ptrace` is not the same interface. The two earliest releases (`v0.6.0`, `v0.6.1`) are empty: both tagged on one commit with no artifacts. |
 
