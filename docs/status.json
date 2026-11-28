@@ -7,7 +7,7 @@
     "compiler_src": 15112,
     "workspace": 34477
   },
-  "adrs": 23,
+  "adrs": 24,
   "gates": [
     "architecture",
     "backend-limits",
