@@ -74,6 +74,15 @@ impl DebugSession {
     }
     
     /// Get current state
+    /// The pid of the process this session started, if it started one.
+    ///
+    /// Public because reading a variable needs the registers, and the registers are read by pid:
+    /// a caller that can `evaluate` should not have to reach into a private field to do the same
+    /// work a level down.
+    pub fn traced_pid(&self) -> Option<u32> {
+        self.traced_pid
+    }
+
     pub fn state(&self) -> &State {
         &self.state
     }
@@ -618,14 +627,34 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
         };
         let binary = std::path::PathBuf::from(path);
 
-        // The frame the process is stopped in decides where its variables are.
-        let frames = self.backtrace()?;
-        let Some(frame) = frames.first() else {
-            return Err(DebuggerError::Target(
-                "cannot evaluate `{trimmed}`: the stack has no frames".to_string(),
-            ));
-        };
-        let function = frame.function.clone();
+        // The frame the process is stopped in decides where its variables are, and which function
+        // that frame belongs to is found from the instruction pointer.
+        //
+        // The address must be made relative to the load base first: the binary is
+        // position-independent, so a runtime address is the file's address plus a base the kernel
+        // chose, and `addr2line` reads the file. Without the subtraction it answers `??` — which is
+        // how the first version of this produced "no function named 0x5bdaa1088149".
+        let instruction = crate::target::instruction_pointer(pid)?;
+        let bias = crate::target::load_bias(pid, path).unwrap_or(0);
+        let file_address = instruction.wrapping_sub(bias);
+        let symbolized = self.symbolize(&format!("0x{file_address:x}")).map_err(|error| {
+            DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: the frame at 0x{instruction:x} could not be \
+                 attributed to a function ({error}). `print 0xADDRESS` reads memory directly"
+            ))
+        })?;
+        let function = symbolized
+            .lines()
+            .next()
+            .unwrap_or("??")
+            .trim()
+            .to_string();
+        if function == "??" {
+            return Err(DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: the frame at 0x{instruction:x} has no function name \
+                 in the debug information. `print 0xADDRESS` reads memory directly"
+            )));
+        }
         let locals = crate::dwarf::locals_of_function(&binary, &function).map_err(|error| {
             DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
         })?;
@@ -648,11 +677,32 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
             )));
         }
 
-        // `DW_OP_fbreg` is relative to the frame base and `DW_OP_call_frame_cfa` is the canonical
-        // frame address. On x86-64 with a frame pointer those are `RBP` and `RBP + 16` — passed
-        // separately so the evaluator cannot use one where the other belongs.
-        let frame_base = crate::target::frame_pointer(pid)?;
-        let cfa = frame_base.wrapping_add(16);
+        // `DW_OP_fbreg` is relative to the function's **frame base**, which is a DWARF attribute of
+        // its own — not to `RBP`. On x86-64 with a frame pointer gcc sets
+        // `DW_AT_frame_base = DW_OP_call_frame_cfa`, so the base is the CFA, `RBP + 16`.
+        //
+        // This was wrong in the first version and the wrongness was invisible: it passed `RBP` as
+        // the frame base, so `fbreg -20` became `rbp - 20` instead of `rbp - 4` and read the
+        // neighbouring slot. The slot was confirmed by reading the frame: `rbp - 4` holds 7, and
+        // `fbreg -20` from a base of `RBP + 16` is exactly `RBP - 4`.
+        let rbp = crate::target::frame_pointer(pid)?;
+        let cfa = rbp.wrapping_add(16);
+        let frame_base_ops = crate::dwarf::frame_base_of_function(&binary, &function).map_err(
+            |error| DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}")),
+        )?;
+        let frame_base = if frame_base_ops.is_empty() {
+            // No `DW_AT_frame_base`: refuse rather than assume the frame pointer, because a wrong
+            // assumption here reads a plausible number from the wrong place.
+            return Err(DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: `{function}` has no `DW_AT_frame_base`, so the \
+                 frame its variables are relative to is not known. `print 0xADDRESS` reads memory \
+                 directly"
+            )));
+        } else {
+            crate::dwarf::evaluate_location(&frame_base_ops, rbp, cfa).map_err(|error| {
+                DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
+            })?
+        };
         let address = crate::dwarf::evaluate_location(&local.ops, frame_base, cfa).map_err(|error| {
             DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
         })?;

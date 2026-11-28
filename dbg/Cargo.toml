@@ -23,6 +23,10 @@ libc = "0.2"
 gimli = "0.31"
 object = "0.36"
 
+[lib]
+name = "nova_dbg"
+path = "src/lib.rs"
+
 [[bin]]
 name = "nova-dbg"
 path = "src/main.rs"
