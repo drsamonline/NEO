@@ -305,7 +305,7 @@ impl JsBackend {
                 let name = if (callee == "print" || callee == "println")
                     && args.first().map(nova_common::sir::is_float_expr).unwrap_or(false)
                 {
-                    "print_float"
+                    "print_float".to_string()
                 } else {
                     nova_common::sir::safe_identifier(callee)
                 };
