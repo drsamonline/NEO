@@ -618,14 +618,34 @@ pub fn step_out(&mut self) -> Result<(), DebuggerError> {
         };
         let binary = std::path::PathBuf::from(path);
 
-        // The frame the process is stopped in decides where its variables are.
-        let frames = self.backtrace()?;
-        let Some(frame) = frames.first() else {
-            return Err(DebuggerError::Target(
-                "cannot evaluate `{trimmed}`: the stack has no frames".to_string(),
-            ));
-        };
-        let function = frame.function.clone();
+        // The frame the process is stopped in decides where its variables are, and which function
+        // that frame belongs to is found from the instruction pointer.
+        //
+        // The address must be made relative to the load base first: the binary is
+        // position-independent, so a runtime address is the file's address plus a base the kernel
+        // chose, and `addr2line` reads the file. Without the subtraction it answers `??` — which is
+        // how the first version of this produced "no function named 0x5bdaa1088149".
+        let instruction = crate::target::instruction_pointer(pid)?;
+        let bias = crate::target::load_bias(pid, path).unwrap_or(0);
+        let file_address = instruction.wrapping_sub(bias);
+        let symbolized = self.symbolize(&format!("0x{file_address:x}")).map_err(|error| {
+            DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: the frame at 0x{instruction:x} could not be \
+                 attributed to a function ({error}). `print 0xADDRESS` reads memory directly"
+            ))
+        })?;
+        let function = symbolized
+            .lines()
+            .next()
+            .unwrap_or("??")
+            .trim()
+            .to_string();
+        if function == "??" {
+            return Err(DebuggerError::Target(format!(
+                "cannot evaluate `{trimmed}`: the frame at 0x{instruction:x} has no function name \
+                 in the debug information. `print 0xADDRESS` reads memory directly"
+            )));
+        }
         let locals = crate::dwarf::locals_of_function(&binary, &function).map_err(|error| {
             DebuggerError::Target(format!("cannot evaluate `{trimmed}`: {error}"))
         })?;
