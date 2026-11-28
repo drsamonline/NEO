@@ -8,50 +8,12 @@
 // review. See docs/adr/0016-debugger-uses-ptrace.md.
 #![deny(unsafe_code)]
 
-#[allow(unsafe_code)]
-mod target;
-mod commands;
-mod session;
-mod dwarf;
+// The modules and the error type live in the library, so a test can drive the debugger the way a
+// user does. See `src/lib.rs`.
+use nova_dbg::{commands, session, target, DebuggerError};
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum DebuggerError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    
-    #[error("Target process error: {0}")]
-    Target(String),
-    
-    #[error("Breakpoint error: {0}")]
-    Breakpoint(String),
-    
-    #[error("Invalid command: {0}")]
-    InvalidCommand(String),
-    
-    #[error("Process not running")]
-    ProcessNotRunning,
-    
-    #[error("Failed to attach to process: {0}")]
-    AttachFailed(String),
-
-    #[error("Readline error: {0}")]
-    Readline(#[from] rustyline::error::ReadlineError),
-}
-
-impl std::fmt::Display for session::StackFrame {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match (&self.file, self.line) {
-            (Some(file), Some(line)) => {
-                write!(f, "{} () at {}:{} (0x{:x})", self.function, file, line, self.address)
-            }
-            _ => write!(f, "{} () at 0x{:x}", self.function, self.address),
-        }
-    }
-}
 
 #[derive(Parser)]
 #[command(name = "nova-dbg")]
