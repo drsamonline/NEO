@@ -24,7 +24,7 @@
 // The runtime crate is the one exception and says why in its own source.
 
 use nova_common::sir::{
-    SirBinOp, SirExpr, SirFunction, SirLiteral, SirProgram, SirStatement, SirUnOp,
+    is_float_expr, SirBinOp, SirExpr, SirFunction, SirLiteral, SirProgram, SirStatement, SirUnOp,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -1672,27 +1672,6 @@ fn wat_instruction(op: &SirBinOp) -> &'static str {
             // Ranges are handled by `for`; a standalone range has no value.
             SirBinOp::Range => "drop",
         }
-}
-
-/// Whether an expression carries a floating-point type, as far as the SIR says.
-///
-/// The SIR annotates with `Typed` where the lowerer knew the type, which is the case for a
-/// variable, a field and any arithmetic result. A float that reaches `print` through a path the
-/// SIR leaves unannotated would still be caught by `wat2wasm` rather than here — a refusal by
-/// accident, which is the thing this function exists to reduce.
-fn is_float_expr(expr: &SirExpr) -> bool {
-    match expr {
-        SirExpr::Typed { typ, .. } => is_float_type(typ),
-        SirExpr::Cast { typ, .. } => is_float_type(typ),
-        // The variant is `BinOp`, not `Binary` — the SIR's own name for it.
-        SirExpr::BinOp { left, right, .. } => is_float_expr(left) || is_float_expr(right),
-        _ => false,
-    }
-}
-
-/// The three spellings of a floating-point type in this compiler.
-fn is_float_type(typ: &str) -> bool {
-    matches!(typ.trim(), "float" | "f32" | "f64")
 }
 
 fn unspanned_literal(expr: &SirExpr) -> Option<&SirLiteral> {

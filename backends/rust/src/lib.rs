@@ -9,6 +9,41 @@
 
 use nova_common::sir::{SirProgram, SirFunction, SirGlobal, SirStatement, SirExpr, SirLiteral, SirBinOp, SirUnOp, SirParam};
 
+/// `printf("%g")` as a Rust function: six significant digits, scientific notation below 1e-4 and at
+/// 1e6 and above, trailing zeros stripped, and an exponent padded to two digits with a sign — the
+/// shape `printf` produces and `println!("{}")` does not.
+const RUST_PRINT_FLOAT: &str = r#"fn print_float(value: f64) {
+    if value.is_nan() {
+        println!("nan");
+        return;
+    }
+    if value.is_infinite() {
+        println!("{}", if value > 0.0 { "inf" } else { "-inf" });
+        return;
+    }
+    if value == 0.0 {
+        println!("0");
+        return;
+    }
+    let exponent = value.abs().log10().floor() as i32;
+    if exponent < -4 || exponent >= 6 {
+        let scientific = format!("{:.*e}", 5, value);
+        let (mantissa, power) = scientific.split_once('e').unwrap_or((scientific.as_str(), "0"));
+        let mantissa = mantissa.trim_end_matches('0').trim_end_matches('.');
+        let power: i32 = power.parse().unwrap_or(0);
+        println!("{}e{}{:02}", mantissa, if power < 0 { "-" } else { "+" }, power.abs());
+    } else {
+        let decimals = (5 - exponent).max(0) as usize;
+        let fixed = format!("{:.*}", decimals, value);
+        let fixed = if fixed.contains('.') {
+            fixed.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            fixed
+        };
+        println!("{}", fixed);
+    }
+}"#;
+
 pub struct RustBackend {
     output: String,
     indent_level: usize,
@@ -70,6 +105,10 @@ impl RustBackend {
         self.writeln("use std::rc::Rc;");
         self.writeln("");
         // `print` writes a value and a newline, matching the C runtime.
+        // A float is printed the way the C runtime prints one — `printf("%g")` — because
+        // `test --parity` compares this backend's output with C's, and `println!("{}", 1000000.0)`
+        // writes `1000000` where C writes `1e+06`. Rust's `Display` for `f64` is not `%g`.
+        self.writeln(RUST_PRINT_FLOAT);
         self.writeln("fn print<T: std::fmt::Display>(value: T) {");
         self.writeln("    println!(\"{}\", value);");
         self.writeln("}");
@@ -279,7 +318,18 @@ impl RustBackend {
                     if callee == "print" || callee == "println" {
                         let values: Vec<String> =
                             args.iter().map(|arg| self.expr_to_rust(arg)).collect();
-                        self.writeln(&format!("{}({});", callee, values.join(", ")));
+                        // A float goes to `print_float`: `Display` for `f64` is not `%g`, and the
+                        // parity harness compares this output with C's.
+                        let name = if args
+                            .first()
+                            .map(nova_common::sir::is_float_expr)
+                            .unwrap_or(false)
+                        {
+                            "print_float"
+                        } else {
+                            callee
+                        };
+                        self.writeln(&format!("{}({});", name, values.join(", ")));
                         if self.current_return_type == "void" {
                             self.writeln("return;");
                         } else {
