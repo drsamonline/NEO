@@ -1,0 +1,25 @@
+// A closure that takes and returns a float.
+//
+// The parameters are **annotated**, and that matters: an unannotated closure parameter defaults to
+// `int`, so `|x| x * 2.5` is typed `fn(int) -> int` and the C backend truncates the result. With
+// `|x: float|` the signature is `fn(float) -> float` in every backend, and the four agree.
+//
+// The WebAssembly backend refused this until its table types were keyed by signature shape rather
+// than by arity: `(i32 env, f64) -> f64` needs a type of its own for `call_indirect` to name.
+fn apply(f: fn(float) -> float, x: float) -> float {
+    f(x)
+}
+
+fn main() -> int {
+    let scale = 2.5;
+    let twice = |x: float| x * scale;
+
+    print(twice(2.0));
+    print(twice(0.5));
+    print(apply(twice, 1.5));
+
+    // An integer closure in the same program, so both shapes sit in one table.
+    let bump = |n: int| n + 1;
+    print(bump(41));
+    return 0;
+}
