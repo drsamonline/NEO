@@ -325,9 +325,9 @@ impl RustBackend {
                             .map(nova_common::sir::is_float_expr)
                             .unwrap_or(false)
                         {
-                            "print_float"
+                            "print_float".to_string()
                         } else {
-                            callee
+                            callee.clone()
                         };
                         self.writeln(&format!("{}({});", name, values.join(", ")));
                         if self.current_return_type == "void" {
