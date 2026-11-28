@@ -1,6 +1,6 @@
 # ADR 0023 — `print <name>`: the DWARF model is dead weight, and the information is already in the binary
 
-- **Status:** **accepted** (2026-11-27) — option **C**
+- **Status:** **accepted** (2026-11-27) — option **C**, then **A** (2026-11-28): `print x` works
 - **Date:** 2026-11-27
 - **Related:** [0021](0021-delete-runtime-crate.md) (the same shape), `compiler/src/main.rs:682`
 
@@ -79,10 +79,27 @@ line table, the information is in the binary, and nothing here parses it yet.
 **Two scaffolds of the same shape are now gone from this repository**: `runtime/` (ADR 0021) and this
 one. Both looked like capability and were not.
 
-## What is still open
+## A was built after all — 2026-11-28
 
-Option **A** is the only design that makes `print x` work, and it is a dependency decision rather
-than a cleanup. This ADR is where its cost is written down.
+The recommendation was "C now, A when someone wants the feature". A was wanted, and it is in:
+`gimli` and `object` read `.debug_info`, `evaluate_location` runs the location expression against the
+stopped frame, and `print x` returns the value — **7**, in a test that runs a real process and stops at
+a real breakpoint.
+
+Two things the work taught that this ADR could not have:
+
+- **`DW_OP_fbreg` is relative to `DW_AT_frame_base`, not to `RBP`.** The first version passed the frame
+  pointer as the base, so `fbreg -20` landed 16 bytes below the slot and read a neighbouring value —
+  which is a number, so nothing looked broken. gcc emits `DW_AT_frame_base = DW_OP_call_frame_cfa`,
+  so the base has to be *resolved*. It was found by making the failing test print the compiler's own
+  numbers, not by trying offsets until the value matched.
+- **the crate had to become a library.** A binary-only crate cannot be driven by a test, which is why
+  every part of this feature was testable in isolation and the join was not.
+
+Deleting the dead model first (option C) made the real one easier to see: the 364 lines that could
+never be populated were replaced by a reader that is used on every `print`.
+
+## What is still open
 
 It does not decide:
 
