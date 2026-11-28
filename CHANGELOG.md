@@ -8,6 +8,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 
 Nothing yet.
 
+## [0.8.3] - 2026-11-28
+
+The debugger can read a variable. `print x` was the last item this repository listed about itself as
+unfinished, and it is finished — with a test that proves it against a running process rather than
+against a reading of the code.
+
+### Added
+- **`print <name>`.** The debugger reads a local's name, type and location from the binary's
+  `.debug_info`, resolves the location against the stopped frame, and formats the value by its
+  declared type. [ADR 0023](docs/adr/0023-print-variable.md).
+- **`nova-dbg` is a library** as well as a binary, so a test can drive it the way a user does. The
+  binary is the thin shell underneath.
+- **Two live tests**: `print counter` returns 7 from a stopped process, and a name that is not a local
+  is refused with the names that are.
+
+### Fixed
+- **`DW_OP_fbreg` is relative to `DW_AT_frame_base`, not to `RBP`.** The first version passed the
+  frame pointer as the base, so `fbreg -20` landed 16 bytes below the slot that holds the variable —
+  and read a neighbouring value, which is a number, so nothing looked broken. gcc emits
+  `DW_AT_frame_base = DW_OP_call_frame_cfa`, so the base has to be *resolved* by running that
+  expression. Found by making the failing test print the compiler's own numbers, not by trying
+  offsets until the value matched.
+- **The debugger's DWARF module was a model with no parser** — 364 lines that could never be
+  populated, plus an `info variables` command whose map was never filled. Deleted, and the refusal
+  that blamed the compiler for "emitting neither" now says what is true.
+
+### Changed
+- **`print x` on a binary built by `zig cc` still cannot work**: that compiler emits line information
+  and no local-variable DWARF. The message names the compiler instead of refusing every name.
+
 ## [0.8.2] - 2026-11-27
 
 The package manager stops being a promise. Both halves of the gap `DEV_PLAN.md` named are closed,
