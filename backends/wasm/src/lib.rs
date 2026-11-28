@@ -1379,13 +1379,20 @@ impl WasmBackend {
             }
             SirExpr::EnvAccess { env_type, field } => {
                 self.writeln("(local.get $__env)");
-                let offset = self
+                let slot = self
                     .structs
                     .get(env_type)
-                    .and_then(|layout| layout.iter().find(|(name, _)| name == field))
-                    .map(|(_, offset)| *offset)
-                    .unwrap_or(0);
-                self.writeln(&format!("(i32.load offset={offset})"));
+                    .and_then(|layout| layout.iter().find(|slot| &slot.name == field));
+                // A closure environment can hold a float — a captured `float` is the reason
+                // `non-int closures` is on the refusal list, but the *field* is laid out here, so
+                // the load matches its width like any other.
+                match slot {
+                    Some(slot) if slot.is_float => {
+                        self.writeln(&format!("(f64.load offset={})", slot.offset))
+                    }
+                    Some(slot) => self.writeln(&format!("(i32.load offset={})", slot.offset)),
+                    None => self.writeln("(i32.const 0) (; unknown env field ;)"),
+                }
             }
             SirExpr::SizeOf(_) => self.writeln("(i32.const 4)"),
             SirExpr::Cast { value, .. } => self.generate_expr(value),
