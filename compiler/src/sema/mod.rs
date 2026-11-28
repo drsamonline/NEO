@@ -940,6 +940,38 @@ impl SemanticAnalyzer {
         if name.starts_with("__builtin_") || name == "Some" {
             return;
         }
+        // A call through a *value* — a closure held in a local or a parameter — has no entry in
+        // `signatures`, so it used to fall out here with nothing checked. That is how a float
+        // argument reached an `int` closure parameter and the C backend truncated it silently.
+        if !self.signatures.contains_key(name) {
+            if let Some(Type::Function { params, .. }) = self.lookup_variable_type(name) {
+                for (index, (arg, expected)) in args.iter().zip(params.iter()).enumerate() {
+                    let Some(found) = self.infer_expr_type(arg) else {
+                        continue;
+                    };
+                    if !self.types_compatible(&found, expected) {
+                        let mut diagnostic = Diagnostic::error(format!(
+                            "argument {} of `{}` is `{}`, but the closure's parameter is `{}`",
+                            index + 1,
+                            name,
+                            found,
+                            expected
+                        ))
+                        .with_code("E0308")
+                        .with_help(
+                            "a closure's parameter type comes from its annotation — write \
+                             `|x: float| ...` — because an unannotated parameter is typed `int`, \
+                             and a float argument to it truncates",
+                        );
+                        if let Some(span) = span_of(arg).or(call_span) {
+                            diagnostic = diagnostic.with_span(span);
+                        }
+                        self.diagnostics.push(diagnostic);
+                    }
+                }
+            }
+            return;
+        }
         let Some(signature) = self.signatures.get(name).cloned() else {
             return;
         };
@@ -1198,6 +1230,32 @@ impl SemanticAnalyzer {
             // An array literal's type is its first element's. `[]` has no element to ask, and
             // answers `None` — the lowerer takes the element type from the parameter, and this
             // is not a second implementation of that.
+            // A closure's type: the parameter types it declares, and the type its body
+            // produces. Without this arm a closure expression had no type, so `let f = |x| ...`
+            // left `f` untyped and a call through it could not be checked at all — which is how a
+            // float argument reached an `int` parameter and the C backend truncated it.
+            //
+            // An unannotated parameter is `int`: that is the language's default, not an inference,
+            // and `COMPATIBILITY.md` records what it costs when the body is a float.
+            Expr::Closure(params, body) => {
+                let parameters: Vec<Type> = params
+                    .iter()
+                    .map(|(_, annotation)| {
+                        annotation
+                            .as_ref()
+                            .map(|typ| type_from_name(&crate::lowerer::type_display(typ)))
+                            .unwrap_or(Type::Int)
+                    })
+                    .collect();
+                // A body with no inferred type still returns something; `int` is what the lowerer
+                // assumes in the same position, and the two must agree or the check disagrees with
+                // codegen.
+                let return_type = self.infer_expr_type(body).unwrap_or(Type::Int);
+                Some(Type::Function {
+                    params: parameters,
+                    return_type: Box::new(return_type),
+                })
+            }
             Expr::Array(items) => {
                 let first = items.first()?;
                 let element = self.infer_expr_type(first)?;
@@ -1521,6 +1579,48 @@ fn span_of(expr: &nova_common::Expr) -> Option<Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_closure_has_the_type_its_annotation_and_body_give_it() {
+        let analyzer = analyze(
+            "fn main() -> int {\n    let twice = |x: float| x * 2.5;\n    return 0;\n}\n",
+        );
+        // The type has to reach the binding, because the call-site check reads it from there.
+        let typ = analyzer.lookup_variable_type("twice");
+        match typ {
+            Some(Type::Function { params, return_type }) => {
+                assert_eq!(params, vec![Type::Float], "the annotation decides the parameter");
+                assert_eq!(*return_type, Type::Float, "the body decides the result");
+            }
+            other => panic!("expected a function type for `twice`, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_float_argument_to_an_int_closure_parameter_is_refused() {
+        // Before the closure had a type, nothing could compare the argument with the parameter,
+        // and the C backend truncated the double to reach an `int`.
+        let analyzer = analyze(
+            "fn main() -> int {\n    let twice = |x: int| x * 2;\n    print(twice(1.5));\n    return 0;\n}\n",
+        );
+        let messages = messages(&analyzer);
+        assert!(
+            messages.iter().any(|message| message.contains("closure's parameter is")),
+            "expected a closure argument type error, got {messages:?}"
+        );
+    }
+
+    #[test]
+    fn a_matching_closure_argument_is_not_refused() {
+        let analyzer = analyze(
+            "fn main() -> int {\n    let twice = |x: float| x * 2.5;\n    print(twice(1.5));\n    return 0;\n}\n",
+        );
+        let messages = messages(&analyzer);
+        assert!(
+            !messages.iter().any(|message| message.contains("closure's parameter is")),
+            "a float closure called with a float should not be refused: {messages:?}"
+        );
+    }
 
     #[test]
     fn a_scalar_is_copy_and_a_string_is_not() {
