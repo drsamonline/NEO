@@ -329,7 +329,13 @@ fn validate_expr(expr: &SirExpr) -> Result<(), &'static str> {
             if callee == "print" || callee == "println" {
                 // Only integers and string literals have a host representation.
                 if let Some(arg) = args.first() {
-                    if matches!(unspanned_literal(arg), Some(SirLiteral::Float(_))) {
+                    // A float literal was the only shape refused here, so `print(x)` on a float
+                    // *variable* passed validation and pushed an `f64` into `print_i32` — invalid
+                    // WebAssembly, refused by `wat2wasm` rather than by the compiler. The type is
+                    // checked now as well as the literal.
+                    if matches!(unspanned_literal(arg), Some(SirLiteral::Float(_)))
+                        || is_float_expr(arg)
+                    {
                         return Err("printing a float");
                     }
                     if !matches!(unspanned_literal(arg), Some(SirLiteral::String(_))) {
@@ -1661,6 +1667,27 @@ fn wat_instruction(op: &SirBinOp) -> &'static str {
         }
 }
 
+/// Whether an expression carries a floating-point type, as far as the SIR says.
+///
+/// The SIR annotates with `Typed` where the lowerer knew the type, which is the case for a
+/// variable, a field and any arithmetic result. A float that reaches `print` through a path the
+/// SIR leaves unannotated would still be caught by `wat2wasm` rather than here — a refusal by
+/// accident, which is the thing this function exists to reduce.
+fn is_float_expr(expr: &SirExpr) -> bool {
+    match expr {
+        SirExpr::Typed { typ, .. } => is_float_type(typ),
+        SirExpr::Cast { typ, .. } => is_float_type(typ),
+        // The variant is `BinOp`, not `Binary` — the SIR's own name for it.
+        SirExpr::BinOp { left, right, .. } => is_float_expr(left) || is_float_expr(right),
+        _ => false,
+    }
+}
+
+/// The three spellings of a floating-point type in this compiler.
+fn is_float_type(typ: &str) -> bool {
+    matches!(typ.trim(), "float" | "f32" | "f64")
+}
+
 fn unspanned_literal(expr: &SirExpr) -> Option<&SirLiteral> {
     match expr {
         SirExpr::Literal(lit) => Some(lit),
@@ -1734,6 +1761,31 @@ mod tests {
     use super::*;
     use nova_common::sir::{SirStruct, SirStructField};
     use nova_common::Span;
+
+    #[test]
+    fn printing_a_float_variable_is_refused_not_only_a_float_literal() {
+        // The check used to look at the literal alone, so `print(x)` on a float variable passed
+        // validation and pushed an `f64` into `print_i32` — invalid WebAssembly, refused by
+        // `wat2wasm` instead of by the compiler. A refusal that covers one spelling of a construct
+        // is not a refusal.
+        let mut program = empty_program();
+        program.functions.push(SirFunction {
+            name: "main".to_string(),
+            params: vec![],
+            return_type: Some("int".to_string()),
+            body: vec![SirStatement::Return(Some(SirExpr::Call {
+                callee: "print".to_string(),
+                args: vec![SirExpr::Typed {
+                    expr: Box::new(SirExpr::Var("ratio".to_string())),
+                    typ: "float".to_string(),
+                }],
+            }))],
+            env_type: None,
+            span: Span::default(),
+        });
+        let refusal = validate(&program).expect_err("a float variable must be refused");
+        assert_eq!(refusal, "printing a float");
+    }
 
     #[test]
     fn a_struct_with_a_float_field_is_refused_rather_than_miscompiled() {
