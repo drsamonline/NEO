@@ -493,11 +493,17 @@ impl RustBackend {
                         }
                     })
                     .collect();
-                format!(
-                    "{}({})",
-                    nova_common::sir::safe_identifier(callee),
-                    args_str.join(", ")
-                )
+                // A float goes to `print_float` here too: `print` used as an expression (a
+                // `print` inside a block, or as a statement the lowerer kept as an expression)
+                // does not pass through the statement path, and this is the arm it takes.
+                let name = if (callee == "print" || callee == "println")
+                    && args.first().map(nova_common::sir::is_float_expr).unwrap_or(false)
+                {
+                    "print_float".to_string()
+                } else {
+                    nova_common::sir::safe_identifier(callee)
+                };
+                format!("{}({})", name, args_str.join(", "))
             }
             SirExpr::If { condition, then_expr, else_expr } => {
                 let cond_str = self.expr_to_rust(condition);
