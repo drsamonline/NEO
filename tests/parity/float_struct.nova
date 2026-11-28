@@ -1,0 +1,26 @@
+// A struct with a float field, read back.
+//
+// The WebAssembly backend refused this until its struct slots carried a width: every field was a
+// four-byte `i32`, so an `f64` had nowhere to live. Now that `print` can show a float, this program
+// is what proves the layout — a wrong offset or a wrong load width reads a number, and a number is
+// not obviously wrong.
+struct Point {
+    x: float,
+    y: int,
+}
+
+fn main() -> int {
+    let point = Point { x: 1.5, y: 7 };
+    print(point.x);
+    print(point.y);
+
+    point.x = 2.25;
+    print(point.x);
+
+    // Two structs, so a wrong size would make them overlap.
+    let other = Point { x: 0.5, y: 9 };
+    print(other.x);
+    print(point.x);
+    print(other.y);
+    return 0;
+}
