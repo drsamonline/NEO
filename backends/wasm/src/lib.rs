@@ -1265,9 +1265,17 @@ impl WasmBackend {
                 }
             }
             SirExpr::BinOp { left, op, right } => {
+                // `i32.mul` on two `f64` operands is a module that does not validate, so the
+                // instruction has to follow the operands' type.
+                let is_float = nova_common::sir::is_float_expr(left)
+                    || nova_common::sir::is_float_expr(right);
                 self.generate_expr(left);
                 self.generate_expr(right);
-                self.writeln(wat_instruction(op));
+                self.writeln(if is_float {
+                    float_instruction(op)
+                } else {
+                    wat_instruction(op)
+                });
             }
             SirExpr::UnaryOp { op, operand } => {
                 match op {
@@ -1331,7 +1339,7 @@ impl WasmBackend {
                 callee,
                 args,
                 return_type,
-                ..
+                params,
             } => {
                 // Closure value: [table index, environment pointer].
                 let depth = self.call_depth.min(3);
@@ -1355,11 +1363,28 @@ impl WasmBackend {
                 } else {
                     "r"
                 };
-                // The key comes from the lifted function this closure value points at. Falling
-                // back to the arity type would name a signature the function may not have.
-                let key = closure_name_of(callee)
-                    .and_then(|name| self.closure_keys.get(name).cloned())
-                    .unwrap_or_else(|| format!("{}_{suffix}", args.len()));
+                // The key comes from the *call's* parameter types, which the SIR carries. The
+                // callee is a closure value — a local — so the lifted function's name is not
+                // available here, and an arity key would name a signature the function may not
+                // have: `(i32 env, i32) -> i32` for what is really `(i32 env, f64) -> f64`.
+                let key = {
+                    let mut key = String::new();
+                    for param in params {
+                        key.push(if nova_common::sir::is_float_type(param) { 'f' } else { 'i' });
+                    }
+                    if key.is_empty() {
+                        key.push('n');
+                    }
+                    key.push('_');
+                    key.push(if nova_common::sir::is_float_type(returns) {
+                        'f'
+                    } else if suffix == "v" {
+                        'v'
+                    } else {
+                        'i'
+                    });
+                    key
+                };
                 self.writeln(&format!("(call_indirect (type $closure_{key}))"));
             }
             SirExpr::If {
@@ -1743,6 +1768,27 @@ impl WasmBackend {
         self.output.push_str(&indent);
         self.output.push_str(line);
         self.output.push('\n');
+    }
+}
+
+/// The `f64` instruction for an operator.
+///
+/// `%` has no float instruction in WebAssembly, so it keeps the integer one and a float remainder
+/// does not validate — which is a refusal by the assembler, and named as such in
+/// `COMPATIBILITY.md` rather than hidden.
+fn float_instruction(op: &SirBinOp) -> &'static str {
+    match op {
+        SirBinOp::Add => "f64.add",
+        SirBinOp::Sub => "f64.sub",
+        SirBinOp::Mul => "f64.mul",
+        SirBinOp::Div => "f64.div",
+        SirBinOp::Eq => "f64.eq",
+        SirBinOp::Ne => "f64.ne",
+        SirBinOp::Lt => "f64.lt",
+        SirBinOp::Le => "f64.le",
+        SirBinOp::Gt => "f64.gt",
+        SirBinOp::Ge => "f64.ge",
+        other => wat_instruction(other),
     }
 }
 
