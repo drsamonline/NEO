@@ -47,7 +47,7 @@ What is genuinely left:
 | Item | Blocked by |
 |---|---|
 | ~~`nova-dbg` in the macOS and Windows archives~~ | **done** — PR #203 gated `attach` on `target_os = "linux"`; the v0.8.1 dry run on 2026-11-27 built all three platforms green; the `--exclude nova-dbg` branch is gone, so every archive from v0.8.1 on carries four binaries |
-| `print <name>` in the debugger | a C compiler that emits local-variable DWARF; `zig cc` does not, gcc/clang do |
+| `print <name>` in the debugger | **built, and one step short of proven.** The reader (ADR 0023 option A, `gimli` + `object`), the location evaluator and the type formatter are merged and tested. The live path — stop a process, find the frame, read the slot — runs end to end and reads the **wrong slot**: `counter = 32765` where the program says 7. Most likely a frame-base disagreement (`DW_OP_fbreg -20` is `rbp - 4` only if the base is the CFA). It needs `readelf --debug-dump=info` on a fixture to see which base gcc recorded. **Not fixed by trying offsets until the number matches** — that is the plausible-wrong-answer this project refuses. PR #218 closed with the evidence; its branch holds a library target for `nova-dbg` that is sound on its own |
 | WASM float struct fields, non-`int` closures | rejected by `validate` rather than miscompiled — a decision, not a defect |
 | ~~A release after v0.7.0~~ | **done** — v0.8.0 published 2026-11-27 |
 
@@ -62,7 +62,7 @@ What is genuinely left:
 | 4 — syntax tree, formatter, guard, `trait` | ✅ |
 | 5 — LSP nav, VS Code extension, path/git deps | ✅ |
 | 6 — release and distribution | ✅ v0.8.2 published 2026-11-27 — four binaries in every archive |
-| 7 — long tail | 🟡 spec **25/25** ✅, stdlib truth ✅, debugger ✅ except `print <name>` |
+| 7 — long tail | 🟡 spec **25/25** ✅, stdlib truth ✅, debugger ✅ except `print <name>`, which is built and reads the wrong slot (see above) |
 
 ### The standard library
 
