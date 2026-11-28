@@ -1438,16 +1438,19 @@ impl WasmBackend {
                 struct_type,
             } => {
                 self.generate_expr(object);
-                let Some(slot) = self
+                // Copied out before generating the value: the slot borrows `self.structs` and
+                // `generate_expr` needs `&mut self`.
+                let Some((offset, is_float)) = self
                     .structs
                     .get(struct_type)
                     .and_then(|layout| layout.iter().find(|slot| &slot.name == field))
+                    .map(|slot| (slot.offset, slot.is_float))
                 else {
                     self.writeln("unreachable (; unknown struct field ;)");
                     return;
                 };
                 self.generate_expr(value);
-                let (offset, op) = (slot.offset, if slot.is_float { "f64.store" } else { "i32.store" });
+                let op = if is_float { "f64.store" } else { "i32.store" };
                 self.writeln(&format!("({op} offset={offset})"));
             }
             SirExpr::Deref(inner) => self.generate_expr(inner),
