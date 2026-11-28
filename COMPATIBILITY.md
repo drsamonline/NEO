@@ -71,7 +71,22 @@ compiles and misbehaves. This table is the list of those refusals, and
 | slicing a string | *string slicing* |
 | field access on an unknown struct type | *a field access with no known struct type* |
 | field assignment on an unknown struct type | *a field assignment with no known struct type* |
-| a closure taking or returning a `float` | *closure signatures with floating-point parameters/results* |
+| a closure taking or returning a `float` | *closure signatures with floating-point parameters/results* — **and this one stays refused**, see below |
+
+**Why a float closure is still refused — measured, not assumed.** A parity program was written to
+support it, and it showed the construct is broken in three of four backends:
+
+| Backend | A closure `|x| x * 2.5` called with `2.0`, `0.5`, `1.5` |
+|---|---|
+| **C** (the reference) | prints `5`, `0`, `25` — it truncates the `f64` to an `i32` |
+| **JavaScript** | prints `5`, `1.25`, `3.75` — correct |
+| **Rust** | does not compile: `expected i32, found f64`, `Rc<dyn Fn(f64) -> f64>` against `Rc<dyn Fn(i32) -> f64>` |
+| **WebAssembly** | refuses |
+
+So the refusal was the only honest behaviour, and the WebAssembly backend was right to have it. Making
+this construct work means fixing the **reference** first — its output defines what the other three are
+compared against — and that is a separate piece of work with a program that already fails. Until then
+the refusal stays, and it now says why.
 
 **Why the WebAssembly gaps exist rather than being fixed:** struct fields are four-byte `i32` slots
 in this backend's linear memory, so an `f64` field would need a different layout — alignment,

@@ -46,6 +46,8 @@ What is genuinely left:
 
 | Item | Blocked by |
 |---|---|
+| **float closures in every backend** | measured, not guessed: a closure `|x| x * 2.5` prints `5, 0, 25` on the **C** reference — it truncates the `f64` to an `i32` — does not compile on **Rust**, is correct on **JavaScript**, and is refused by **WebAssembly**. The refusal is right until the reference is fixed, because the reference is what `test --parity` compares against. `COMPATIBILITY.md` records the numbers |
+|---|---|
 | ~~`nova-dbg` in the macOS and Windows archives~~ | **done** — PR #203 gated `attach` on `target_os = "linux"`; the v0.8.1 dry run on 2026-11-27 built all three platforms green; the `--exclude nova-dbg` branch is gone, so every archive from v0.8.1 on carries four binaries |
 | ~~`print <name>` in the debugger~~ | **done** — reads a local by name and type from a stopped process, with a live test that asserts the value; see ADR 0023 |
 | WASM float struct fields, non-`int` closures | rejected by `validate` rather than miscompiled — a decision, not a defect |
