@@ -43,7 +43,7 @@ the code and a CI run, and the run is named where it matters.
 | Debugger | ⚠️ **`run` traces, `break <function>` and `break <file:line>` insert a real `int3`, `backtrace` walks the frame chain** — all reporting `.nova` lines (ADR 0016); `print 0xADDRESS` reads memory; PIE binaries need the program started first; **`print <name>` refuses** — a variable needs its stack offset and type, which nothing emits | `dbg` tests |
 | VS Code extension | ✅ manifest, LSP client, TextMate grammar, language configuration; `tsc` and `vsce package` in CI | `extension.yml`, `tools/extension-check.py` |
 | Language spec | ✅ 25 of 25 chapters written | `docs/language/README.md` |
-| **Test suite** | **341 `#[test]` functions, 0 failing** — counted by `tools/status.py`, not typed here | `docs/status.json` |
+| **Test suite** | **340 `#[test]` functions, 0 failing** — counted by `tools/status.py`, not typed here | `docs/status.json` |
 
 ---
 
